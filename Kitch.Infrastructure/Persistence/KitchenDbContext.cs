@@ -11,7 +11,11 @@ public class KitchenDbContext : DbContext
     }
 
     public DbSet<ComidaPlanificada> ComidasPlanificadas => Set<ComidaPlanificada>();
+    public DbSet<Ingrediente> Ingredientes => Set<Ingrediente>();
+    public DbSet<IngredienteReceta> IngredientesReceta => Set<IngredienteReceta>();
     public DbSet<ItemListaCompra> ItemsListaCompra => Set<ItemListaCompra>();
+    public DbSet<Pago> Pagos => Set<Pago>();
+    public DbSet<PreparacionReceta> PreparacionesReceta => Set<PreparacionReceta>();
     public DbSet<Receta> Recetas => Set<Receta>();
     public DbSet<RecetaFavorita> RecetasFavoritas => Set<RecetaFavorita>();
     public DbSet<Usuario> Usuarios => Set<Usuario>();
@@ -121,6 +125,62 @@ public class KitchenDbContext : DbContext
             });
         });
 
+        modelBuilder.Entity<Ingrediente>(entity =>
+        {
+            entity.ToTable("Ingrediente");
+
+            entity.HasKey(ingrediente => ingrediente.Id);
+
+            entity.Property(ingrediente => ingrediente.Nombre)
+                .IsRequired()
+                .HasMaxLength(150);
+
+            entity.Property(ingrediente => ingrediente.Descripcion)
+                .HasMaxLength(500);
+
+            entity.HasIndex(ingrediente => ingrediente.Nombre)
+                .IsUnique();
+        });
+
+        modelBuilder.Entity<IngredienteReceta>(entity =>
+        {
+            entity.ToTable("IngredienteReceta");
+
+            entity.HasKey(ingredienteReceta => ingredienteReceta.Id);
+
+            entity.Property(ingredienteReceta => ingredienteReceta.RecetaId)
+                .IsRequired();
+
+            entity.Property(ingredienteReceta => ingredienteReceta.IngredienteId)
+                .IsRequired();
+
+            entity.Property(ingredienteReceta => ingredienteReceta.Cantidad)
+                .HasPrecision(10, 2)
+                .IsRequired();
+
+            entity.Property(ingredienteReceta => ingredienteReceta.UnidadMedida)
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.HasOne(ingredienteReceta => ingredienteReceta.Receta)
+                .WithMany()
+                .HasForeignKey(ingredienteReceta => ingredienteReceta.RecetaId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(ingredienteReceta => ingredienteReceta.Ingrediente)
+                .WithMany()
+                .HasForeignKey(ingredienteReceta => ingredienteReceta.IngredienteId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(ingredienteReceta => ingredienteReceta.RecetaId);
+            entity.HasIndex(ingredienteReceta => ingredienteReceta.IngredienteId);
+            entity.HasIndex(ingredienteReceta => new
+            {
+                ingredienteReceta.RecetaId,
+                ingredienteReceta.IngredienteId
+            }).IsUnique();
+        });
+
         modelBuilder.Entity<ItemListaCompra>(entity =>
         {
             entity.ToTable("ItemListaCompra");
@@ -146,6 +206,69 @@ public class KitchenDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(itemListaCompra => itemListaCompra.UsuarioId);
+        });
+
+        modelBuilder.Entity<PreparacionReceta>(entity =>
+        {
+            entity.ToTable("PreparacionReceta");
+
+            entity.HasKey(preparacionReceta => preparacionReceta.Id);
+
+            entity.Property(preparacionReceta => preparacionReceta.RecetaId)
+                .IsRequired();
+
+            entity.Property(preparacionReceta => preparacionReceta.NumeroPaso)
+                .IsRequired();
+
+            entity.Property(preparacionReceta => preparacionReceta.DescripcionPaso)
+                .IsRequired()
+                .HasMaxLength(1000);
+
+            entity.HasOne(preparacionReceta => preparacionReceta.Receta)
+                .WithMany()
+                .HasForeignKey(preparacionReceta => preparacionReceta.RecetaId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(preparacionReceta => preparacionReceta.RecetaId);
+            entity.HasIndex(preparacionReceta => new
+            {
+                preparacionReceta.RecetaId,
+                preparacionReceta.NumeroPaso
+            }).IsUnique();
+        });
+
+        modelBuilder.Entity<Pago>(entity =>
+        {
+            entity.ToTable("Pago");
+
+            entity.HasKey(pago => pago.Id);
+
+            entity.Property(pago => pago.UsuarioId)
+                .IsRequired();
+
+            entity.Property(pago => pago.FechaPago)
+                .IsRequired();
+
+            entity.Property(pago => pago.Monto)
+                .HasPrecision(18, 2)
+                .IsRequired();
+
+            entity.Property(pago => pago.EstadoPago)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.Property(pago => pago.MetodoPago)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasMaxLength(50);
+
+            entity.HasOne(pago => pago.Usuario)
+                .WithMany()
+                .HasForeignKey(pago => pago.UsuarioId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(pago => pago.UsuarioId);
         });
 
         modelBuilder.Entity<RecetaFavorita>(entity =>
