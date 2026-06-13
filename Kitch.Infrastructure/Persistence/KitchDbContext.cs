@@ -3,9 +3,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kitch.Infrastructure.Persistence;
 
-public class KitchenDbContext : DbContext
+public class KitchDbContext : DbContext
 {
-    public KitchenDbContext(DbContextOptions<KitchenDbContext> options)
+    public KitchDbContext(DbContextOptions<KitchDbContext> options)
         : base(options)
     {
     }
@@ -26,6 +26,6 @@ public class KitchenDbContext : DbContext
             base.OnModelCreating(modelBuilder);
 
             modelBuilder.ApplyConfigurationsFromAssembly(
-                typeof(KitchenDbContext).Assembly);
+                typeof(KitchDbContext).Assembly);
         }
 }

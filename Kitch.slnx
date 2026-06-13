@@ -1,3 +1,6 @@
 <Solution>
   <Project Path="Kitch.API/Kitch.API.csproj" />
+  <Project Path="Kitch.Application/Kitch.Application.csproj" />
+  <Project Path="Kitch.Domain/Kitch.Domain.csproj" />
+  <Project Path="Kitch.Infrastructure/Kitch.Infrastructure.csproj" />
 </Solution>
