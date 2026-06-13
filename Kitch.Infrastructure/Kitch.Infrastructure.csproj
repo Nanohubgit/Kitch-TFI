@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Kitch.Application\Kitch.Application.csproj" />
+    <ProjectReference Include="..\Kitch.Domain\Kitch.Domain.csproj" />
   </ItemGroup>
 
   <ItemGroup>
