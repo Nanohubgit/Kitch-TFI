@@ -3,6 +3,8 @@ using Kitch.Infrastructure.Persistence;
 using Kitch.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Kitch.Domain.Interfaces;
+using Kitch.Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Kitch.Infrastructure;
@@ -27,6 +29,9 @@ public static class DependencyInjection
         services.AddScoped<IPlanificadorService, PlanificadorService>();
         services.AddScoped<IListaCompraService, ListaCompraService>();
         services.AddScoped<IContratoSubService, ContratoSubService>();
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services)
+    {
+        services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
         return services;
     }
