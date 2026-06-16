@@ -11,6 +11,7 @@ public class KitchDbContext : DbContext
     }
 
     public DbSet<ComidaPlanificada> ComidasPlanificadas => Set<ComidaPlanificada>();
+    public DbSet<ContratoSub> ContratosSub => Set<ContratoSub>();
     public DbSet<Ingrediente> Ingredientes => Set<Ingrediente>();
     public DbSet<IngredienteReceta> IngredientesReceta => Set<IngredienteReceta>();
     public DbSet<ItemListaCompra> ItemsListaCompra => Set<ItemListaCompra>();
@@ -18,6 +19,8 @@ public class KitchDbContext : DbContext
     public DbSet<PreparacionReceta> PreparacionesReceta => Set<PreparacionReceta>();
     public DbSet<Receta> Recetas => Set<Receta>();
     public DbSet<RecetaFavorita> RecetasFavoritas => Set<RecetaFavorita>();
+    public DbSet<StockUsuario> StockUsuarios => Set<StockUsuario>();
+    public DbSet<Suscripcion> Suscripciones => Set<Suscripcion>();
     public DbSet<Usuario> Usuarios => Set<Usuario>();
 
 

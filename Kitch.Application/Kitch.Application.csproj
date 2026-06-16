@@ -2,6 +2,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Kitch.Domain\Kitch.Domain.csproj" />
+    <ProjectReference Include="..\Kitch.Infrastructure\Kitch.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
   </ItemGroup>
 
   <PropertyGroup>
