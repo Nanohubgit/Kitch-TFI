@@ -1,73 +1,63 @@
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
-using Kitch.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Kitch.Domain.Interfaces;
 
 namespace Kitch.Infrastructure.Services;
 
 public class ListaCompraService : IListaCompraService
 {
-    private readonly KitchDbContext _context;
+    private readonly IRepository<ItemListaCompra> _repository;
 
-    public ListaCompraService(KitchDbContext context)
+    public ListaCompraService(IRepository<ItemListaCompra> repository)
     {
-        _context = context;
+        _repository = repository;
     }
 
     public async Task<IEnumerable<ItemListaCompra>> GetByUsuarioIdAsync(int usuarioId)
     {
-        return await _context.ItemsListaCompra
-            .Where(item => item.UsuarioId == usuarioId)
-            .ToListAsync();
+        return await _repository.FindAsync(item => item.UsuarioId == usuarioId);
     }
 
     public async Task<ItemListaCompra?> GetByIdAsync(int id)
     {
-        return await _context.ItemsListaCompra.FindAsync(id);
+        return await _repository.GetByIdAsync(id);
     }
 
     public async Task<ItemListaCompra> CreateAsync(ItemListaCompra item)
     {
-        await _context.ItemsListaCompra.AddAsync(item);
-        await _context.SaveChangesAsync();
-
-        return item;
+        return await _repository.AddAsync(item);
     }
 
     public async Task<bool> UpdateAsync(int id, ItemListaCompra item)
     {
-        var existingItem = await _context.ItemsListaCompra.FindAsync(id);
-
-        if (existingItem is null)
+        if (!await _repository.AnyAsync(existing => existing.Id == id))
         {
             return false;
         }
 
         item.Id = id;
-        _context.Entry(existingItem).CurrentValues.SetValues(item);
-        await _context.SaveChangesAsync();
+        await _repository.UpdateAsync(item);
 
         return true;
     }
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var item = await _context.ItemsListaCompra.FindAsync(id);
+        var item = await _repository.GetByIdAsync(id);
 
         if (item is null)
         {
             return false;
         }
 
-        _context.ItemsListaCompra.Remove(item);
-        await _context.SaveChangesAsync();
+        await _repository.DeleteAsync(item);
 
         return true;
     }
 
     public async Task<bool> MarcarComoCompradoAsync(int id)
     {
-        var item = await _context.ItemsListaCompra.FindAsync(id);
+        var item = await _repository.GetByIdAsync(id);
 
         if (item is null)
         {
@@ -75,7 +65,7 @@ public class ListaCompraService : IListaCompraService
         }
 
         item.EstaComprado = true;
-        await _context.SaveChangesAsync();
+        await _repository.UpdateAsync(item);
 
         return true;
     }

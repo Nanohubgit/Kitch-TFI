@@ -1,3 +1,4 @@
+using Kitch.Infrastructure;
 using Kitch.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,6 +13,8 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 builder.Services.AddDbContext<KitchDbContext>(options =>
     options.UseSqlServer(connectionString));
+
+builder.Services.AddInfrastructure();
 
 var app = builder.Build();
 

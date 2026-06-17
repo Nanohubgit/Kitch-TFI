@@ -1,71 +1,61 @@
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
-using Kitch.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Kitch.Domain.Interfaces;
 
 namespace Kitch.Infrastructure.Services;
 
 public class ContratoSubService : IContratoSubService
 {
-    private readonly KitchDbContext _context;
+    private readonly IRepository<ContratoSub> _repository;
 
-    public ContratoSubService(KitchDbContext context)
+    public ContratoSubService(IRepository<ContratoSub> repository)
     {
-        _context = context;
+        _repository = repository;
     }
 
     public async Task<IEnumerable<ContratoSub>> GetAllAsync()
     {
-        return await _context.ContratosSub.ToListAsync();
+        return await _repository.GetAllAsync();
     }
 
     public async Task<IEnumerable<ContratoSub>> GetByUsuarioIdAsync(int usuarioId)
     {
-        return await _context.ContratosSub
-            .Where(contratoSub => contratoSub.UsuarioId == usuarioId)
-            .ToListAsync();
+        return await _repository.FindAsync(contratoSub => contratoSub.UsuarioId == usuarioId);
     }
 
     public async Task<ContratoSub?> GetByIdAsync(int id)
     {
-        return await _context.ContratosSub.FindAsync(id);
+        return await _repository.GetByIdAsync(id);
     }
 
     public async Task<ContratoSub> CreateAsync(ContratoSub contratoSub)
     {
-        await _context.ContratosSub.AddAsync(contratoSub);
-        await _context.SaveChangesAsync();
-
-        return contratoSub;
+        return await _repository.AddAsync(contratoSub);
     }
 
     public async Task<bool> UpdateAsync(int id, ContratoSub contratoSub)
     {
-        var existingContratoSub = await _context.ContratosSub.FindAsync(id);
-
-        if (existingContratoSub is null)
+        if (!await _repository.AnyAsync(existing => existing.Id == id))
         {
             return false;
         }
 
         contratoSub.Id = id;
-        _context.Entry(existingContratoSub).CurrentValues.SetValues(contratoSub);
-        await _context.SaveChangesAsync();
+        await _repository.UpdateAsync(contratoSub);
 
         return true;
     }
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var contratoSub = await _context.ContratosSub.FindAsync(id);
+        var contratoSub = await _repository.GetByIdAsync(id);
 
         if (contratoSub is null)
         {
             return false;
         }
 
-        _context.ContratosSub.Remove(contratoSub);
-        await _context.SaveChangesAsync();
+        await _repository.DeleteAsync(contratoSub);
 
         return true;
     }
