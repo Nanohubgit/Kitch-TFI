@@ -1,66 +1,56 @@
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
-using Kitch.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Kitch.Domain.Interfaces;
 
 namespace Kitch.Infrastructure.Services;
 
 public class StockUsuarioService : IStockUsuarioService
 {
-    private readonly KitchDbContext _context;
+    private readonly IRepository<StockUsuario> _repository;
 
-    public StockUsuarioService(KitchDbContext context)
+    public StockUsuarioService(IRepository<StockUsuario> repository)
     {
-        _context = context;
+        _repository = repository;
     }
 
     public async Task<IEnumerable<StockUsuario>> GetByUsuarioIdAsync(int usuarioId)
     {
-        return await _context.StockUsuarios
-            .Where(stock => stock.UsuarioId == usuarioId)
-            .ToListAsync();
+        return await _repository.FindAsync(stock => stock.UsuarioId == usuarioId);
     }
 
     public async Task<StockUsuario?> GetByIdAsync(int id)
     {
-        return await _context.StockUsuarios.FindAsync(id);
+        return await _repository.GetByIdAsync(id);
     }
 
     public async Task<StockUsuario> CreateAsync(StockUsuario stock)
     {
-        await _context.StockUsuarios.AddAsync(stock);
-        await _context.SaveChangesAsync();
-
-        return stock;
+        return await _repository.AddAsync(stock);
     }
 
     public async Task<bool> UpdateAsync(int id, StockUsuario stock)
     {
-        var existingStock = await _context.StockUsuarios.FindAsync(id);
-
-        if (existingStock is null)
+        if (!await _repository.AnyAsync(existing => existing.Id == id))
         {
             return false;
         }
 
         stock.Id = id;
-        _context.Entry(existingStock).CurrentValues.SetValues(stock);
-        await _context.SaveChangesAsync();
+        await _repository.UpdateAsync(stock);
 
         return true;
     }
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var stock = await _context.StockUsuarios.FindAsync(id);
+        var stock = await _repository.GetByIdAsync(id);
 
         if (stock is null)
         {
             return false;
         }
 
-        _context.StockUsuarios.Remove(stock);
-        await _context.SaveChangesAsync();
+        await _repository.DeleteAsync(stock);
 
         return true;
     }

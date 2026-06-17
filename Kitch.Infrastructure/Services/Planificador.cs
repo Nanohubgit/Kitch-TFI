@@ -1,24 +1,21 @@
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
-using Kitch.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Kitch.Domain.Interfaces;
 
 namespace Kitch.Infrastructure.Services;
 
 public class PlanificadorService : IPlanificadorService
 {
-    private readonly KitchDbContext _context;
+    private readonly IRepository<ComidaPlanificada> _repository;
 
-    public PlanificadorService(KitchDbContext context)
+    public PlanificadorService(IRepository<ComidaPlanificada> repository)
     {
-        _context = context;
+        _repository = repository;
     }
 
     public async Task<IEnumerable<ComidaPlanificada>> GetByUsuarioIdAsync(int usuarioId)
     {
-        return await _context.ComidasPlanificadas
-            .Where(comida => comida.UsuarioId == usuarioId)
-            .ToListAsync();
+        return await _repository.FindAsync(comida => comida.UsuarioId == usuarioId);
     }
 
     public async Task<IEnumerable<ComidaPlanificada>> GetByFechaAsync(int usuarioId, DateTime fecha)
@@ -26,54 +23,45 @@ public class PlanificadorService : IPlanificadorService
         var fechaInicio = fecha.Date;
         var fechaFin = fechaInicio.AddDays(1);
 
-        return await _context.ComidasPlanificadas
-            .Where(comida =>
-                comida.UsuarioId == usuarioId &&
-                comida.FechaAsignada >= fechaInicio &&
-                comida.FechaAsignada < fechaFin)
-            .ToListAsync();
+        return await _repository.FindAsync(comida =>
+            comida.UsuarioId == usuarioId &&
+            comida.FechaAsignada >= fechaInicio &&
+            comida.FechaAsignada < fechaFin);
     }
 
     public async Task<ComidaPlanificada?> GetByIdAsync(int id)
     {
-        return await _context.ComidasPlanificadas.FindAsync(id);
+        return await _repository.GetByIdAsync(id);
     }
 
     public async Task<ComidaPlanificada> CreateAsync(ComidaPlanificada comida)
     {
-        await _context.ComidasPlanificadas.AddAsync(comida);
-        await _context.SaveChangesAsync();
-
-        return comida;
+        return await _repository.AddAsync(comida);
     }
 
     public async Task<bool> UpdateAsync(int id, ComidaPlanificada comida)
     {
-        var existingComida = await _context.ComidasPlanificadas.FindAsync(id);
-
-        if (existingComida is null)
+        if (!await _repository.AnyAsync(existing => existing.Id == id))
         {
             return false;
         }
 
         comida.Id = id;
-        _context.Entry(existingComida).CurrentValues.SetValues(comida);
-        await _context.SaveChangesAsync();
+        await _repository.UpdateAsync(comida);
 
         return true;
     }
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var comida = await _context.ComidasPlanificadas.FindAsync(id);
+        var comida = await _repository.GetByIdAsync(id);
 
         if (comida is null)
         {
             return false;
         }
 
-        _context.ComidasPlanificadas.Remove(comida);
-        await _context.SaveChangesAsync();
+        await _repository.DeleteAsync(comida);
 
         return true;
     }

@@ -1,71 +1,61 @@
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
-using Kitch.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Kitch.Domain.Interfaces;
 
 namespace Kitch.Infrastructure.Services;
 
 public class PagoService : IPagoService
 {
-    private readonly KitchDbContext _context;
+    private readonly IRepository<Pago> _repository;
 
-    public PagoService(KitchDbContext context)
+    public PagoService(IRepository<Pago> repository)
     {
-        _context = context;
+        _repository = repository;
     }
 
     public async Task<IEnumerable<Pago>> GetAllAsync()
     {
-        return await _context.Pagos.ToListAsync();
+        return await _repository.GetAllAsync();
     }
 
     public async Task<IEnumerable<Pago>> GetByUsuarioIdAsync(int usuarioId)
     {
-        return await _context.Pagos
-            .Where(pago => pago.UsuarioId == usuarioId)
-            .ToListAsync();
+        return await _repository.FindAsync(pago => pago.UsuarioId == usuarioId);
     }
 
     public async Task<Pago?> GetByIdAsync(int id)
     {
-        return await _context.Pagos.FindAsync(id);
+        return await _repository.GetByIdAsync(id);
     }
 
     public async Task<Pago> CreateAsync(Pago pago)
     {
-        await _context.Pagos.AddAsync(pago);
-        await _context.SaveChangesAsync();
-
-        return pago;
+        return await _repository.AddAsync(pago);
     }
 
     public async Task<bool> UpdateAsync(int id, Pago pago)
     {
-        var existingPago = await _context.Pagos.FindAsync(id);
-
-        if (existingPago is null)
+        if (!await _repository.AnyAsync(existing => existing.Id == id))
         {
             return false;
         }
 
         pago.Id = id;
-        _context.Entry(existingPago).CurrentValues.SetValues(pago);
-        await _context.SaveChangesAsync();
+        await _repository.UpdateAsync(pago);
 
         return true;
     }
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var pago = await _context.Pagos.FindAsync(id);
+        var pago = await _repository.GetByIdAsync(id);
 
         if (pago is null)
         {
             return false;
         }
 
-        _context.Pagos.Remove(pago);
-        await _context.SaveChangesAsync();
+        await _repository.DeleteAsync(pago);
 
         return true;
     }

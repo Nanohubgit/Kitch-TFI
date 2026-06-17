@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Kitch.Domain.Interfaces;
 using Kitch.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +24,21 @@ public class Repository<T> : IRepository<T> where T : class
     public async Task<T?> GetByIdAsync(object id)
     {
         return await _dbSet.FindAsync(id);
+    }
+
+    public async Task<IReadOnlyList<T>> FindAsync(Expression<Func<T, bool>> predicate)
+    {
+        return await _dbSet.Where(predicate).ToListAsync();
+    }
+
+    public async Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate)
+    {
+        return await _dbSet.FirstOrDefaultAsync(predicate);
+    }
+
+    public async Task<bool> AnyAsync(Expression<Func<T, bool>> predicate)
+    {
+        return await _dbSet.AnyAsync(predicate);
     }
 
     public async Task<T> AddAsync(T entity)

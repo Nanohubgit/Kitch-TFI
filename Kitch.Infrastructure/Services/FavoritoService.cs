@@ -1,29 +1,26 @@
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
-using Kitch.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Kitch.Domain.Interfaces;
 
 namespace Kitch.Infrastructure.Services;
 
 public class FavoritoService : IFavoritoService
 {
-    private readonly KitchDbContext _context;
+    private readonly IRepository<RecetaFavorita> _repository;
 
-    public FavoritoService(KitchDbContext context)
+    public FavoritoService(IRepository<RecetaFavorita> repository)
     {
-        _context = context;
+        _repository = repository;
     }
 
     public async Task<IEnumerable<RecetaFavorita>> GetByUsuarioIdAsync(int usuarioId)
     {
-        return await _context.RecetasFavoritas
-            .Where(favorito => favorito.UsuarioId == usuarioId)
-            .ToListAsync();
+        return await _repository.FindAsync(favorito => favorito.UsuarioId == usuarioId);
     }
 
     public async Task<RecetaFavorita?> GetByIdAsync(int id)
     {
-        return await _context.RecetasFavoritas.FindAsync(id);
+        return await _repository.GetByIdAsync(id);
     }
 
     public async Task<RecetaFavorita> AddFavoritoAsync(RecetaFavorita favorito)
@@ -33,30 +30,26 @@ public class FavoritoService : IFavoritoService
             throw new InvalidOperationException("La receta ya está marcada como favorita para este usuario.");
         }
 
-        await _context.RecetasFavoritas.AddAsync(favorito);
-        await _context.SaveChangesAsync();
-
-        return favorito;
+        return await _repository.AddAsync(favorito);
     }
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var favorito = await _context.RecetasFavoritas.FindAsync(id);
+        var favorito = await _repository.GetByIdAsync(id);
 
         if (favorito is null)
         {
             return false;
         }
 
-        _context.RecetasFavoritas.Remove(favorito);
-        await _context.SaveChangesAsync();
+        await _repository.DeleteAsync(favorito);
 
         return true;
     }
 
     public async Task<bool> ExisteFavoritoAsync(int usuarioId, int recetaId)
     {
-        return await _context.RecetasFavoritas.AnyAsync(favorito =>
+        return await _repository.AnyAsync(favorito =>
             favorito.UsuarioId == usuarioId && favorito.RecetaId == recetaId);
     }
 }

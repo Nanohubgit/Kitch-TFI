@@ -1,64 +1,56 @@
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
-using Kitch.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Kitch.Domain.Interfaces;
 
 namespace Kitch.Infrastructure.Services;
 
 public class UsuarioService : IUsuarioService
 {
-    private readonly KitchDbContext _context;
+    private readonly IRepository<Usuario> _repository;
 
-    public UsuarioService(KitchDbContext context)
+    public UsuarioService(IRepository<Usuario> repository)
     {
-        _context = context;
+        _repository = repository;
     }
 
     public async Task<IEnumerable<Usuario>> GetAllAsync()
     {
-        return await _context.Usuarios.ToListAsync();
+        return await _repository.GetAllAsync();
     }
 
     public async Task<Usuario?> GetByIdAsync(int id)
     {
-        return await _context.Usuarios.FindAsync(id);
+        return await _repository.GetByIdAsync(id);
     }
 
     public async Task<Usuario> CreateAsync(Usuario usuario)
     {
-        await _context.Usuarios.AddAsync(usuario);
-        await _context.SaveChangesAsync();
-
-        return usuario;
+        return await _repository.AddAsync(usuario);
     }
 
     public async Task<bool> UpdateAsync(int id, Usuario usuario)
     {
-        var existingUsuario = await _context.Usuarios.FindAsync(id);
-
-        if (existingUsuario is null)
+        if (!await _repository.AnyAsync(existing => existing.Id == id))
         {
             return false;
         }
 
         usuario.Id = id;
-        _context.Entry(existingUsuario).CurrentValues.SetValues(usuario);
-        await _context.SaveChangesAsync();
+        await _repository.UpdateAsync(usuario);
 
         return true;
     }
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var usuario = await _context.Usuarios.FindAsync(id);
+        var usuario = await _repository.GetByIdAsync(id);
 
         if (usuario is null)
         {
             return false;
         }
 
-        _context.Usuarios.Remove(usuario);
-        await _context.SaveChangesAsync();
+        await _repository.DeleteAsync(usuario);
 
         return true;
     }
