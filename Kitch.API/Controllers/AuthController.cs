@@ -1,11 +1,14 @@
+using Kitch.Application.DTOs.Auth;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+
 
 namespace Kitch.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[AllowAnonymous]
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
@@ -16,12 +19,12 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
-    public async Task<ActionResult<Usuario>> Register([FromBody] Usuario usuario)
+    public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request)
     {
         try
         {
-            var createdUsuario = await _authService.RegisterAsync(usuario);
-            return Created($"/api/usuarios/{createdUsuario.Id}", createdUsuario);
+            var response = await _authService.RegisterAsync(request);
+            return Ok(response);
         }
         catch (InvalidOperationException ex)
         {
@@ -30,16 +33,17 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
-    public async Task<ActionResult<Usuario>> Login([FromQuery] string email, [FromQuery] string contrasena)
+    public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest request)
     {
-        var usuario = await _authService.LoginAsync(email, contrasena);
-
-        if (usuario is null)
+        try
         {
-            return Unauthorized();
+            var response = await _authService.LoginAsync(request);
+            return Ok(response);
         }
-
-        return Ok(usuario);
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(ex.Message);
+        }
     }
 
     [HttpGet("email-existe")]

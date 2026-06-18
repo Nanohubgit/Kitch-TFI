@@ -24,7 +24,7 @@ namespace Kitch.Infrastructure.Persistence.Configurations
                 .IsRequired()
                 .HasMaxLength(256);
 
-            entity.Property(x => x.Contrasena)
+            entity.Property(x => x.PasswordHash)
                 .IsRequired()
                 .HasMaxLength(256);
 
