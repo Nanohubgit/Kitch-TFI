@@ -1,11 +1,13 @@
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Kitch.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class UsuariosController : ControllerBase
 {
     private readonly IUsuarioService _usuarioService;

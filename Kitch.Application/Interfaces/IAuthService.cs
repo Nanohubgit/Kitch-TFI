@@ -1,10 +1,10 @@
-using Kitch.Domain.Entities;
+using Kitch.Application.DTOs.Auth;
 
 namespace Kitch.Application.Interfaces;
 
 public interface IAuthService
 {
-    Task<Usuario> RegisterAsync(Usuario usuario);
-    Task<Usuario?> LoginAsync(string email, string contrasena);
+    Task<AuthResponse> RegisterAsync(RegisterRequest request);
+    Task<AuthResponse> LoginAsync(LoginRequest request);
     Task<bool> EmailExisteAsync(string email);
 }
