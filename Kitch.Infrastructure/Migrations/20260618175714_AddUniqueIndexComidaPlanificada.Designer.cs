@@ -4,6 +4,7 @@ using Kitch.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Kitch.Infrastructure.Migrations
 {
     [DbContext(typeof(KitchDbContext))]
-    partial class KitchDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260618175714_AddUniqueIndexComidaPlanificada")]
+    partial class AddUniqueIndexComidaPlanificada
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -381,39 +384,6 @@ namespace Kitch.Infrastructure.Migrations
                     b.ToTable("Suscripcion", (string)null);
                 });
 
-            modelBuilder.Entity("Kitch.Domain.Entities.SustitutoIngrediente", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<decimal>("FactorEquivalencia")
-                        .HasColumnType("decimal(10,2)");
-
-                    b.Property<int>("IngredienteOriginalId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("IngredienteSustitutoId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Notas")
-                        .HasMaxLength(250)
-                        .HasColumnType("nvarchar(250)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IngredienteOriginalId");
-
-                    b.HasIndex("IngredienteSustitutoId");
-
-                    b.HasIndex("IngredienteOriginalId", "IngredienteSustitutoId")
-                        .IsUnique();
-
-                    b.ToTable("SustitutoIngrediente", (string)null);
-                });
-
             modelBuilder.Entity("Kitch.Domain.Entities.Usuario", b =>
                 {
                     b.Property<int>("Id")
@@ -430,6 +400,11 @@ namespace Kitch.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("Contrasena")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -439,11 +414,6 @@ namespace Kitch.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("PasswordHash")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
 
                     b.Property<string>("Rol")
                         .IsRequired()
@@ -595,25 +565,6 @@ namespace Kitch.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Usuario");
-                });
-
-            modelBuilder.Entity("Kitch.Domain.Entities.SustitutoIngrediente", b =>
-                {
-                    b.HasOne("Kitch.Domain.Entities.Ingrediente", "IngredienteOriginal")
-                        .WithMany()
-                        .HasForeignKey("IngredienteOriginalId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Kitch.Domain.Entities.Ingrediente", "IngredienteSustituto")
-                        .WithMany()
-                        .HasForeignKey("IngredienteSustitutoId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("IngredienteOriginal");
-
-                    b.Navigation("IngredienteSustituto");
                 });
 
             modelBuilder.Entity("Kitch.Domain.Entities.Ingrediente", b =>

@@ -1,18 +1,40 @@
+using Kitch.Application.DTOs.Suscripciones;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Kitch.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class SuscripcionesController : ControllerBase
+[Authorize]
+public class SuscripcionesController : ApiControllerBase
 {
     private readonly ISuscripcionService _suscripcionService;
 
     public SuscripcionesController(ISuscripcionService suscripcionService)
     {
         _suscripcionService = suscripcionService;
+    }
+
+    [HttpPost("contratar")]
+    public async Task<ActionResult<ContratarSuscripcionResult>> Contratar([FromBody] ContratarSuscripcionRequest request)
+    {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var result = await _suscripcionService.ContratarAsync(usuarioId, request);
+
+        if (!result.Aprobado)
+        {
+            return StatusCode(StatusCodes.Status402PaymentRequired, result);
+        }
+
+        return Ok(result);
     }
 
     [HttpGet]

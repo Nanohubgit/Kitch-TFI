@@ -2,7 +2,7 @@ using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
-namespace Kitch.Infrastructure.Services;
+namespace Kitch.Application.Services;
 
 public class FavoritoService : IFavoritoService
 {
@@ -31,6 +31,29 @@ public class FavoritoService : IFavoritoService
         }
 
         return await _repository.AddAsync(favorito);
+    }
+
+    public async Task<bool> ToggleFavoritoAsync(int usuarioId, int recetaId)
+    {
+        var favoritoExistente = await _repository.FirstOrDefaultAsync(favorito =>
+            favorito.UsuarioId == usuarioId && favorito.RecetaId == recetaId);
+
+        if (favoritoExistente is not null)
+        {
+            await _repository.DeleteAsync(favoritoExistente);
+
+            return false;
+        }
+
+        var nuevoFavorito = new RecetaFavorita
+        {
+            UsuarioId = usuarioId,
+            RecetaId = recetaId
+        };
+
+        await _repository.AddAsync(nuevoFavorito);
+
+        return true;
     }
 
     public async Task<bool> DeleteAsync(int id)

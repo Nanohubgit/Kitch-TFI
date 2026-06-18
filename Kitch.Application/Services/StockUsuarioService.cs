@@ -2,7 +2,7 @@ using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
-namespace Kitch.Infrastructure.Services;
+namespace Kitch.Application.Services;
 
 public class StockUsuarioService : IStockUsuarioService
 {
@@ -25,6 +25,23 @@ public class StockUsuarioService : IStockUsuarioService
 
     public async Task<StockUsuario> CreateAsync(StockUsuario stock)
     {
+        if (stock.Cantidad <= 0)
+        {
+            throw new ArgumentException("La cantidad debe ser mayor a cero");
+        }
+
+        var stockExistente = await _repository.FirstOrDefaultAsync(existente =>
+            existente.UsuarioId == stock.UsuarioId &&
+            existente.IngredienteId == stock.IngredienteId);
+
+        if (stockExistente is not null)
+        {
+            stockExistente.Cantidad += stock.Cantidad;
+            await _repository.UpdateAsync(stockExistente);
+
+            return stockExistente;
+        }
+
         return await _repository.AddAsync(stock);
     }
 

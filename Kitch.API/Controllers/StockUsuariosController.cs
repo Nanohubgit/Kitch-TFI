@@ -1,12 +1,14 @@
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Kitch.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class StockUsuariosController : ControllerBase
+[Authorize]
+public class StockUsuariosController : ApiControllerBase
 {
     private readonly IStockUsuarioService _stockUsuarioService;
 
@@ -15,9 +17,14 @@ public class StockUsuariosController : ControllerBase
         _stockUsuarioService = stockUsuarioService;
     }
 
-    [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<StockUsuario>>> GetByUsuarioId(int usuarioId)
+    [HttpGet("mis")]
+    public async Task<ActionResult<IEnumerable<StockUsuario>>> GetMisStock()
     {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
         var stock = await _stockUsuarioService.GetByUsuarioIdAsync(usuarioId);
         return Ok(stock);
     }
@@ -38,8 +45,22 @@ public class StockUsuariosController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<StockUsuario>> Create([FromBody] StockUsuario stock)
     {
-        var createdStock = await _stockUsuarioService.CreateAsync(stock);
-        return CreatedAtAction(nameof(GetById), new { id = createdStock.Id }, createdStock);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        stock.UsuarioId = usuarioId;
+
+        try
+        {
+            var createdStock = await _stockUsuarioService.CreateAsync(stock);
+            return CreatedAtAction(nameof(GetById), new { id = createdStock.Id }, createdStock);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 
     [HttpPut("{id:int}")]

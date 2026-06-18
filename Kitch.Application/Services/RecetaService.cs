@@ -2,7 +2,7 @@ using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
-namespace Kitch.Infrastructure.Services;
+namespace Kitch.Application.Services;
 
 public class RecetaService : IRecetaService
 {

@@ -10,4 +10,5 @@ public interface IListaCompraService
     Task<bool> UpdateAsync(int id, ItemListaCompra item);
     Task<bool> DeleteAsync(int id);
     Task<bool> MarcarComoCompradoAsync(int id);
+    Task<IEnumerable<ItemListaCompra>> GenerarListaFaltantesAsync(int usuarioId);
 }
