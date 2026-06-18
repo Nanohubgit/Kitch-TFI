@@ -2,7 +2,7 @@ using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
-namespace Kitch.Infrastructure.Services;
+namespace Kitch.Application.Services;
 
 public class PlanificadorService : IPlanificadorService
 {
@@ -36,6 +36,20 @@ public class PlanificadorService : IPlanificadorService
 
     public async Task<ComidaPlanificada> CreateAsync(ComidaPlanificada comida)
     {
+        comida.Turno = comida.Turno.Trim().ToUpper();
+
+        var fecha = comida.FechaAsignada.Date;
+
+        var existeSolapamiento = await _repository.AnyAsync(existente =>
+            existente.UsuarioId == comida.UsuarioId &&
+            existente.Turno == comida.Turno &&
+            existente.FechaAsignada.Date == fecha);
+
+        if (existeSolapamiento)
+        {
+            throw new InvalidOperationException("Ya tienes una comida asignada para este turno en este día");
+        }
+
         return await _repository.AddAsync(comida);
     }
 

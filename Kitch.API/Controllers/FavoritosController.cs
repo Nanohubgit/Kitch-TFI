@@ -8,7 +8,7 @@ namespace Kitch.API.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class FavoritosController : ControllerBase
+public class FavoritosController : ApiControllerBase
 {
     private readonly IFavoritoService _favoritoService;
 
@@ -17,9 +17,14 @@ public class FavoritosController : ControllerBase
         _favoritoService = favoritoService;
     }
 
-    [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<RecetaFavorita>>> GetByUsuarioId(int usuarioId)
+    [HttpGet("mis")]
+    public async Task<ActionResult<IEnumerable<RecetaFavorita>>> GetMisFavoritos()
     {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
         var favoritos = await _favoritoService.GetByUsuarioIdAsync(usuarioId);
         return Ok(favoritos);
     }
@@ -37,25 +42,16 @@ public class FavoritosController : ControllerBase
         return Ok(favorito);
     }
 
-    [HttpGet("existe")]
-    public async Task<ActionResult<bool>> ExisteFavorito([FromQuery] int usuarioId, [FromQuery] int recetaId)
+    [HttpPost("toggle")]
+    public async Task<ActionResult<object>> ToggleFavorito([FromQuery] int recetaId)
     {
-        var exists = await _favoritoService.ExisteFavoritoAsync(usuarioId, recetaId);
-        return Ok(exists);
-    }
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
 
-    [HttpPost]
-    public async Task<ActionResult<RecetaFavorita>> AddFavorito([FromBody] RecetaFavorita favorito)
-    {
-        try
-        {
-            var createdFavorito = await _favoritoService.AddFavoritoAsync(favorito);
-            return CreatedAtAction(nameof(GetById), new { id = createdFavorito.Id }, createdFavorito);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        var esFavorito = await _favoritoService.ToggleFavoritoAsync(usuarioId, recetaId);
+        return Ok(new { esFavorito });
     }
 
     [HttpDelete("{id:int}")]
@@ -71,4 +67,3 @@ public class FavoritosController : ControllerBase
         return NoContent();
     }
 }
-

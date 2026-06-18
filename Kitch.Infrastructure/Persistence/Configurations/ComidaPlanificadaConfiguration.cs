@@ -13,6 +13,7 @@ namespace Kitch.Infrastructure.Persistence.Configurations
             entity.HasKey(comidaPlanificada => comidaPlanificada.Id);
 
             entity.Property(comidaPlanificada => comidaPlanificada.FechaAsignada)
+                .HasColumnType("date")
                 .IsRequired();
 
             entity.Property(comidaPlanificada => comidaPlanificada.Turno)
@@ -42,7 +43,7 @@ namespace Kitch.Infrastructure.Persistence.Configurations
                 comidaPlanificada.UsuarioId,
                 comidaPlanificada.FechaAsignada,
                 comidaPlanificada.Turno
-            });
+            }).IsUnique();
         }
     }
 }

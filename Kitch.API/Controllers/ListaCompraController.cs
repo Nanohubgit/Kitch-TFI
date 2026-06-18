@@ -8,7 +8,7 @@ namespace Kitch.API.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class ListaCompraController : ControllerBase
+public class ListaCompraController : ApiControllerBase
 {
     private readonly IListaCompraService _listaCompraService;
 
@@ -17,11 +17,28 @@ public class ListaCompraController : ControllerBase
         _listaCompraService = listaCompraService;
     }
 
-    [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<ItemListaCompra>>> GetByUsuarioId(int usuarioId)
+    [HttpGet("mis")]
+    public async Task<ActionResult<IEnumerable<ItemListaCompra>>> GetMisItems()
     {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
         var items = await _listaCompraService.GetByUsuarioIdAsync(usuarioId);
         return Ok(items);
+    }
+
+    [HttpGet("faltantes")]
+    public async Task<ActionResult<IEnumerable<ItemListaCompra>>> GetFaltantes()
+    {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var faltantes = await _listaCompraService.GenerarListaFaltantesAsync(usuarioId);
+        return Ok(faltantes);
     }
 
     [HttpGet("{id:int}")]
@@ -40,6 +57,13 @@ public class ListaCompraController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ItemListaCompra>> Create([FromBody] ItemListaCompra item)
     {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        item.UsuarioId = usuarioId;
+
         var createdItem = await _listaCompraService.CreateAsync(item);
         return CreatedAtAction(nameof(GetById), new { id = createdItem.Id }, createdItem);
     }

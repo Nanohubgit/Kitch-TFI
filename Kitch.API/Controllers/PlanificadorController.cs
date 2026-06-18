@@ -8,7 +8,7 @@ namespace Kitch.API.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class PlanificadorController : ControllerBase
+public class PlanificadorController : ApiControllerBase
 {
     private readonly IPlanificadorService _planificadorService;
 
@@ -17,18 +17,26 @@ public class PlanificadorController : ControllerBase
         _planificadorService = planificadorService;
     }
 
-    [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<ComidaPlanificada>>> GetByUsuarioId(int usuarioId)
+    [HttpGet("mis")]
+    public async Task<ActionResult<IEnumerable<ComidaPlanificada>>> GetMisComidas()
     {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
         var comidas = await _planificadorService.GetByUsuarioIdAsync(usuarioId);
         return Ok(comidas);
     }
 
-    [HttpGet("usuario/{usuarioId:int}/fecha")]
-    public async Task<ActionResult<IEnumerable<ComidaPlanificada>>> GetByFecha(
-        int usuarioId,
-        [FromQuery] DateTime fecha)
+    [HttpGet("mis/fecha")]
+    public async Task<ActionResult<IEnumerable<ComidaPlanificada>>> GetMisComidasPorFecha([FromQuery] DateTime fecha)
     {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
         var comidas = await _planificadorService.GetByFechaAsync(usuarioId, fecha);
         return Ok(comidas);
     }
@@ -49,8 +57,22 @@ public class PlanificadorController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ComidaPlanificada>> Create([FromBody] ComidaPlanificada comida)
     {
-        var createdComida = await _planificadorService.CreateAsync(comida);
-        return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        comida.UsuarioId = usuarioId;
+
+        try
+        {
+            var createdComida = await _planificadorService.CreateAsync(comida);
+            return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(ex.Message);
+        }
     }
 
     [HttpPut("{id:int}")]

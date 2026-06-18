@@ -1,11 +1,13 @@
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Kitch.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class RecetasController : ControllerBase
 {
     private readonly IRecetaService _recetaService;
@@ -16,6 +18,7 @@ public class RecetasController : ControllerBase
     }
 
     [HttpGet]
+    [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<Receta>>> GetAll()
     {
         var recetas = await _recetaService.GetAllAsync();
@@ -23,6 +26,7 @@ public class RecetasController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
+    [AllowAnonymous]
     public async Task<ActionResult<Receta>> GetById(int id)
     {
         var receta = await _recetaService.GetByIdAsync(id);
@@ -36,6 +40,7 @@ public class RecetasController : ControllerBase
     }
 
     [HttpGet("dificultad/{dificultad}")]
+    [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<Receta>>> GetByDificultad(DificultadReceta dificultad)
     {
         var recetas = await _recetaService.GetByDificultadAsync(dificultad);
