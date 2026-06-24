@@ -15,7 +15,7 @@ public class StockUsuarioService : IStockUsuarioService
 
     public async Task<IEnumerable<StockUsuario>> GetByUsuarioIdAsync(int usuarioId)
     {
-        return await _repository.FindAsync(stock => stock.UsuarioId == usuarioId);
+        return  await _repository.FindWithIncludesAsync(stock => stock.UsuarioId == usuarioId, stock => stock.Ingrediente);
     }
 
     public async Task<StockUsuario?> GetByIdAsync(int id)
