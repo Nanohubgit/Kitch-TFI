@@ -4,12 +4,14 @@ namespace Kitch.Domain.Entities
     {
         public int Id { get; set; }
         public int UsuarioId { get; set; }
+        public int ContratoSubId { get; set; }
         public DateTime FechaPago { get; set; }
         public decimal Monto { get; set; }
         public EstadoPago EstadoPago { get; set; } = EstadoPago.Pendiente;
         public MetodoPago MetodoPago { get; set; } = MetodoPago.NoEspecificado;
 
         public Usuario Usuario { get; set; } = null!;
+        public ContratoSub ContratoSub { get; set; } = null!;
     }
 
     public enum EstadoPago

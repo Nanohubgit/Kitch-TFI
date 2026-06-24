@@ -13,6 +13,7 @@ namespace Kitch.Domain.Entities
 
         public Usuario Usuario { get; set; } = null!;
         public Suscripcion Suscripcion { get; set; } = null!;
+        public ICollection<Pago> Pagos { get; set; } = new List<Pago>();
     }
 
     public enum EstadoContratoSub

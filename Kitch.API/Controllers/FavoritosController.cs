@@ -1,5 +1,5 @@
+using Kitch.Application.DTOs.Favoritos;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,14 +18,14 @@ public class FavoritosController : ControllerBase
     }
 
     [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<RecetaFavorita>>> GetByUsuarioId(int usuarioId)
+    public async Task<ActionResult<IEnumerable<FavoritoResponseDto>>> GetByUsuarioId(int usuarioId)
     {
         var favoritos = await _favoritoService.GetByUsuarioIdAsync(usuarioId);
         return Ok(favoritos);
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<RecetaFavorita>> GetById(int id)
+    public async Task<ActionResult<FavoritoResponseDto>> GetById(int id)
     {
         var favorito = await _favoritoService.GetByIdAsync(id);
 
@@ -45,12 +45,12 @@ public class FavoritosController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<RecetaFavorita>> AddFavorito([FromBody] RecetaFavorita favorito)
+    public async Task<ActionResult<FavoritoResponseDto>> AddFavorito([FromBody] FavoritoCreateDto favorito)
     {
         try
         {
             var createdFavorito = await _favoritoService.AddFavoritoAsync(favorito);
-            return CreatedAtAction(nameof(GetById), new { id = createdFavorito.Id }, createdFavorito);
+            return Created(string.Empty, createdFavorito);
         }
         catch (InvalidOperationException ex)
         {

@@ -116,7 +116,6 @@ public class AuthService : IAuthService
         {
             Token = token,
             ExpiresAt = expiresAt,
-            UsuarioId = usuario.Id,
             Nombre = usuario.Nombre,
             Apellido = usuario.Apellido,
             Email = usuario.Email,

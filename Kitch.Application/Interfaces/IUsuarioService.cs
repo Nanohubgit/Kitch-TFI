@@ -1,12 +1,12 @@
-using Kitch.Domain.Entities;
+using Kitch.Application.DTOs.Usuarios;
 
 namespace Kitch.Application.Interfaces;
 
 public interface IUsuarioService
 {
-    Task<IEnumerable<Usuario>> GetAllAsync();
-    Task<Usuario?> GetByIdAsync(int id);
-    Task<Usuario> CreateAsync(Usuario usuario);
-    Task<bool> UpdateAsync(int id, Usuario usuario);
+    Task<IEnumerable<UsuarioResponseDto>> GetAllAsync();
+    Task<UsuarioResponseDto?> GetByIdAsync(int id);
+    Task<UsuarioResponseDto> CreateAsync(UsuarioCreateDto usuario);
+    Task<bool> UpdateAsync(int id, UsuarioUpdateDto usuario);
     Task<bool> DeleteAsync(int id);
 }

@@ -1,5 +1,5 @@
+using Kitch.Application.DTOs.ListaCompra;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,14 +18,14 @@ public class ListaCompraController : ControllerBase
     }
 
     [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<ItemListaCompra>>> GetByUsuarioId(int usuarioId)
+    public async Task<ActionResult<IEnumerable<ItemListaCompraResponseDto>>> GetByUsuarioId(int usuarioId)
     {
         var items = await _listaCompraService.GetByUsuarioIdAsync(usuarioId);
         return Ok(items);
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<ItemListaCompra>> GetById(int id)
+    public async Task<ActionResult<ItemListaCompraResponseDto>> GetById(int id)
     {
         var item = await _listaCompraService.GetByIdAsync(id);
 
@@ -38,14 +38,14 @@ public class ListaCompraController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<ItemListaCompra>> Create([FromBody] ItemListaCompra item)
+    public async Task<ActionResult<ItemListaCompraResponseDto>> Create([FromBody] ItemListaCompraCreateDto item)
     {
         var createdItem = await _listaCompraService.CreateAsync(item);
-        return CreatedAtAction(nameof(GetById), new { id = createdItem.Id }, createdItem);
+        return Created(string.Empty, createdItem);
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] ItemListaCompra item)
+    public async Task<IActionResult> Update(int id, [FromBody] ItemListaCompraUpdateDto item)
     {
         var updated = await _listaCompraService.UpdateAsync(id, item);
 

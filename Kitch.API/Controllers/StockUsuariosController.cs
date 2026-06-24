@@ -1,5 +1,5 @@
+using Kitch.Application.DTOs.StockUsuarios;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Kitch.API.Controllers;
@@ -16,14 +16,14 @@ public class StockUsuariosController : ControllerBase
     }
 
     [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<StockUsuario>>> GetByUsuarioId(int usuarioId)
+    public async Task<ActionResult<IEnumerable<StockUsuarioResponseDto>>> GetByUsuarioId(int usuarioId)
     {
         var stock = await _stockUsuarioService.GetByUsuarioIdAsync(usuarioId);
         return Ok(stock);
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<StockUsuario>> GetById(int id)
+    public async Task<ActionResult<StockUsuarioResponseDto>> GetById(int id)
     {
         var stock = await _stockUsuarioService.GetByIdAsync(id);
 
@@ -36,14 +36,14 @@ public class StockUsuariosController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<StockUsuario>> Create([FromBody] StockUsuario stock)
+    public async Task<ActionResult<StockUsuarioResponseDto>> Create([FromBody] StockUsuarioCreateDto stock)
     {
         var createdStock = await _stockUsuarioService.CreateAsync(stock);
-        return CreatedAtAction(nameof(GetById), new { id = createdStock.Id }, createdStock);
+        return Created(string.Empty, createdStock);
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] StockUsuario stock)
+    public async Task<IActionResult> Update(int id, [FromBody] StockUsuarioUpdateDto stock)
     {
         var updated = await _stockUsuarioService.UpdateAsync(id, stock);
 

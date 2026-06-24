@@ -1,5 +1,5 @@
+using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,14 +18,14 @@ public class PlanificadorController : ControllerBase
     }
 
     [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<ComidaPlanificada>>> GetByUsuarioId(int usuarioId)
+    public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetByUsuarioId(int usuarioId)
     {
         var comidas = await _planificadorService.GetByUsuarioIdAsync(usuarioId);
         return Ok(comidas);
     }
 
     [HttpGet("usuario/{usuarioId:int}/fecha")]
-    public async Task<ActionResult<IEnumerable<ComidaPlanificada>>> GetByFecha(
+    public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetByFecha(
         int usuarioId,
         [FromQuery] DateTime fecha)
     {
@@ -34,7 +34,7 @@ public class PlanificadorController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<ComidaPlanificada>> GetById(int id)
+    public async Task<ActionResult<ComidaPlanificadaResponseDto>> GetById(int id)
     {
         var comida = await _planificadorService.GetByIdAsync(id);
 
@@ -47,14 +47,14 @@ public class PlanificadorController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<ComidaPlanificada>> Create([FromBody] ComidaPlanificada comida)
+    public async Task<ActionResult<ComidaPlanificadaResponseDto>> Create([FromBody] ComidaPlanificadaCreateDto comida)
     {
         var createdComida = await _planificadorService.CreateAsync(comida);
-        return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
+        return Created(string.Empty, createdComida);
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] ComidaPlanificada comida)
+    public async Task<IActionResult> Update(int id, [FromBody] ComidaPlanificadaUpdateDto comida)
     {
         var updated = await _planificadorService.UpdateAsync(id, comida);
 

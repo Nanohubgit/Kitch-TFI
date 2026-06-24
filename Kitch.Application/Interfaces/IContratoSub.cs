@@ -1,13 +1,13 @@
-using Kitch.Domain.Entities;
+using Kitch.Application.DTOs.ContratosSub;
 
 namespace Kitch.Application.Interfaces;
 
 public interface IContratoSubService
 {
-    Task<IEnumerable<ContratoSub>> GetAllAsync();
-    Task<IEnumerable<ContratoSub>> GetByUsuarioIdAsync(int usuarioId);
-    Task<ContratoSub?> GetByIdAsync(int id);
-    Task<ContratoSub> CreateAsync(ContratoSub contratoSub);
-    Task<bool> UpdateAsync(int id, ContratoSub contratoSub);
+    Task<IEnumerable<ContratoSubResponseDto>> GetAllAsync();
+    Task<IEnumerable<ContratoSubResponseDto>> GetByUsuarioIdAsync(int usuarioId);
+    Task<ContratoSubResponseDto?> GetByIdAsync(int id);
+    Task<ContratoSubResponseDto> CreateAsync(ContratoSubCreateDto contratoSub);
+    Task<bool> UpdateAsync(int id, ContratoSubUpdateDto contratoSub);
     Task<bool> DeleteAsync(int id);
 }

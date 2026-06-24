@@ -1,4 +1,6 @@
+using Kitch.Application.DTOs.ListaCompra;
 using Kitch.Application.Interfaces;
+using Kitch.Application.Mappings;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -13,30 +15,46 @@ public class ListaCompraService : IListaCompraService
         _repository = repository;
     }
 
-    public async Task<IEnumerable<ItemListaCompra>> GetByUsuarioIdAsync(int usuarioId)
+    public async Task<IEnumerable<ItemListaCompraResponseDto>> GetByUsuarioIdAsync(int usuarioId)
     {
-        return await _repository.FindAsync(item => item.UsuarioId == usuarioId);
+        var items = await _repository.FindAsync(item => item.UsuarioId == usuarioId);
+        return items.Select(item => item.ToResponseDto());
     }
 
-    public async Task<ItemListaCompra?> GetByIdAsync(int id)
+    public async Task<ItemListaCompraResponseDto?> GetByIdAsync(int id)
     {
-        return await _repository.GetByIdAsync(id);
+        var item = await _repository.GetByIdAsync(id);
+        return item?.ToResponseDto();
     }
 
-    public async Task<ItemListaCompra> CreateAsync(ItemListaCompra item)
+    public async Task<ItemListaCompraResponseDto> CreateAsync(ItemListaCompraCreateDto item)
     {
-        return await _repository.AddAsync(item);
+        var entity = new ItemListaCompra
+        {
+            UsuarioId = item.UsuarioId,
+            NombreArticulo = item.NombreArticulo.Trim(),
+            CantidadFaltante = item.CantidadFaltante,
+            EstaComprado = false
+        };
+
+        var created = await _repository.AddAsync(entity);
+        return created.ToResponseDto();
     }
 
-    public async Task<bool> UpdateAsync(int id, ItemListaCompra item)
+    public async Task<bool> UpdateAsync(int id, ItemListaCompraUpdateDto item)
     {
-        if (!await _repository.AnyAsync(existing => existing.Id == id))
+        var existingItem = await _repository.GetByIdAsync(id);
+
+        if (existingItem is null)
         {
             return false;
         }
 
-        item.Id = id;
-        await _repository.UpdateAsync(item);
+        existingItem.NombreArticulo = item.NombreArticulo.Trim();
+        existingItem.CantidadFaltante = item.CantidadFaltante;
+        existingItem.EstaComprado = item.EstaComprado;
+
+        await _repository.UpdateAsync(existingItem);
 
         return true;
     }

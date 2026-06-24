@@ -1,4 +1,6 @@
+using Kitch.Application.DTOs.StockUsuarios;
 using Kitch.Application.Interfaces;
+using Kitch.Application.Mappings;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -13,30 +15,51 @@ public class StockUsuarioService : IStockUsuarioService
         _repository = repository;
     }
 
-    public async Task<IEnumerable<StockUsuario>> GetByUsuarioIdAsync(int usuarioId)
+    public async Task<IEnumerable<StockUsuarioResponseDto>> GetByUsuarioIdAsync(int usuarioId)
     {
-        return  await _repository.FindWithIncludesAsync(stock => stock.UsuarioId == usuarioId, stock => stock.Ingrediente);
+        var stock = await _repository.FindAsync(item => item.UsuarioId == usuarioId);
+        return stock.Select(item => item.ToResponseDto());
     }
 
-    public async Task<StockUsuario?> GetByIdAsync(int id)
+    public async Task<StockUsuarioResponseDto?> GetByIdAsync(int id)
     {
-        return await _repository.GetByIdAsync(id);
+        var stock = await _repository.GetByIdAsync(id);
+        return stock?.ToResponseDto();
     }
 
-    public async Task<StockUsuario> CreateAsync(StockUsuario stock)
+    public async Task<StockUsuarioResponseDto> CreateAsync(StockUsuarioCreateDto stock)
     {
-        return await _repository.AddAsync(stock);
+        if (await _repository.AnyAsync(existing =>
+                existing.UsuarioId == stock.UsuarioId && existing.IngredienteId == stock.IngredienteId))
+        {
+            throw new InvalidOperationException("El ingrediente ya existe en el stock del usuario.");
+        }
+
+        var entity = new StockUsuario
+        {
+            UsuarioId = stock.UsuarioId,
+            IngredienteId = stock.IngredienteId,
+            Cantidad = stock.Cantidad,
+            UnidadMedida = stock.UnidadMedida.Trim()
+        };
+
+        var created = await _repository.AddAsync(entity);
+        return created.ToResponseDto();
     }
 
-    public async Task<bool> UpdateAsync(int id, StockUsuario stock)
+    public async Task<bool> UpdateAsync(int id, StockUsuarioUpdateDto stock)
     {
-        if (!await _repository.AnyAsync(existing => existing.Id == id))
+        var existingStock = await _repository.GetByIdAsync(id);
+
+        if (existingStock is null)
         {
             return false;
         }
 
-        stock.Id = id;
-        await _repository.UpdateAsync(stock);
+        existingStock.Cantidad = stock.Cantidad;
+        existingStock.UnidadMedida = stock.UnidadMedida.Trim();
+
+        await _repository.UpdateAsync(existingStock);
 
         return true;
     }
