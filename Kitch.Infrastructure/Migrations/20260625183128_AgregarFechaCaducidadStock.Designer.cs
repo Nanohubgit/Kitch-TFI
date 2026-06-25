@@ -4,6 +4,7 @@ using Kitch.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Kitch.Infrastructure.Migrations
 {
     [DbContext(typeof(KitchDbContext))]
-    partial class KitchDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260625183128_AgregarFechaCaducidadStock")]
+    partial class AgregarFechaCaducidadStock
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -104,11 +107,6 @@ namespace Kitch.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("Categoria")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
                     b.Property<string>("Descripcion")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -198,9 +196,6 @@ namespace Kitch.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("ContratoSubId")
-                        .HasColumnType("int");
-
                     b.Property<string>("EstadoPago")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -222,8 +217,6 @@ namespace Kitch.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ContratoSubId");
 
                     b.HasIndex("FechaPago");
 
@@ -541,19 +534,11 @@ namespace Kitch.Infrastructure.Migrations
 
             modelBuilder.Entity("Kitch.Domain.Entities.Pago", b =>
                 {
-                    b.HasOne("Kitch.Domain.Entities.ContratoSub", "ContratoSub")
-                        .WithMany()
-                        .HasForeignKey("ContratoSubId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Kitch.Domain.Entities.Usuario", "Usuario")
                         .WithMany()
                         .HasForeignKey("UsuarioId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("ContratoSub");
 
                     b.Navigation("Usuario");
                 });

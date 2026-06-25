@@ -118,6 +118,7 @@ public class SuscripcionService : ISuscripcionService
         var pago = await _pagoRepository.AddAsync(new Pago
         {
             UsuarioId = usuarioId,
+            ContratoSubId = contrato.Id,
             FechaPago = ahora,
             Monto = request.Monto,
             MetodoPago = request.MetodoPago,

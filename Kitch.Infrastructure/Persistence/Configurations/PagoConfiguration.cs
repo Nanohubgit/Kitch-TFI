@@ -27,6 +27,11 @@ namespace Kitch.Infrastructure.Persistence.Configurations
                 .HasForeignKey(pago => pago.UsuarioId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            entity.HasOne(pago => pago.ContratoSub)
+                .WithMany()
+                .HasForeignKey(pago => pago.ContratoSubId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             entity.Property(pago => pago.EstadoPago)
                 .IsRequired()
                 .HasConversion<string>()
