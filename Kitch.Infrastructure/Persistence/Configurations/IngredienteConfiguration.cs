@@ -18,7 +18,11 @@ namespace Kitch.Infrastructure.Persistence.Configurations
 
             entity.Property(ingrediente => ingrediente.Descripcion)
                 .HasMaxLength(500);
-                
+
+            entity.Property(ingrediente => ingrediente.Categoria)
+                .HasMaxLength(50)
+                .IsRequired();
+
             entity.HasIndex(ingrediente => ingrediente.Nombre)
                 .IsUnique();
         }

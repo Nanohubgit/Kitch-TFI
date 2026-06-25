@@ -26,6 +26,10 @@ namespace Kitch.Infrastructure.Persistence.Configurations
                 .IsRequired()
                 .HasMaxLength(50);
 
+            entity.Property(stockUsuario => stockUsuario.FechaCaducidad)
+                .HasColumnType("date")
+                .IsRequired(false);
+
             entity.HasOne(stockUsuario => stockUsuario.Usuario)
                 .WithMany()
                 .HasForeignKey(stockUsuario => stockUsuario.UsuarioId)
