@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Kitch.API.Controllers;
+namespace Kitch.Presentation.Controllers;
 
 public abstract class ApiControllerBase : ControllerBase
 {
