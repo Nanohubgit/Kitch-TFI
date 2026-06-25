@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 
-namespace Kitch.API.Controllers;
+namespace Kitch.Presentation.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]

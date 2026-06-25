@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.Json;
 
-namespace Kitch.API.Middleware;
+namespace Kitch.Presentation.Middleware;
 
 public class ExceptionHandlingMiddleware
 {
