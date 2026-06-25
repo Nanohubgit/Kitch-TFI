@@ -1,10 +1,12 @@
 using Kitch.Application.DTOs.ContratosSub;
 using Kitch.Application.DTOs.Favoritos;
+using Kitch.Application.DTOs.Ingredientes;
 using Kitch.Application.DTOs.ListaCompra;
 using Kitch.Application.DTOs.Pagos;
 using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.DTOs.Recetas;
 using Kitch.Application.DTOs.StockUsuarios;
+using Kitch.Application.DTOs.Sustitutos;
 using Kitch.Application.DTOs.Suscripciones;
 using Kitch.Application.DTOs.Usuarios;
 using Kitch.Domain.Entities;
@@ -98,5 +100,18 @@ public static class DtoMappings
         Monto = pago.Monto,
         EstadoPago = pago.EstadoPago,
         MetodoPago = pago.MetodoPago
+    };
+
+    public static IngredienteResponseDto ToResponseDto(this Ingrediente ingrediente) => new()
+    {
+        Nombre = ingrediente.Nombre,
+        Descripcion = ingrediente.Descripcion
+    };
+
+    public static SustitutoResponseDto ToResponseDto(this IngredienteSustituto sustituto) => new()
+    {
+        Ingrediente = sustituto.Ingrediente?.Nombre ?? string.Empty,
+        Sustituto = sustituto.Sustituto?.Nombre ?? string.Empty,
+        Motivo = sustituto.Motivo
     };
 }

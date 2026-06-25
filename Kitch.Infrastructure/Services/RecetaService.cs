@@ -71,14 +71,34 @@ public class RecetaService : IRecetaService
 
     private static void ValidateReceta(RecetaCreateDto receta)
     {
-        if (receta.Ingredientes.Count == 0)
+        if (receta.Ingredientes is null || receta.Ingredientes.Count == 0)
         {
             throw new InvalidOperationException("La receta debe tener al menos un ingrediente.");
         }
 
-        if (receta.Preparaciones.Count == 0)
+        if (receta.Preparaciones is null || receta.Preparaciones.Count == 0)
         {
             throw new InvalidOperationException("La receta debe tener al menos un paso de preparacion.");
+        }
+
+        if (receta.TiempoPreparacionMinutos <= 0)
+        {
+            throw new InvalidOperationException("El tiempo de preparacion debe ser mayor a cero.");
+        }
+
+        if (receta.Porciones <= 0)
+        {
+            throw new InvalidOperationException("La cantidad de porciones debe ser mayor a cero.");
+        }
+
+        if (receta.Ingredientes.Any(ingrediente => ingrediente.Cantidad <= 0))
+        {
+            throw new InvalidOperationException("Cada ingrediente debe tener una cantidad mayor a cero.");
+        }
+
+        if (receta.Preparaciones.Any(preparacion => preparacion.NumeroPaso <= 0))
+        {
+            throw new InvalidOperationException("Cada paso debe tener un numero mayor a cero.");
         }
 
         if (receta.Ingredientes.GroupBy(ingrediente => ingrediente.IngredienteId).Any(group => group.Count() > 1))

@@ -29,6 +29,8 @@ public class StockUsuarioService : IStockUsuarioService
 
     public async Task<StockUsuarioResponseDto> CreateAsync(StockUsuarioCreateDto stock)
     {
+        ValidateCantidad(stock.Cantidad);
+
         if (await _repository.AnyAsync(existing =>
                 existing.UsuarioId == stock.UsuarioId && existing.IngredienteId == stock.IngredienteId))
         {
@@ -49,6 +51,8 @@ public class StockUsuarioService : IStockUsuarioService
 
     public async Task<bool> UpdateAsync(int id, StockUsuarioUpdateDto stock)
     {
+        ValidateCantidad(stock.Cantidad);
+
         var existingStock = await _repository.GetByIdAsync(id);
 
         if (existingStock is null)
@@ -76,5 +80,13 @@ public class StockUsuarioService : IStockUsuarioService
         await _repository.DeleteAsync(stock);
 
         return true;
+    }
+
+    private static void ValidateCantidad(decimal cantidad)
+    {
+        if (cantidad < 0)
+        {
+            throw new InvalidOperationException("La cantidad disponible no puede ser negativa.");
+        }
     }
 }
