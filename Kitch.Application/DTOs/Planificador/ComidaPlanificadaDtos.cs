@@ -23,6 +23,7 @@ public class ComidaPlanificadaUpdateDto : ComidaPlanificadaCreateDto
 
 public class ComidaPlanificadaResponseDto
 {
+    public int Id { get; set; }
     public DateTime FechaAsignada { get; set; }
     public string Turno { get; set; } = string.Empty;
 }

@@ -51,6 +51,7 @@ public static class DtoMappings
 
     public static StockUsuarioResponseDto ToResponseDto(this StockUsuario stock) => new()
     {
+        Id = stock.Id,
         Cantidad = stock.Cantidad,
         UnidadMedida = stock.UnidadMedida
     };
@@ -63,6 +64,7 @@ public static class DtoMappings
 
     public static ComidaPlanificadaResponseDto ToResponseDto(this ComidaPlanificada comida) => new()
     {
+        Id = comida.Id,
         FechaAsignada = comida.FechaAsignada,
         Turno = comida.Turno
     };

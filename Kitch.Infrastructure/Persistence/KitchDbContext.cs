@@ -22,6 +22,7 @@ public class KitchDbContext : DbContext
     public DbSet<RecetaFavorita> RecetasFavoritas => Set<RecetaFavorita>();
     public DbSet<StockUsuario> StockUsuarios => Set<StockUsuario>();
     public DbSet<Suscripcion> Suscripciones => Set<Suscripcion>();
+    public DbSet<SustitutoIngrediente> SustitutosIngrediente => Set<SustitutoIngrediente>();
     public DbSet<Usuario> Usuarios => Set<Usuario>();
 
 

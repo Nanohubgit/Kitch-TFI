@@ -5,6 +5,7 @@ namespace Kitch.Domain.Entities
         public int Id { get; set; }
         public string Nombre { get; set; } = string.Empty;
         public string? Descripcion { get; set; } = string.Empty;
+        public string Categoria { get; set; } = "Varios";
 
         public ICollection<IngredienteReceta> IngredientesReceta { get; set; } = new List<IngredienteReceta>();
         public ICollection<IngredienteSustituto> Sustitutos { get; set; } = new List<IngredienteSustituto>();

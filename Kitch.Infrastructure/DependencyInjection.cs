@@ -12,19 +12,8 @@ public static class DependencyInjection
     {
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
-        services.AddScoped<IUsuarioService, UsuarioService>();
-        services.AddScoped<IRecetaService, RecetaService>();
+        // AuthService se queda en Infrastructure porque maneja JWT (detalle de infraestructura)
         services.AddScoped<IAuthService, AuthService>();
-        services.AddScoped<IPagoService, PagoService>();
-        services.AddScoped<ISuscripcionService, SuscripcionService>();
-        services.AddScoped<IContratoSubService, ContratoSubService>();
-        services.AddScoped<IStockUsuarioService, StockUsuarioService>();
-        services.AddScoped<IPlanificadorService, PlanificadorService>();
-        services.AddScoped<IListaCompraService, ListaCompraService>();
-        services.AddScoped<IFavoritoService, FavoritoService>();
-        services.AddScoped<IIngredienteService, IngredienteService>();
-        services.AddScoped<ISustitutoService, SustitutoService>();
-        services.AddScoped<IPreparacionService, PreparacionService>();
 
         return services;
     }

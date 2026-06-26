@@ -28,6 +28,7 @@ public class StockUsuarioUpdateDto
 
 public class StockUsuarioResponseDto
 {
+    public int Id { get; set; }
     public decimal Cantidad { get; set; }
     public string UnidadMedida { get; set; } = string.Empty;
 }
