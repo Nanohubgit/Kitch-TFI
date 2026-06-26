@@ -1,3 +1,4 @@
+using Kitch.Application.DTOs.StockUsuarios;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -17,10 +18,11 @@ public class StockUsuariosController : ApiControllerBase
         _stockUsuarioService = stockUsuarioService;
     }
 
-    [HttpGet("mis")]
-    public async Task<ActionResult<IEnumerable<StockUsuario>>> GetMisStock()
+    [HttpGet("usuario/{usuarioId:int}")]
+    public async Task<ActionResult<IEnumerable<StockUsuarioResponseDto>>> GetByUsuarioId(int usuarioId)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
+        if (!TryGetUsuarioId(out var usuarioActualId))
+    
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
         }
@@ -30,7 +32,7 @@ public class StockUsuariosController : ApiControllerBase
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<StockUsuario>> GetById(int id)
+    public async Task<ActionResult<StockUsuarioResponseDto>> GetById(int id)
     {
         var stock = await _stockUsuarioService.GetByIdAsync(id);
 
@@ -43,7 +45,7 @@ public class StockUsuariosController : ApiControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<StockUsuario>> Create([FromBody] StockUsuario stock)
+    public async Task<ActionResult<StockUsuarioResponseDto>> Create([FromBody] StockUsuarioCreateDto stock)
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
@@ -64,7 +66,7 @@ public class StockUsuariosController : ApiControllerBase
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] StockUsuario stock)
+    public async Task<IActionResult> Update(int id, [FromBody] StockUsuarioUpdateDto stock)
     {
         var updated = await _stockUsuarioService.UpdateAsync(id, stock);
 

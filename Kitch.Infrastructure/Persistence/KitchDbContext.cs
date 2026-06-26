@@ -14,6 +14,7 @@ public class KitchDbContext : DbContext
     public DbSet<ContratoSub> ContratosSub => Set<ContratoSub>();
     public DbSet<Ingrediente> Ingredientes => Set<Ingrediente>();
     public DbSet<IngredienteReceta> IngredientesReceta => Set<IngredienteReceta>();
+    public DbSet<IngredienteSustituto> IngredientesSustitutos => Set<IngredienteSustituto>();
     public DbSet<ItemListaCompra> ItemsListaCompra => Set<ItemListaCompra>();
     public DbSet<Pago> Pagos => Set<Pago>();
     public DbSet<PreparacionReceta> PreparacionesReceta => Set<PreparacionReceta>();

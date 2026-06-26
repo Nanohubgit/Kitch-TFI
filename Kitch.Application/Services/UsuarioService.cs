@@ -1,4 +1,6 @@
+using Kitch.Application.DTOs.Usuarios;
 using Kitch.Application.Interfaces;
+using Kitch.Application.Mappings;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -13,30 +15,64 @@ public class UsuarioService : IUsuarioService
         _repository = repository;
     }
 
-    public async Task<IEnumerable<Usuario>> GetAllAsync()
+    public async Task<IEnumerable<UsuarioResponseDto>> GetAllAsync()
     {
-        return await _repository.GetAllAsync();
+        var usuarios = await _repository.GetAllAsync();
+        return usuarios.Select(usuario => usuario.ToResponseDto());
     }
 
-    public async Task<Usuario?> GetByIdAsync(int id)
+    public async Task<UsuarioResponseDto?> GetByIdAsync(int id)
     {
-        return await _repository.GetByIdAsync(id);
+        var usuario = await _repository.GetByIdAsync(id);
+        return usuario?.ToResponseDto();
     }
 
-    public async Task<Usuario> CreateAsync(Usuario usuario)
+    public async Task<UsuarioResponseDto> CreateAsync(UsuarioCreateDto usuario)
     {
-        return await _repository.AddAsync(usuario);
+        var email = usuario.Email.Trim();
+
+        if (await _repository.AnyAsync(existing => existing.Email == email))
+        {
+            throw new InvalidOperationException("El email ya se encuentra registrado.");
+        }
+
+        var entity = new Usuario
+        {
+            Nombre = usuario.Nombre.Trim(),
+            Apellido = usuario.Apellido.Trim(),
+            Email = email,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(usuario.Password),
+            Activo = true,
+            Rol = usuario.Rol.Trim()
+        };
+
+        var created = await _repository.AddAsync(entity);
+        return created.ToResponseDto();
     }
 
-    public async Task<bool> UpdateAsync(int id, Usuario usuario)
+    public async Task<bool> UpdateAsync(int id, UsuarioUpdateDto usuario)
     {
-        if (!await _repository.AnyAsync(existing => existing.Id == id))
+        var existingUsuario = await _repository.GetByIdAsync(id);
+
+        if (existingUsuario is null)
         {
             return false;
         }
 
-        usuario.Id = id;
-        await _repository.UpdateAsync(usuario);
+        var email = usuario.Email.Trim();
+
+        if (await _repository.AnyAsync(existing => existing.Id != id && existing.Email == email))
+        {
+            throw new InvalidOperationException("El email ya se encuentra registrado.");
+        }
+
+        existingUsuario.Nombre = usuario.Nombre.Trim();
+        existingUsuario.Apellido = usuario.Apellido.Trim();
+        existingUsuario.Email = email;
+        existingUsuario.Activo = usuario.Activo;
+        existingUsuario.Rol = usuario.Rol.Trim();
+
+        await _repository.UpdateAsync(existingUsuario);
 
         return true;
     }

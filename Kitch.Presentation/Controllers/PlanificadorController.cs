@@ -1,5 +1,5 @@
+using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,10 +17,10 @@ public class PlanificadorController : ApiControllerBase
         _planificadorService = planificadorService;
     }
 
-    [HttpGet("mis")]
-    public async Task<ActionResult<IEnumerable<ComidaPlanificada>>> GetMisComidas()
+    [HttpGet("usuario/{usuarioId:int}")]
+    public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetByUsuarioId(int usuarioId)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
+        if (!TryGetUsuarioId(out var usuarioActualId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
         }
@@ -29,10 +29,12 @@ public class PlanificadorController : ApiControllerBase
         return Ok(comidas);
     }
 
-    [HttpGet("mis/fecha")]
-    public async Task<ActionResult<IEnumerable<ComidaPlanificada>>> GetMisComidasPorFecha([FromQuery] DateTime fecha)
+    [HttpGet("usuario/{usuarioId:int}/fecha")]
+    public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetByFecha(
+        int usuarioId,
+        [FromQuery] DateTime fecha)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
+        if (!TryGetUsuarioId(out var usuarioActualId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
         }
@@ -42,7 +44,7 @@ public class PlanificadorController : ApiControllerBase
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<ComidaPlanificada>> GetById(int id)
+    public async Task<ActionResult<ComidaPlanificadaResponseDto>> GetById(int id)
     {
         var comida = await _planificadorService.GetByIdAsync(id);
 
@@ -55,7 +57,7 @@ public class PlanificadorController : ApiControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<ComidaPlanificada>> Create([FromBody] ComidaPlanificada comida)
+    public async Task<ActionResult<ComidaPlanificadaResponseDto>> Create([FromBody] ComidaPlanificadaCreateDto comida)
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
@@ -76,7 +78,7 @@ public class PlanificadorController : ApiControllerBase
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] ComidaPlanificada comida)
+    public async Task<IActionResult> Update(int id, [FromBody] ComidaPlanificadaUpdateDto comida)
     {
         var updated = await _planificadorService.UpdateAsync(id, comida);
 

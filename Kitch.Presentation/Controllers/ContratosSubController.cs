@@ -1,3 +1,4 @@
+using Kitch.Application.DTOs.ContratosSub;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -18,21 +19,21 @@ public class ContratosSubController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<ContratoSub>>> GetAll()
+    public async Task<ActionResult<IEnumerable<ContratoSubResponseDto>>> GetAll()
     {
         var contratos = await _contratoSubService.GetAllAsync();
         return Ok(contratos);
     }
 
     [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<ContratoSub>>> GetByUsuarioId(int usuarioId)
+    public async Task<ActionResult<IEnumerable<ContratoSubResponseDto>>> GetByUsuarioId(int usuarioId)
     {
         var contratos = await _contratoSubService.GetByUsuarioIdAsync(usuarioId);
         return Ok(contratos);
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<ContratoSub>> GetById(int id)
+    public async Task<ActionResult<ContratoSubResponseDto>> GetById(int id)
     {
         var contrato = await _contratoSubService.GetByIdAsync(id);
 
@@ -45,14 +46,14 @@ public class ContratosSubController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<ContratoSub>> Create([FromBody] ContratoSub contratoSub)
+    public async Task<ActionResult<ContratoSubResponseDto>> Create([FromBody] ContratoSubCreateDto contratoSub)
     {
         var createdContratoSub = await _contratoSubService.CreateAsync(contratoSub);
-        return CreatedAtAction(nameof(GetById), new { id = createdContratoSub.Id }, createdContratoSub);
+        return Created(string.Empty, createdContratoSub);
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] ContratoSub contratoSub)
+    public async Task<IActionResult> Update(int id, [FromBody] ContratoSubUpdateDto contratoSub)
     {
         var updated = await _contratoSubService.UpdateAsync(id, contratoSub);
 

@@ -1,3 +1,4 @@
+using Kitch.Application.DTOs.Recetas;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -18,16 +19,14 @@ public class RecetasController : ControllerBase
     }
 
     [HttpGet]
-    [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<Receta>>> GetAll()
+    public async Task<ActionResult<IEnumerable<RecetaResponseDto>>> GetAll()
     {
         var recetas = await _recetaService.GetAllAsync();
         return Ok(recetas);
     }
 
     [HttpGet("{id:int}")]
-    [AllowAnonymous]
-    public async Task<ActionResult<Receta>> GetById(int id)
+    public async Task<ActionResult<RecetaResponseDto>> GetById(int id)
     {
         var receta = await _recetaService.GetByIdAsync(id);
 
@@ -40,22 +39,21 @@ public class RecetasController : ControllerBase
     }
 
     [HttpGet("dificultad/{dificultad}")]
-    [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<Receta>>> GetByDificultad(DificultadReceta dificultad)
+    public async Task<ActionResult<IEnumerable<RecetaResponseDto>>> GetByDificultad(DificultadReceta dificultad)
     {
         var recetas = await _recetaService.GetByDificultadAsync(dificultad);
         return Ok(recetas);
     }
 
     [HttpPost]
-    public async Task<ActionResult<Receta>> Create([FromBody] Receta receta)
+    public async Task<ActionResult<RecetaResponseDto>> Create([FromBody] RecetaCreateDto receta)
     {
         var createdReceta = await _recetaService.CreateAsync(receta);
-        return CreatedAtAction(nameof(GetById), new { id = createdReceta.Id }, createdReceta);
+        return Created(string.Empty, createdReceta);
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] Receta receta)
+    public async Task<IActionResult> Update(int id, [FromBody] RecetaUpdateDto receta)
     {
         var updated = await _recetaService.UpdateAsync(id, receta);
 

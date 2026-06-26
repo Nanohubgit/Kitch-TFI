@@ -1,0 +1,47 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace Kitch.Application.DTOs.Usuarios;
+
+public class UsuarioCreateDto
+{
+    [Required, MaxLength(100)]
+    public string Nombre { get; set; } = string.Empty;
+
+    [Required, MaxLength(100)]
+    public string Apellido { get; set; } = string.Empty;
+
+    [Required, EmailAddress, MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+
+    [Required, MinLength(8), MaxLength(100)]
+    public string Password { get; set; } = string.Empty;
+
+    [Required, MaxLength(50)]
+    public string Rol { get; set; } = "Basico";
+}
+
+public class UsuarioUpdateDto
+{
+    [Required, MaxLength(100)]
+    public string Nombre { get; set; } = string.Empty;
+
+    [Required, MaxLength(100)]
+    public string Apellido { get; set; } = string.Empty;
+
+    [Required, EmailAddress, MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+
+    public bool Activo { get; set; } = true;
+
+    [Required, MaxLength(50)]
+    public string Rol { get; set; } = "Basico";
+}
+
+public class UsuarioResponseDto
+{
+    public string Nombre { get; set; } = string.Empty;
+    public string Apellido { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public bool Activo { get; set; }
+    public string Rol { get; set; } = string.Empty;
+}

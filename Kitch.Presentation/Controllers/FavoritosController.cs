@@ -1,5 +1,5 @@
+using Kitch.Application.DTOs.Favoritos;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,10 +17,10 @@ public class FavoritosController : ApiControllerBase
         _favoritoService = favoritoService;
     }
 
-    [HttpGet("mis")]
-    public async Task<ActionResult<IEnumerable<RecetaFavorita>>> GetMisFavoritos()
+    [HttpGet("usuario/{usuarioId:int}")]
+    public async Task<ActionResult<IEnumerable<FavoritoResponseDto>>> GetByUsuarioId(int usuarioId)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
+        if (!TryGetUsuarioId(out var usuarioActualId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
         }
@@ -30,7 +30,7 @@ public class FavoritosController : ApiControllerBase
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<RecetaFavorita>> GetById(int id)
+    public async Task<ActionResult<FavoritoResponseDto>> GetById(int id)
     {
         var favorito = await _favoritoService.GetByIdAsync(id);
 
@@ -49,9 +49,22 @@ public class FavoritosController : ApiControllerBase
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
         }
-
         var esFavorito = await _favoritoService.ToggleFavoritoAsync(usuarioId, recetaId);
         return Ok(new { esFavorito });
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<FavoritoResponseDto>> AddFavorito([FromBody] FavoritoCreateDto favorito)
+    {
+        try
+        {
+            var createdFavorito = await _favoritoService.AddFavoritoAsync(favorito);
+            return Created(string.Empty, createdFavorito);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 
     [HttpDelete("{id:int}")]

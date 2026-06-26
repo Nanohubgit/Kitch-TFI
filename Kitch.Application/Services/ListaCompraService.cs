@@ -1,4 +1,6 @@
+using Kitch.Application.DTOs.ListaCompra;
 using Kitch.Application.Interfaces;
+using Kitch.Application.Mappings;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -26,30 +28,46 @@ public class ListaCompraService : IListaCompraService
         _ingredienteRepository = ingredienteRepository;
     }
 
-    public async Task<IEnumerable<ItemListaCompra>> GetByUsuarioIdAsync(int usuarioId)
+    public async Task<IEnumerable<ItemListaCompraResponseDto>> GetByUsuarioIdAsync(int usuarioId)
     {
-        return await _itemRepository.FindAsync(item => item.UsuarioId == usuarioId);
+        var items = await _itemRepository.FindAsync(item => item.UsuarioId == usuarioId);
+        return items.Select(item => item.ToResponseDto());
     }
 
-    public async Task<ItemListaCompra?> GetByIdAsync(int id)
+    public async Task<ItemListaCompraResponseDto?> GetByIdAsync(int id)
     {
-        return await _itemRepository.GetByIdAsync(id);
+        var item = await _itemRepository.GetByIdAsync(id);
+        return item?.ToResponseDto();
     }
 
-    public async Task<ItemListaCompra> CreateAsync(ItemListaCompra item)
+    public async Task<ItemListaCompraResponseDto> CreateAsync(ItemListaCompraCreateDto item)
     {
-        return await _itemRepository.AddAsync(item);
+        var entity = new ItemListaCompra
+        {
+            UsuarioId = item.UsuarioId,
+            NombreArticulo = item.NombreArticulo.Trim(),
+            CantidadFaltante = item.CantidadFaltante,
+            EstaComprado = false
+        };
+
+        var created = await _itemRepository.AddAsync(entity);
+        return created.ToResponseDto();
     }
 
-    public async Task<bool> UpdateAsync(int id, ItemListaCompra item)
+    public async Task<bool> UpdateAsync(int id, ItemListaCompraUpdateDto item)
     {
-        if (!await _itemRepository.AnyAsync(existing => existing.Id == id))
+        var existingItem = await _itemRepository.GetByIdAsync(id);
+
+        if (existingItem is null)
         {
             return false;
         }
 
-        item.Id = id;
-        await _itemRepository.UpdateAsync(item);
+        existingItem.NombreArticulo = item.NombreArticulo.Trim();
+        existingItem.CantidadFaltante = item.CantidadFaltante;
+        existingItem.EstaComprado = item.EstaComprado;
+
+        await _itemRepository.UpdateAsync(existingItem);
 
         return true;
     }
@@ -83,14 +101,14 @@ public class ListaCompraService : IListaCompraService
         return true;
     }
 
-    public async Task<IEnumerable<ItemListaCompra>> GenerarListaFaltantesAsync(int usuarioId)
+    public async Task<IEnumerable<ItemListaCompraResponseDto>> GenerarListaFaltantesAsync(int usuarioId)
     {
         // 1. Qué tengo que cocinar esta semana
         var comidasDeLaSemana = await ObtenerComidasDeLaSemanaAsync(usuarioId);
 
         if (comidasDeLaSemana.Count == 0)
         {
-            return Enumerable.Empty<ItemListaCompra>();
+            return Enumerable.Empty<ItemListaCompraResponseDto>();
         }
 
         // 2. Cuánto necesito de cada ingrediente (Requerimiento Total)
@@ -104,11 +122,14 @@ public class ListaCompraService : IListaCompraService
 
         if (cantidadesFaltantes.Count == 0)
         {
-            return Enumerable.Empty<ItemListaCompra>();
+            return Enumerable.Empty<ItemListaCompraResponseDto>();
         }
 
         // 5. Armo la lista final con el nombre real de cada ingrediente
-        return await ArmarListaDeCompraAsync(usuarioId, cantidadesFaltantes);
+         
+        var listaDeCompra = await ArmarListaDeCompraAsync(usuarioId, cantidadesFaltantes);
+        var listaDeCompraDto = listaDeCompra.Select(item => item.ToResponseDto()).ToList();
+        return listaDeCompraDto;
     }
 
     private async Task<List<ComidaPlanificada>> ObtenerComidasDeLaSemanaAsync(int usuarioId)

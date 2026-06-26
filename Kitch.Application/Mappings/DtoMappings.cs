@@ -1,0 +1,119 @@
+using Kitch.Application.DTOs.ContratosSub;
+using Kitch.Application.DTOs.Favoritos;
+using Kitch.Application.DTOs.Ingredientes;
+using Kitch.Application.DTOs.ListaCompra;
+using Kitch.Application.DTOs.Pagos;
+using Kitch.Application.DTOs.Planificador;
+using Kitch.Application.DTOs.Recetas;
+using Kitch.Application.DTOs.StockUsuarios;
+using Kitch.Application.DTOs.Sustitutos;
+using Kitch.Application.DTOs.Suscripciones;
+using Kitch.Application.DTOs.Usuarios;
+using Kitch.Domain.Entities;
+
+namespace Kitch.Application.Mappings;
+
+public static class DtoMappings
+{
+    public static UsuarioResponseDto ToResponseDto(this Usuario usuario) => new()
+    {
+        Nombre = usuario.Nombre,
+        Apellido = usuario.Apellido,
+        Email = usuario.Email,
+        Activo = usuario.Activo,
+        Rol = usuario.Rol
+    };
+
+    public static RecetaResponseDto ToResponseDto(this Receta receta) => new()
+    {
+        Titulo = receta.Titulo,
+        CaloriasEstimadas = receta.CaloriasEstimadas,
+        Descripcion = receta.Descripcion,
+        TiempoPreparacionMinutos = receta.TiempoPreparacionMinutos,
+        Porciones = receta.Porciones,
+        Dificultad = receta.Dificultad,
+        Ingredientes = receta.IngredientesReceta
+            .Select(ingrediente => new IngredienteRecetaResponseDto
+            {
+                Cantidad = ingrediente.Cantidad,
+                UnidadMedida = ingrediente.UnidadMedida
+            })
+            .ToList(),
+        Preparaciones = receta.Preparaciones
+            .OrderBy(preparacion => preparacion.NumeroPaso)
+            .Select(preparacion => new PreparacionRecetaResponseDto
+            {
+                NumeroPaso = preparacion.NumeroPaso,
+                DescripcionPaso = preparacion.DescripcionPaso
+            })
+            .ToList()
+    };
+
+    public static StockUsuarioResponseDto ToResponseDto(this StockUsuario stock) => new()
+    {
+        Id = stock.Id,
+        Cantidad = stock.Cantidad,
+        UnidadMedida = stock.UnidadMedida
+    };
+
+    public static FavoritoResponseDto ToResponseDto(this RecetaFavorita favorito) => new()
+    {
+        UsuarioEmail = favorito.Usuario?.Email ?? string.Empty,
+        RecetaTitulo = favorito.Receta?.Titulo ?? string.Empty
+    };
+
+    public static ComidaPlanificadaResponseDto ToResponseDto(this ComidaPlanificada comida) => new()
+    {
+        Id = comida.Id,
+        FechaAsignada = comida.FechaAsignada,
+        Turno = comida.Turno
+    };
+
+    public static ItemListaCompraResponseDto ToResponseDto(this ItemListaCompra item) => new()
+    {
+        NombreArticulo = item.NombreArticulo,
+        CantidadFaltante = item.CantidadFaltante,
+        EstaComprado = item.EstaComprado
+    };
+
+    public static SuscripcionResponseDto ToResponseDto(this Suscripcion suscripcion) => new()
+    {
+        FechaInicio = suscripcion.FechaInicio,
+        FechaFin = suscripcion.FechaFin,
+        Activa = suscripcion.Activa,
+        Tipo = suscripcion.Tipo
+    };
+
+    public static ContratoSubResponseDto ToResponseDto(this ContratoSub contrato) => new()
+    {
+        FechaContratacion = contrato.FechaContratacion,
+        FechaInicio = contrato.FechaInicio,
+        FechaFin = contrato.FechaFin,
+        Monto = contrato.Monto,
+        Estado = contrato.Estado,
+        DiasRestantes = contrato.FechaFin.HasValue
+            ? Math.Max(0, (contrato.FechaFin.Value.Date - DateTime.UtcNow.Date).Days)
+            : 0
+    };
+
+    public static PagoResponseDto ToResponseDto(this Pago pago) => new()
+    {
+        FechaPago = pago.FechaPago,
+        Monto = pago.Monto,
+        EstadoPago = pago.EstadoPago,
+        MetodoPago = pago.MetodoPago
+    };
+
+    public static IngredienteResponseDto ToResponseDto(this Ingrediente ingrediente) => new()
+    {
+        Nombre = ingrediente.Nombre,
+        Descripcion = ingrediente.Descripcion
+    };
+
+    public static SustitutoResponseDto ToResponseDto(this IngredienteSustituto sustituto) => new()
+    {
+        Ingrediente = sustituto.Ingrediente?.Nombre ?? string.Empty,
+        Sustituto = sustituto.Sustituto?.Nombre ?? string.Empty,
+        Motivo = sustituto.Motivo
+    };
+}

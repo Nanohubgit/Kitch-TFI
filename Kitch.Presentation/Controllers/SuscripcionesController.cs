@@ -38,14 +38,14 @@ public class SuscripcionesController : ApiControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Suscripcion>>> GetAll()
+    public async Task<ActionResult<IEnumerable<SuscripcionResponseDto>>> GetAll()
     {
         var suscripciones = await _suscripcionService.GetAllAsync();
         return Ok(suscripciones);
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<Suscripcion>> GetById(int id)
+    public async Task<ActionResult<SuscripcionResponseDto>> GetById(int id)
     {
         var suscripcion = await _suscripcionService.GetByIdAsync(id);
 
@@ -58,14 +58,14 @@ public class SuscripcionesController : ApiControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<Suscripcion>> Create([FromBody] Suscripcion suscripcion)
+    public async Task<ActionResult<SuscripcionResponseDto>> Create([FromBody] SuscripcionCreateDto suscripcion)
     {
         var createdSuscripcion = await _suscripcionService.CreateAsync(suscripcion);
-        return CreatedAtAction(nameof(GetById), new { id = createdSuscripcion.Id }, createdSuscripcion);
+        return Created(string.Empty, createdSuscripcion);
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] Suscripcion suscripcion)
+    public async Task<IActionResult> Update(int id, [FromBody] SuscripcionUpdateDto suscripcion)
     {
         var updated = await _suscripcionService.UpdateAsync(id, suscripcion);
 

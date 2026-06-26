@@ -1,5 +1,5 @@
+using Kitch.Application.DTOs.Usuarios;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,14 +18,14 @@ public class UsuariosController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Usuario>>> GetAll()
+    public async Task<ActionResult<IEnumerable<UsuarioResponseDto>>> GetAll()
     {
         var usuarios = await _usuarioService.GetAllAsync();
         return Ok(usuarios);
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<Usuario>> GetById(int id)
+    public async Task<ActionResult<UsuarioResponseDto>> GetById(int id)
     {
         var usuario = await _usuarioService.GetByIdAsync(id);
 
@@ -38,14 +38,14 @@ public class UsuariosController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<Usuario>> Create([FromBody] Usuario usuario)
+    public async Task<ActionResult<UsuarioResponseDto>> Create([FromBody] UsuarioCreateDto usuario)
     {
         var createdUsuario = await _usuarioService.CreateAsync(usuario);
-        return CreatedAtAction(nameof(GetById), new { id = createdUsuario.Id }, createdUsuario);
+        return Created(string.Empty, createdUsuario);
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] Usuario usuario)
+    public async Task<IActionResult> Update(int id, [FromBody] UsuarioUpdateDto usuario)
     {
         var updated = await _usuarioService.UpdateAsync(id, usuario);
 

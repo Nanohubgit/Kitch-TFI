@@ -1,5 +1,5 @@
+using Kitch.Application.DTOs.ListaCompra;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,10 +17,10 @@ public class ListaCompraController : ApiControllerBase
         _listaCompraService = listaCompraService;
     }
 
-    [HttpGet("mis")]
-    public async Task<ActionResult<IEnumerable<ItemListaCompra>>> GetMisItems()
+    [HttpGet("usuario/{usuarioId:int}")]
+    public async Task<ActionResult<IEnumerable<ItemListaCompraResponseDto>>> GetByUsuarioId(int usuarioId)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
+        if (!TryGetUsuarioId(out var usuarioActualId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
         }
@@ -30,7 +30,7 @@ public class ListaCompraController : ApiControllerBase
     }
 
     [HttpGet("faltantes")]
-    public async Task<ActionResult<IEnumerable<ItemListaCompra>>> GetFaltantes()
+    public async Task<ActionResult<IEnumerable<ItemListaCompraResponseDto>>> GetFaltantes()
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
@@ -42,7 +42,7 @@ public class ListaCompraController : ApiControllerBase
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<ItemListaCompra>> GetById(int id)
+    public async Task<ActionResult<ItemListaCompraResponseDto>> GetById(int id)
     {
         var item = await _listaCompraService.GetByIdAsync(id);
 
@@ -55,7 +55,7 @@ public class ListaCompraController : ApiControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<ItemListaCompra>> Create([FromBody] ItemListaCompra item)
+    public async Task<ActionResult<ItemListaCompraResponseDto>> Create([FromBody] ItemListaCompraCreateDto item)
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
@@ -65,11 +65,11 @@ public class ListaCompraController : ApiControllerBase
         item.UsuarioId = usuarioId;
 
         var createdItem = await _listaCompraService.CreateAsync(item);
-        return CreatedAtAction(nameof(GetById), new { id = createdItem.Id }, createdItem);
+        return Created(string.Empty, createdItem);
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] ItemListaCompra item)
+    public async Task<IActionResult> Update(int id, [FromBody] ItemListaCompraUpdateDto item)
     {
         var updated = await _listaCompraService.UpdateAsync(id, item);
 

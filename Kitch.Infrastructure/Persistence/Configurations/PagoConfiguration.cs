@@ -15,6 +15,9 @@ namespace Kitch.Infrastructure.Persistence.Configurations
             entity.Property(pago => pago.UsuarioId)
                 .IsRequired();
 
+            entity.Property(pago => pago.ContratoSubId)
+                .IsRequired();
+
             entity.Property(pago => pago.Monto)
                 .HasPrecision(18, 2)
                 .IsRequired();
@@ -28,7 +31,7 @@ namespace Kitch.Infrastructure.Persistence.Configurations
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(pago => pago.ContratoSub)
-                .WithMany()
+                .WithMany(contrato => contrato.Pagos)
                 .HasForeignKey(pago => pago.ContratoSubId)
                 .OnDelete(DeleteBehavior.Restrict);
 
@@ -43,6 +46,7 @@ namespace Kitch.Infrastructure.Persistence.Configurations
                 .HasMaxLength(20);
             
             entity.HasIndex(pago => pago.UsuarioId);
+            entity.HasIndex(pago => pago.ContratoSubId);
             entity.HasIndex(pago => pago.FechaPago);
             entity.HasIndex(pago => new
             {

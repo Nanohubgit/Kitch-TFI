@@ -1,5 +1,5 @@
+using Kitch.Application.DTOs.Pagos;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,21 +18,21 @@ public class PagosController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Pago>>> GetAll()
+    public async Task<ActionResult<IEnumerable<PagoResponseDto>>> GetAll()
     {
         var pagos = await _pagoService.GetAllAsync();
         return Ok(pagos);
     }
 
     [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<Pago>>> GetByUsuarioId(int usuarioId)
+    public async Task<ActionResult<IEnumerable<PagoResponseDto>>> GetByUsuarioId(int usuarioId)
     {
         var pagos = await _pagoService.GetByUsuarioIdAsync(usuarioId);
         return Ok(pagos);
     }
 
     [HttpGet("{id:int}")]
-    public async Task<ActionResult<Pago>> GetById(int id)
+    public async Task<ActionResult<PagoResponseDto>> GetById(int id)
     {
         var pago = await _pagoService.GetByIdAsync(id);
 
@@ -45,14 +45,14 @@ public class PagosController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<Pago>> Create([FromBody] Pago pago)
+    public async Task<ActionResult<PagoResponseDto>> Create([FromBody] PagoCreateDto pago)
     {
         var createdPago = await _pagoService.CreateAsync(pago);
-        return CreatedAtAction(nameof(GetById), new { id = createdPago.Id }, createdPago);
+        return Created(string.Empty, createdPago);
     }
 
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, [FromBody] Pago pago)
+    public async Task<IActionResult> Update(int id, [FromBody] PagoUpdateDto pago)
     {
         var updated = await _pagoService.UpdateAsync(id, pago);
 

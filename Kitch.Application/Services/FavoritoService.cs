@@ -1,4 +1,6 @@
+using Kitch.Application.DTOs.Favoritos;
 using Kitch.Application.Interfaces;
+using Kitch.Application.Mappings;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -13,24 +15,41 @@ public class FavoritoService : IFavoritoService
         _repository = repository;
     }
 
-    public async Task<IEnumerable<RecetaFavorita>> GetByUsuarioIdAsync(int usuarioId)
+    public async Task<IEnumerable<FavoritoResponseDto>> GetByUsuarioIdAsync(int usuarioId)
     {
-        return await _repository.FindAsync(favorito => favorito.UsuarioId == usuarioId);
+        var favoritos = await _repository.FindWithIncludesAsync(
+            favorito => favorito.UsuarioId == usuarioId,
+            favorito => favorito.Usuario,
+            favorito => favorito.Receta);
+
+        return favoritos.Select(favorito => favorito.ToResponseDto());
     }
 
-    public async Task<RecetaFavorita?> GetByIdAsync(int id)
+    public async Task<FavoritoResponseDto?> GetByIdAsync(int id)
     {
-        return await _repository.GetByIdAsync(id);
+        var favoritos = await _repository.FindWithIncludesAsync(
+            favorito => favorito.Id == id,
+            favorito => favorito.Usuario,
+            favorito => favorito.Receta);
+
+        return favoritos.FirstOrDefault()?.ToResponseDto();
     }
 
-    public async Task<RecetaFavorita> AddFavoritoAsync(RecetaFavorita favorito)
+    public async Task<FavoritoResponseDto> AddFavoritoAsync(FavoritoCreateDto favorito)
     {
         if (await ExisteFavoritoAsync(favorito.UsuarioId, favorito.RecetaId))
         {
-            throw new InvalidOperationException("La receta ya está marcada como favorita para este usuario.");
+            throw new InvalidOperationException("La receta ya esta marcada como favorita para este usuario.");
         }
 
-        return await _repository.AddAsync(favorito);
+        var entity = new RecetaFavorita
+        {
+            UsuarioId = favorito.UsuarioId,
+            RecetaId = favorito.RecetaId
+        };
+
+        var created = await _repository.AddAsync(entity);
+        return created.ToResponseDto();
     }
 
     public async Task<bool> ToggleFavoritoAsync(int usuarioId, int recetaId)

@@ -1,4 +1,6 @@
+using Kitch.Application.DTOs.ContratosSub;
 using Kitch.Application.Interfaces;
+using Kitch.Application.Mappings;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -13,35 +15,66 @@ public class ContratoSubService : IContratoSubService
         _repository = repository;
     }
 
-    public async Task<IEnumerable<ContratoSub>> GetAllAsync()
+    public async Task<IEnumerable<ContratoSubResponseDto>> GetAllAsync()
     {
-        return await _repository.GetAllAsync();
+        var contratos = await _repository.GetAllAsync();
+        return contratos.Select(contrato => contrato.ToResponseDto());
     }
 
-    public async Task<IEnumerable<ContratoSub>> GetByUsuarioIdAsync(int usuarioId)
+    public async Task<IEnumerable<ContratoSubResponseDto>> GetByUsuarioIdAsync(int usuarioId)
     {
-        return await _repository.FindAsync(contratoSub => contratoSub.UsuarioId == usuarioId);
+        var contratos = await _repository.FindAsync(contratoSub => contratoSub.UsuarioId == usuarioId);
+        return contratos.Select(contrato => contrato.ToResponseDto());
     }
 
-    public async Task<ContratoSub?> GetByIdAsync(int id)
+    public async Task<ContratoSubResponseDto?> GetByIdAsync(int id)
     {
-        return await _repository.GetByIdAsync(id);
+        var contrato = await _repository.GetByIdAsync(id);
+        return contrato?.ToResponseDto();
     }
 
-    public async Task<ContratoSub> CreateAsync(ContratoSub contratoSub)
+    public async Task<ContratoSubResponseDto> CreateAsync(ContratoSubCreateDto contratoSub)
     {
-        return await _repository.AddAsync(contratoSub);
+        ValidateFechas(contratoSub.FechaInicio, contratoSub.FechaFin);
+
+        if (await _repository.AnyAsync(existing =>
+                existing.UsuarioId == contratoSub.UsuarioId && existing.Estado == EstadoContratoSub.Activo))
+        {
+            throw new InvalidOperationException("El usuario ya tiene un contrato activo.");
+        }
+
+        var entity = new ContratoSub
+        {
+            UsuarioId = contratoSub.UsuarioId,
+            SuscripcionId = contratoSub.SuscripcionId,
+            FechaContratacion = DateTime.UtcNow,
+            FechaInicio = contratoSub.FechaInicio,
+            FechaFin = contratoSub.FechaFin,
+            Monto = contratoSub.Monto,
+            Estado = EstadoContratoSub.Pendiente
+        };
+
+        var created = await _repository.AddAsync(entity);
+        return created.ToResponseDto();
     }
 
-    public async Task<bool> UpdateAsync(int id, ContratoSub contratoSub)
+    public async Task<bool> UpdateAsync(int id, ContratoSubUpdateDto contratoSub)
     {
-        if (!await _repository.AnyAsync(existing => existing.Id == id))
+        var existingContratoSub = await _repository.GetByIdAsync(id);
+
+        if (existingContratoSub is null)
         {
             return false;
         }
 
-        contratoSub.Id = id;
-        await _repository.UpdateAsync(contratoSub);
+        ValidateFechas(contratoSub.FechaInicio, contratoSub.FechaFin);
+
+        existingContratoSub.FechaInicio = contratoSub.FechaInicio;
+        existingContratoSub.FechaFin = contratoSub.FechaFin;
+        existingContratoSub.Monto = contratoSub.Monto;
+        existingContratoSub.Estado = contratoSub.Estado;
+
+        await _repository.UpdateAsync(existingContratoSub);
 
         return true;
     }
@@ -58,5 +91,13 @@ public class ContratoSubService : IContratoSubService
         await _repository.DeleteAsync(contratoSub);
 
         return true;
+    }
+
+    private static void ValidateFechas(DateTime fechaInicio, DateTime fechaFin)
+    {
+        if (fechaFin <= fechaInicio)
+        {
+            throw new InvalidOperationException("La fecha de fin debe ser posterior a la fecha de inicio.");
+        }
     }
 }

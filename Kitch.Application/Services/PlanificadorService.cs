@@ -1,4 +1,6 @@
+using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.Interfaces;
+using Kitch.Application.Mappings;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -13,55 +15,74 @@ public class PlanificadorService : IPlanificadorService
         _repository = repository;
     }
 
-    public async Task<IEnumerable<ComidaPlanificada>> GetByUsuarioIdAsync(int usuarioId)
+    public async Task<IEnumerable<ComidaPlanificadaResponseDto>> GetByUsuarioIdAsync(int usuarioId)
     {
-        return await _repository.FindAsync(comida => comida.UsuarioId == usuarioId);
+        var comidas = await _repository.FindAsync(comida => comida.UsuarioId == usuarioId);
+        return comidas.Select(comida => comida.ToResponseDto());
     }
 
-    public async Task<IEnumerable<ComidaPlanificada>> GetByFechaAsync(int usuarioId, DateTime fecha)
+    public async Task<IEnumerable<ComidaPlanificadaResponseDto>> GetByFechaAsync(int usuarioId, DateTime fecha)
     {
         var fechaInicio = fecha.Date;
         var fechaFin = fechaInicio.AddDays(1);
 
-        return await _repository.FindAsync(comida =>
+        var comidas = await _repository.FindAsync(comida =>
             comida.UsuarioId == usuarioId &&
             comida.FechaAsignada >= fechaInicio &&
             comida.FechaAsignada < fechaFin);
+
+        return comidas.Select(comida => comida.ToResponseDto());
     }
 
-    public async Task<ComidaPlanificada?> GetByIdAsync(int id)
+    public async Task<ComidaPlanificadaResponseDto?> GetByIdAsync(int id)
     {
-        return await _repository.GetByIdAsync(id);
+        var comida = await _repository.GetByIdAsync(id);
+        return comida?.ToResponseDto();
     }
 
-    public async Task<ComidaPlanificada> CreateAsync(ComidaPlanificada comida)
+    public async Task<ComidaPlanificadaResponseDto> CreateAsync(ComidaPlanificadaCreateDto comida)
     {
-        comida.Turno = comida.Turno.Trim().ToUpper();
-
-        var fecha = comida.FechaAsignada.Date;
-
-        var existeSolapamiento = await _repository.AnyAsync(existente =>
-            existente.UsuarioId == comida.UsuarioId &&
-            existente.Turno == comida.Turno &&
-            existente.FechaAsignada.Date == fecha);
-
-        if (existeSolapamiento)
+        if (await ExisteConflictoAsync(comida.UsuarioId, comida.FechaAsignada, comida.Turno))
         {
-            throw new InvalidOperationException("Ya tienes una comida asignada para este turno en este día");
+            throw new InvalidOperationException("Ya existe una comida planificada para ese usuario, fecha y turno.");
         }
 
-        return await _repository.AddAsync(comida);
+        var entity = new ComidaPlanificada
+        {
+            UsuarioId = comida.UsuarioId,
+            RecetaId = comida.RecetaId,
+            FechaAsignada = comida.FechaAsignada,
+            Turno = comida.Turno.Trim()
+        };
+
+        var created = await _repository.AddAsync(entity);
+        return created.ToResponseDto();
     }
 
-    public async Task<bool> UpdateAsync(int id, ComidaPlanificada comida)
+    public async Task<bool> UpdateAsync(int id, ComidaPlanificadaUpdateDto comida)
     {
-        if (!await _repository.AnyAsync(existing => existing.Id == id))
+        var existingComida = await _repository.GetByIdAsync(id);
+
+        if (existingComida is null)
         {
             return false;
         }
 
-        comida.Id = id;
-        await _repository.UpdateAsync(comida);
+        if (await _repository.AnyAsync(existing =>
+                existing.Id != id &&
+                existing.UsuarioId == comida.UsuarioId &&
+                existing.FechaAsignada.Date == comida.FechaAsignada.Date &&
+                existing.Turno == comida.Turno.Trim()))
+        {
+            throw new InvalidOperationException("Ya existe una comida planificada para ese usuario, fecha y turno.");
+        }
+
+        existingComida.UsuarioId = comida.UsuarioId;
+        existingComida.RecetaId = comida.RecetaId;
+        existingComida.FechaAsignada = comida.FechaAsignada;
+        existingComida.Turno = comida.Turno.Trim();
+
+        await _repository.UpdateAsync(existingComida);
 
         return true;
     }
@@ -78,5 +99,18 @@ public class PlanificadorService : IPlanificadorService
         await _repository.DeleteAsync(comida);
 
         return true;
+    }
+
+    private async Task<bool> ExisteConflictoAsync(int usuarioId, DateTime fecha, string turno)
+    {
+        var fechaInicio = fecha.Date;
+        var fechaFin = fechaInicio.AddDays(1);
+        var turnoNormalizado = turno.Trim();
+
+        return await _repository.AnyAsync(comida =>
+            comida.UsuarioId == usuarioId &&
+            comida.FechaAsignada >= fechaInicio &&
+            comida.FechaAsignada < fechaFin &&
+            comida.Turno == turnoNormalizado);
     }
 }
