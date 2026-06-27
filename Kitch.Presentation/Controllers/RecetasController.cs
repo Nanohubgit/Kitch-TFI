@@ -1,5 +1,6 @@
 using Kitch.Application.DTOs.Recetas;
 using Kitch.Application.Interfaces;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -66,6 +67,7 @@ public class RecetasController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = RolUsuario.Admin)]
     public async Task<IActionResult> Delete(int id)
     {
         var deleted = await _recetaService.DeleteAsync(id);

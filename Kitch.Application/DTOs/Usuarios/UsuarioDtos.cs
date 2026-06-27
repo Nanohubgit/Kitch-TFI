@@ -15,9 +15,6 @@ public class UsuarioCreateDto
 
     [Required, MinLength(8), MaxLength(100)]
     public string Password { get; set; } = string.Empty;
-
-    [Required, MaxLength(50)]
-    public string Rol { get; set; } = "Basico";
 }
 
 public class UsuarioUpdateDto
@@ -32,9 +29,12 @@ public class UsuarioUpdateDto
     public string Email { get; set; } = string.Empty;
 
     public bool Activo { get; set; } = true;
+}
 
+public class CambiarRolDto
+{
     [Required, MaxLength(50)]
-    public string Rol { get; set; } = "Basico";
+    public string NuevoRol { get; set; } = string.Empty;
 }
 
 public class UsuarioResponseDto
