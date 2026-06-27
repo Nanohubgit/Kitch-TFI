@@ -1,4 +1,5 @@
 using System.Text;
+using Kitch.Presentation.Extensions;
 using Kitch.Presentation.Middleware;
 using Kitch.Application;
 using Kitch.Infrastructure;
@@ -39,8 +40,12 @@ builder.Services.AddDbContext<KitchDbContext>(options =>
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure();
 
-var jwtKey = builder.Configuration["Jwt:Key"]
-    ?? throw new InvalidOperationException("JWT Key no configurada.");
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey))
+{
+    throw new InvalidOperationException(
+        "JWT Key no configurada. Definí 'Jwt:Key' en User Secrets (local) o en la configuración de Azure.");
+}
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -60,6 +65,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+
+// Seeding seguro del administrador inicial (lee la contraseña de la configuración, no hardcodeada).
+await app.SeedAdminUserAsync();
 
 //swagger
 if (app.Environment.IsDevelopment())

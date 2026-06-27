@@ -8,11 +8,11 @@ namespace Kitch.Infrastructure.Services;
 
 public class SustitutoService : ISustitutoService
 {
-    private readonly IRepository<IngredienteSustituto> _repository;
+    private readonly IRepository<SustitutoIngrediente> _repository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
 
     public SustitutoService(
-        IRepository<IngredienteSustituto> repository,
+        IRepository<SustitutoIngrediente> repository,
         IRepository<Ingrediente> ingredienteRepository)
     {
         _repository = repository;
@@ -23,8 +23,8 @@ public class SustitutoService : ISustitutoService
     {
         var sustitutos = await _repository.FindWithIncludesAsync(
             sustituto => true,
-            sustituto => sustituto.Ingrediente,
-            sustituto => sustituto.Sustituto);
+            sustituto => sustituto.IngredienteOriginal,
+            sustituto => sustituto.IngredienteSustituto);
 
         return sustitutos.Select(sustituto => sustituto.ToResponseDto());
     }
@@ -32,9 +32,9 @@ public class SustitutoService : ISustitutoService
     public async Task<IEnumerable<SustitutoResponseDto>> GetByIngredienteIdAsync(int ingredienteId)
     {
         var sustitutos = await _repository.FindWithIncludesAsync(
-            sustituto => sustituto.IngredienteId == ingredienteId,
-            sustituto => sustituto.Ingrediente,
-            sustituto => sustituto.Sustituto);
+            sustituto => sustituto.IngredienteOriginalId == ingredienteId,
+            sustituto => sustituto.IngredienteOriginal,
+            sustituto => sustituto.IngredienteSustituto);
 
         return sustitutos.Select(sustituto => sustituto.ToResponseDto());
     }
@@ -43,32 +43,36 @@ public class SustitutoService : ISustitutoService
     {
         var sustitutos = await _repository.FindWithIncludesAsync(
             sustituto => sustituto.Id == id,
-            sustituto => sustituto.Ingrediente,
-            sustituto => sustituto.Sustituto);
+            sustituto => sustituto.IngredienteOriginal,
+            sustituto => sustituto.IngredienteSustituto);
 
         return sustitutos.FirstOrDefault()?.ToResponseDto();
     }
 
     public async Task<SustitutoResponseDto> CreateAsync(SustitutoCreateDto sustituto)
     {
-        await ValidateSustitutoAsync(sustituto.IngredienteId, sustituto.SustitutoId);
+        await ValidateSustitutoAsync(
+            sustituto.IngredienteOriginalId,
+            sustituto.IngredienteSustitutoId,
+            sustituto.FactorEquivalencia);
 
         if (await _repository.AnyAsync(existing =>
-                existing.IngredienteId == sustituto.IngredienteId &&
-                existing.SustitutoId == sustituto.SustitutoId))
+                existing.IngredienteOriginalId == sustituto.IngredienteOriginalId &&
+                existing.IngredienteSustitutoId == sustituto.IngredienteSustitutoId))
         {
             throw new InvalidOperationException("Ese sustituto ya esta registrado para el ingrediente.");
         }
 
-        var entity = new IngredienteSustituto
+        var entity = new SustitutoIngrediente
         {
-            IngredienteId = sustituto.IngredienteId,
-            SustitutoId = sustituto.SustitutoId,
-            Motivo = sustituto.Motivo?.Trim()
+            IngredienteOriginalId = sustituto.IngredienteOriginalId,
+            IngredienteSustitutoId = sustituto.IngredienteSustitutoId,
+            FactorEquivalencia = sustituto.FactorEquivalencia,
+            Notas = sustituto.Notas?.Trim()
         };
 
         await _repository.AddAsync(entity);
-        var created = await GetByPairAsync(entity.IngredienteId, entity.SustitutoId);
+        var created = await GetByPairAsync(entity.IngredienteOriginalId, entity.IngredienteSustitutoId);
 
         return created?.ToResponseDto()
             ?? throw new InvalidOperationException("No se pudo cargar el sustituto creado.");
@@ -83,19 +87,23 @@ public class SustitutoService : ISustitutoService
             return false;
         }
 
-        await ValidateSustitutoAsync(sustituto.IngredienteId, sustituto.SustitutoId);
+        await ValidateSustitutoAsync(
+            sustituto.IngredienteOriginalId,
+            sustituto.IngredienteSustitutoId,
+            sustituto.FactorEquivalencia);
 
         if (await _repository.AnyAsync(existing =>
                 existing.Id != id &&
-                existing.IngredienteId == sustituto.IngredienteId &&
-                existing.SustitutoId == sustituto.SustitutoId))
+                existing.IngredienteOriginalId == sustituto.IngredienteOriginalId &&
+                existing.IngredienteSustitutoId == sustituto.IngredienteSustitutoId))
         {
             throw new InvalidOperationException("Ese sustituto ya esta registrado para el ingrediente.");
         }
 
-        existingSustituto.IngredienteId = sustituto.IngredienteId;
-        existingSustituto.SustitutoId = sustituto.SustitutoId;
-        existingSustituto.Motivo = sustituto.Motivo?.Trim();
+        existingSustituto.IngredienteOriginalId = sustituto.IngredienteOriginalId;
+        existingSustituto.IngredienteSustitutoId = sustituto.IngredienteSustitutoId;
+        existingSustituto.FactorEquivalencia = sustituto.FactorEquivalencia;
+        existingSustituto.Notas = sustituto.Notas?.Trim();
 
         await _repository.UpdateAsync(existingSustituto);
 
@@ -116,30 +124,36 @@ public class SustitutoService : ISustitutoService
         return true;
     }
 
-    private async Task ValidateSustitutoAsync(int ingredienteId, int sustitutoId)
+    private async Task ValidateSustitutoAsync(int ingredienteOriginalId, int ingredienteSustitutoId, decimal factorEquivalencia)
     {
-        if (ingredienteId == sustitutoId)
+        if (ingredienteOriginalId == ingredienteSustitutoId)
         {
             throw new InvalidOperationException("Un ingrediente no puede ser sustituto de si mismo.");
         }
 
-        if (!await _ingredienteRepository.AnyAsync(ingrediente => ingrediente.Id == ingredienteId))
+        if (factorEquivalencia <= 0)
+        {
+            throw new InvalidOperationException("El factor de equivalencia debe ser mayor a cero.");
+        }
+
+        if (!await _ingredienteRepository.AnyAsync(ingrediente => ingrediente.Id == ingredienteOriginalId))
         {
             throw new InvalidOperationException("El ingrediente principal no existe.");
         }
 
-        if (!await _ingredienteRepository.AnyAsync(ingrediente => ingrediente.Id == sustitutoId))
+        if (!await _ingredienteRepository.AnyAsync(ingrediente => ingrediente.Id == ingredienteSustitutoId))
         {
             throw new InvalidOperationException("El ingrediente sustituto no existe.");
         }
     }
 
-    private async Task<IngredienteSustituto?> GetByPairAsync(int ingredienteId, int sustitutoId)
+    private async Task<SustitutoIngrediente?> GetByPairAsync(int ingredienteOriginalId, int ingredienteSustitutoId)
     {
         var sustitutos = await _repository.FindWithIncludesAsync(
-            sustituto => sustituto.IngredienteId == ingredienteId && sustituto.SustitutoId == sustitutoId,
-            sustituto => sustituto.Ingrediente,
-            sustituto => sustituto.Sustituto);
+            sustituto => sustituto.IngredienteOriginalId == ingredienteOriginalId &&
+                         sustituto.IngredienteSustitutoId == ingredienteSustitutoId,
+            sustituto => sustituto.IngredienteOriginal,
+            sustituto => sustituto.IngredienteSustituto);
 
         return sustitutos.FirstOrDefault();
     }

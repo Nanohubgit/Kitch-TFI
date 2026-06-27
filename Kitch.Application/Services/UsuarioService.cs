@@ -1,6 +1,7 @@
 using Kitch.Application.DTOs.Usuarios;
 using Kitch.Application.Interfaces;
 using Kitch.Application.Mappings;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -43,7 +44,9 @@ public class UsuarioService : IUsuarioService
             Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(usuario.Password),
             Activo = true,
-            Rol = usuario.Rol.Trim()
+            // El rol nunca lo elige el cliente: se fuerza a Básico. Para ascender se usa
+            // el endpoint admin-only CambiarRolAsync (mitigación de escalada de privilegios).
+            Rol = RolUsuario.Basico
         };
 
         var created = await _repository.AddAsync(entity);
@@ -70,9 +73,33 @@ public class UsuarioService : IUsuarioService
         existingUsuario.Apellido = usuario.Apellido.Trim();
         existingUsuario.Email = email;
         existingUsuario.Activo = usuario.Activo;
-        existingUsuario.Rol = usuario.Rol.Trim();
+        // El rol NO se actualiza acá a propósito: cambiarlo es exclusivo del endpoint
+        // admin-only CambiarRolAsync. Así el Update general no es una vía de escalada.
 
         await _repository.UpdateAsync(existingUsuario);
+
+        return true;
+    }
+
+    public async Task<bool> CambiarRolAsync(int usuarioId, string nuevoRol)
+    {
+        var rol = nuevoRol?.Trim() ?? string.Empty;
+
+        // Validamos contra la lista blanca de roles: nunca confiamos en un string arbitrario.
+        if (!RolUsuario.EsValido(rol))
+        {
+            throw new InvalidOperationException($"El rol '{nuevoRol}' no es un rol válido.");
+        }
+
+        var usuario = await _repository.GetByIdAsync(usuarioId);
+
+        if (usuario is null)
+        {
+            return false;
+        }
+
+        usuario.Rol = rol;
+        await _repository.UpdateAsync(usuario);
 
         return true;
     }

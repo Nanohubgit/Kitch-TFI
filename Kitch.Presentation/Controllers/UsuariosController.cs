@@ -1,5 +1,6 @@
 using Kitch.Application.DTOs.Usuarios;
 using Kitch.Application.Interfaces;
+using Kitch.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -55,6 +56,27 @@ public class UsuariosController : ControllerBase
         }
 
         return NoContent();
+    }
+
+    [HttpPut("{id:int}/cambiar-rol")]
+    [Authorize(Roles = RolUsuario.Admin)]
+    public async Task<IActionResult> CambiarRol(int id, [FromBody] CambiarRolDto request)
+    {
+        try
+        {
+            var actualizado = await _usuarioService.CambiarRolAsync(id, request.NuevoRol);
+
+            if (!actualizado)
+            {
+                return NotFound();
+            }
+
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 
     [HttpDelete("{id:int}")]
