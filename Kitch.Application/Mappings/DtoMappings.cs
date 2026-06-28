@@ -17,6 +17,7 @@ public static class DtoMappings
 {
     public static UsuarioResponseDto ToResponseDto(this Usuario usuario) => new()
     {
+        Id = usuario.Id,
         Nombre = usuario.Nombre,
         Apellido = usuario.Apellido,
         Email = usuario.Email,
