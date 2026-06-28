@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using Kitch.Application.DTOs.Auth;
 using Kitch.Application.Interfaces;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -56,7 +57,9 @@ public class AuthService : IAuthService
             Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             Activo = true,
-            Rol = "Basico"
+            // El rol se fuerza siempre a Básico desde el servidor: el cliente nunca puede
+            // elegir su propio rol (mitigación de Mass Assignment / Privilege Escalation).
+            Rol = RolUsuario.Basico
         };
 
         await _context.Usuarios.AddAsync(usuario);

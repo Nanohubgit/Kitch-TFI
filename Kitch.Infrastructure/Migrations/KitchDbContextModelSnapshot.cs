@@ -161,36 +161,6 @@ namespace Kitch.Infrastructure.Migrations
                     b.ToTable("IngredienteReceta", (string)null);
                 });
 
-            modelBuilder.Entity("Kitch.Domain.Entities.IngredienteSustituto", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("IngredienteId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Motivo")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<int>("SustitutoId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IngredienteId");
-
-                    b.HasIndex("SustitutoId");
-
-                    b.HasIndex("IngredienteId", "SustitutoId")
-                        .IsUnique();
-
-                    b.ToTable("IngredienteSustituto", (string)null);
-                });
-
             modelBuilder.Entity("Kitch.Domain.Entities.ItemListaCompra", b =>
                 {
                     b.Property<int>("Id")
@@ -558,25 +528,6 @@ namespace Kitch.Infrastructure.Migrations
                     b.Navigation("Receta");
                 });
 
-            modelBuilder.Entity("Kitch.Domain.Entities.IngredienteSustituto", b =>
-                {
-                    b.HasOne("Kitch.Domain.Entities.Ingrediente", "Ingrediente")
-                        .WithMany("Sustitutos")
-                        .HasForeignKey("IngredienteId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Kitch.Domain.Entities.Ingrediente", "Sustituto")
-                        .WithMany("SustitucionesDe")
-                        .HasForeignKey("SustitutoId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Ingrediente");
-
-                    b.Navigation("Sustituto");
-                });
-
             modelBuilder.Entity("Kitch.Domain.Entities.ItemListaCompra", b =>
                 {
                     b.HasOne("Kitch.Domain.Entities.Usuario", "Usuario")
@@ -667,11 +618,6 @@ namespace Kitch.Infrastructure.Migrations
                     b.Navigation("Usuario");
                 });
 
-            modelBuilder.Entity("Kitch.Domain.Entities.ContratoSub", b =>
-                {
-                    b.Navigation("Pagos");
-                });
-                
             modelBuilder.Entity("Kitch.Domain.Entities.SustitutoIngrediente", b =>
                 {
                     b.HasOne("Kitch.Domain.Entities.Ingrediente", "IngredienteOriginal")
@@ -691,13 +637,14 @@ namespace Kitch.Infrastructure.Migrations
                     b.Navigation("IngredienteSustituto");
                 });
 
+            modelBuilder.Entity("Kitch.Domain.Entities.ContratoSub", b =>
+                {
+                    b.Navigation("Pagos");
+                });
+
             modelBuilder.Entity("Kitch.Domain.Entities.Ingrediente", b =>
                 {
                     b.Navigation("IngredientesReceta");
-
-                    b.Navigation("SustitucionesDe");
-
-                    b.Navigation("Sustitutos");
                 });
 
             modelBuilder.Entity("Kitch.Domain.Entities.Receta", b =>
