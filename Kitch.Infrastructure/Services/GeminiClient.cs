@@ -7,7 +7,7 @@ namespace Kitch.Infrastructure.Services;
 
 public class GeminiClient : IGeminiClient
 {
-    private const string ModeloEndpoint = "v1beta/models/gemini-1.5-flash:generateContent";
+    private const string ModeloEndpoint = "v1beta/models/gemini-2.5-flash:generateContent";
 
     private readonly IHttpClientFactory _httpClientFactory;
 
