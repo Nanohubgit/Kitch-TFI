@@ -110,10 +110,12 @@ public static class DtoMappings
         Descripcion = ingrediente.Descripcion
     };
 
-    public static SustitutoResponseDto ToResponseDto(this IngredienteSustituto sustituto) => new()
+    public static SustitutoResponseDto ToResponseDto(this SustitutoIngrediente sustituto) => new()
     {
-        Ingrediente = sustituto.Ingrediente?.Nombre ?? string.Empty,
-        Sustituto = sustituto.Sustituto?.Nombre ?? string.Empty,
-        Motivo = sustituto.Motivo
+        Id = sustituto.Id,
+        IngredienteOriginal = sustituto.IngredienteOriginal?.Nombre ?? string.Empty,
+        IngredienteSustituto = sustituto.IngredienteSustituto?.Nombre ?? string.Empty,
+        FactorEquivalencia = sustituto.FactorEquivalencia,
+        Notas = sustituto.Notas
     };
 }
