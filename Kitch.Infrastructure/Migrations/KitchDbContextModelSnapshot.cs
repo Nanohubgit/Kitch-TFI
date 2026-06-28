@@ -542,7 +542,7 @@ namespace Kitch.Infrastructure.Migrations
             modelBuilder.Entity("Kitch.Domain.Entities.Pago", b =>
                 {
                     b.HasOne("Kitch.Domain.Entities.ContratoSub", "ContratoSub")
-                        .WithMany()
+                        .WithMany("Pagos")
                         .HasForeignKey("ContratoSubId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -635,6 +635,11 @@ namespace Kitch.Infrastructure.Migrations
                     b.Navigation("IngredienteOriginal");
 
                     b.Navigation("IngredienteSustituto");
+                });
+
+            modelBuilder.Entity("Kitch.Domain.Entities.ContratoSub", b =>
+                {
+                    b.Navigation("Pagos");
                 });
 
             modelBuilder.Entity("Kitch.Domain.Entities.Ingrediente", b =>
