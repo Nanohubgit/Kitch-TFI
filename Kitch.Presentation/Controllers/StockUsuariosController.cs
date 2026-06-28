@@ -1,5 +1,6 @@
 using Kitch.Application.DTOs.StockUsuarios;
 using Kitch.Application.Interfaces;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,9 +23,14 @@ public class StockUsuariosController : ApiControllerBase
     public async Task<ActionResult<IEnumerable<StockUsuarioResponseDto>>> GetByUsuarioId(int usuarioId)
     {
         if (!TryGetUsuarioId(out var usuarioActualId))
-    
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        // Solo podés ver tu propio stock (salvo que seas Admin).
+        if (usuarioActualId != usuarioId && !User.IsInRole(RolUsuario.Admin))
+        {
+            return Forbid();
         }
 
         var stock = await _stockUsuarioService.GetByUsuarioIdAsync(usuarioId);

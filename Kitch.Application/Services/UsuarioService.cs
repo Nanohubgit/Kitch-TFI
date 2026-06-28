@@ -81,6 +81,33 @@ public class UsuarioService : IUsuarioService
         return true;
     }
 
+    public async Task<bool> ActualizarPerfilAsync(int usuarioId, ActualizarPerfilDto perfil)
+    {
+        var existingUsuario = await _repository.GetByIdAsync(usuarioId);
+
+        if (existingUsuario is null)
+        {
+            return false;
+        }
+
+        var email = perfil.Email.Trim();
+
+        if (await _repository.AnyAsync(existing => existing.Id != usuarioId && existing.Email == email))
+        {
+            throw new InvalidOperationException("El email ya se encuentra registrado.");
+        }
+
+        // El usuario solo puede tocar sus datos personales. Activo y Rol quedan
+        // fuera a propósito: son competencia exclusiva del Admin.
+        existingUsuario.Nombre = perfil.Nombre.Trim();
+        existingUsuario.Apellido = perfil.Apellido.Trim();
+        existingUsuario.Email = email;
+
+        await _repository.UpdateAsync(existingUsuario);
+
+        return true;
+    }
+
     public async Task<bool> CambiarRolAsync(int usuarioId, string nuevoRol)
     {
         var rol = nuevoRol?.Trim() ?? string.Empty;

@@ -8,7 +8,8 @@ namespace Kitch.Presentation.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+// Módulo de Administración: la gestión de cuentas es exclusiva del rol Admin.
+[Authorize(Roles = RolUsuario.Admin)]
 public class UsuariosController : ControllerBase
 {
     private readonly IUsuarioService _usuarioService;
@@ -59,7 +60,6 @@ public class UsuariosController : ControllerBase
     }
 
     [HttpPut("{id:int}/cambiar-rol")]
-    [Authorize(Roles = RolUsuario.Admin)]
     public async Task<IActionResult> CambiarRol(int id, [FromBody] CambiarRolDto request)
     {
         try
