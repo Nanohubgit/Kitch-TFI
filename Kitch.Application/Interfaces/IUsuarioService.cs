@@ -8,5 +8,6 @@ public interface IUsuarioService
     Task<UsuarioResponseDto?> GetByIdAsync(int id);
     Task<UsuarioResponseDto> CreateAsync(UsuarioCreateDto usuario);
     Task<bool> UpdateAsync(int id, UsuarioUpdateDto usuario);
+    Task<bool> CambiarRolAsync(int usuarioId, string nuevoRol);
     Task<bool> DeleteAsync(int id);
 }

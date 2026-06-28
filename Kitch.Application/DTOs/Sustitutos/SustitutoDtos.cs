@@ -5,30 +5,38 @@ namespace Kitch.Application.DTOs.Sustitutos;
 public class SustitutoCreateDto
 {
     [Required]
-    public int IngredienteId { get; set; }
+    public int IngredienteOriginalId { get; set; }
 
     [Required]
-    public int SustitutoId { get; set; }
+    public int IngredienteSustitutoId { get; set; }
 
-    [MaxLength(500)]
-    public string? Motivo { get; set; }
+    [Range(0.01, double.MaxValue, ErrorMessage = "El factor de equivalencia debe ser mayor a cero.")]
+    public decimal FactorEquivalencia { get; set; } = 1m;
+
+    [MaxLength(250)]
+    public string? Notas { get; set; }
 }
 
 public class SustitutoUpdateDto
 {
     [Required]
-    public int IngredienteId { get; set; }
+    public int IngredienteOriginalId { get; set; }
 
     [Required]
-    public int SustitutoId { get; set; }
+    public int IngredienteSustitutoId { get; set; }
 
-    [MaxLength(500)]
-    public string? Motivo { get; set; }
+    [Range(0.01, double.MaxValue, ErrorMessage = "El factor de equivalencia debe ser mayor a cero.")]
+    public decimal FactorEquivalencia { get; set; } = 1m;
+
+    [MaxLength(250)]
+    public string? Notas { get; set; }
 }
 
 public class SustitutoResponseDto
 {
-    public string Ingrediente { get; set; } = string.Empty;
-    public string Sustituto { get; set; } = string.Empty;
-    public string? Motivo { get; set; }
+    public int Id { get; set; }
+    public string IngredienteOriginal { get; set; } = string.Empty;
+    public string IngredienteSustituto { get; set; } = string.Empty;
+    public decimal FactorEquivalencia { get; set; }
+    public string? Notas { get; set; }
 }
