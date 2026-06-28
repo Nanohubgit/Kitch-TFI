@@ -70,11 +70,9 @@ var app = builder.Build();
 await app.SeedAdminUserAsync();
 
 //swagger
-if (app.Environment.IsDevelopment())
-{
     app.UseSwagger();
     app.UseSwaggerUI();
-}
+
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
