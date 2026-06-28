@@ -31,6 +31,18 @@ public class UsuarioUpdateDto
     public bool Activo { get; set; } = true;
 }
 
+public class ActualizarPerfilDto
+{
+    [Required, MaxLength(100)]
+    public string Nombre { get; set; } = string.Empty;
+
+    [Required, MaxLength(100)]
+    public string Apellido { get; set; } = string.Empty;
+
+    [Required, EmailAddress, MaxLength(256)]
+    public string Email { get; set; } = string.Empty;
+}
+
 public class CambiarRolDto
 {
     [Required, MaxLength(50)]
@@ -39,6 +51,7 @@ public class CambiarRolDto
 
 public class UsuarioResponseDto
 {
+    public int Id { get; set; }
     public string Nombre { get; set; } = string.Empty;
     public string Apellido { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;

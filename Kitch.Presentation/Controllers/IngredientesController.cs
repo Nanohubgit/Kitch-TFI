@@ -1,13 +1,16 @@
 using Kitch.Application.DTOs.Ingredientes;
 using Kitch.Application.Interfaces;
+using Kitch.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Kitch.API.Controllers;
+namespace Kitch.Presentation.Controllers;
 
+// El catálogo maestro de ingredientes lo administra solo el Admin.
+// Los usuarios comunes no ven el catálogo completo: solo ven su propia alacena (StockUsuario).
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Roles = RolUsuario.Admin)]
 public class IngredientesController : ControllerBase
 {
     private readonly IIngredienteService _ingredienteService;

@@ -9,38 +9,44 @@ namespace Kitch.Application.Services;
 public class StockUsuarioService : IStockUsuarioService
 {
     private readonly IRepository<StockUsuario> _repository;
+    private readonly IRepository<Ingrediente> _ingredienteRepository;
 
-    public StockUsuarioService(IRepository<StockUsuario> repository)
+    public StockUsuarioService(
+        IRepository<StockUsuario> repository,
+        IRepository<Ingrediente> ingredienteRepository)
     {
         _repository = repository;
+        _ingredienteRepository = ingredienteRepository;
     }
 
     public async Task<IEnumerable<StockUsuarioResponseDto>> GetByUsuarioIdAsync(int usuarioId)
     {
-        var stock = await _repository.FindAsync(item => item.UsuarioId == usuarioId);
+        var stock = await _repository.FindWithIncludesAsync(
+            item => item.UsuarioId == usuarioId,
+            item => item.Ingrediente);
         return stock.Select(item => item.ToResponseDto());
     }
 
     public async Task<StockUsuarioResponseDto?> GetByIdAsync(int id)
     {
-        var stock = await _repository.GetByIdAsync(id);
-        return stock?.ToResponseDto();
+        var stock = await _repository.FindWithIncludesAsync(
+            item => item.Id == id,
+            item => item.Ingrediente);
+        return stock.FirstOrDefault()?.ToResponseDto();
     }
 
     public async Task<StockUsuarioResponseDto> CreateAsync(StockUsuarioCreateDto stock)
     {
         ValidateCantidad(stock.Cantidad);
 
-        if (await _repository.AnyAsync(existing =>
-                existing.UsuarioId == stock.UsuarioId && existing.IngredienteId == stock.IngredienteId))
-        {
-            throw new InvalidOperationException("El ingrediente ya existe en el stock del usuario.");
-        }
+        // Resolvemos el ingrediente: por id (si vino) o por nombre (lo busca o lo crea).
+        var ingredienteId = await ResolverIngredienteIdAsync(stock.IngredienteId, stock.NombreIngrediente);
 
         var stockExistente = await _repository.FirstOrDefaultAsync(existente =>
             existente.UsuarioId == stock.UsuarioId &&
-            existente.IngredienteId == stock.IngredienteId);
+            existente.IngredienteId == ingredienteId);
 
+        // Si el usuario ya tenía ese ingrediente, sumamos la cantidad en lugar de duplicar.
         if (stockExistente is not null)
         {
             stockExistente.Cantidad += stock.Cantidad;
@@ -52,15 +58,53 @@ public class StockUsuarioService : IStockUsuarioService
         var entity = new StockUsuario
         {
             UsuarioId = stock.UsuarioId,
-            IngredienteId = stock.IngredienteId,
+            IngredienteId = ingredienteId,
             Cantidad = stock.Cantidad,
             UnidadMedida = stock.UnidadMedida.Trim()
         };
 
         var created = await _repository.AddAsync(entity);
-        return created.ToResponseDto();
 
+        // Releemos con el ingrediente incluido para devolver el nombre en la respuesta.
+        return (await GetByIdAsync(created.Id))!;
+    }
 
+    private async Task<int> ResolverIngredienteIdAsync(int ingredienteId, string? nombreIngrediente)
+    {
+        // Caso A: vino un id explícito -> validamos que exista en el catálogo.
+        if (ingredienteId > 0)
+        {
+            var existente = await _ingredienteRepository.GetByIdAsync(ingredienteId);
+            if (existente is null)
+            {
+                throw new InvalidOperationException($"El ingrediente con id {ingredienteId} no existe en el catálogo.");
+            }
+
+            return ingredienteId;
+        }
+
+        // Caso B: vino un nombre -> lo buscamos o lo creamos.
+        if (!string.IsNullOrWhiteSpace(nombreIngrediente))
+        {
+            var nombre = nombreIngrediente.Trim();
+            var existentePorNombre = await _ingredienteRepository.FirstOrDefaultAsync(
+                ingrediente => ingrediente.Nombre == nombre);
+
+            if (existentePorNombre is not null)
+            {
+                return existentePorNombre.Id;
+            }
+
+            var creado = await _ingredienteRepository.AddAsync(new Ingrediente
+            {
+                Nombre = nombre,
+                Categoria = "Varios"
+            });
+
+            return creado.Id;
+        }
+
+        throw new InvalidOperationException("Debés indicar el ingrediente por id o por nombre.");
     }
 
     public async Task<bool> UpdateAsync(int id, StockUsuarioUpdateDto stock)

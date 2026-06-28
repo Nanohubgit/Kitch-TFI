@@ -7,7 +7,7 @@ namespace Kitch.Infrastructure.Services;
 
 public class GeminiClient : IGeminiClient
 {
-    private const string ModeloEndpoint = "v1beta/models/gemini-1.5-flash:generateContent";
+    private const string ModeloEndpoint = "v1beta/models/gemini-2.5-flash:generateContent";
 
     private readonly IHttpClientFactory _httpClientFactory;
 
@@ -16,7 +16,13 @@ public class GeminiClient : IGeminiClient
         _httpClientFactory = httpClientFactory;
     }
 
-    public async Task<string> GenerarRespuestaAsync(string prompt, string systemInstruction)
+    public Task<string> GenerarRespuestaAsync(string prompt, string systemInstruction) =>
+        EnviarAsync(prompt, systemInstruction, jsonMode: false);
+
+    public Task<string> GenerarRespuestaJsonAsync(string prompt, string systemInstruction) =>
+        EnviarAsync(prompt, systemInstruction, jsonMode: true);
+
+    private async Task<string> EnviarAsync(string prompt, string systemInstruction, bool jsonMode)
     {
         var client = _httpClientFactory.CreateClient("GeminiClient");
 
@@ -35,7 +41,12 @@ public class GeminiClient : IGeminiClient
                     Role = "user",
                     Parts = [new GeminiPart { Text = prompt }]
                 }
-            ]
+            ],
+            // En modo JSON le pedimos al modelo que devuelva únicamente JSON válido,
+            // así lo podemos deserializar sin parsear texto libre.
+            GenerationConfig = jsonMode
+                ? new GeminiGenerationConfig { ResponseMimeType = "application/json" }
+                : null
         };
 
         using var response = await client.PostAsJsonAsync(ModeloEndpoint, request);
@@ -62,6 +73,16 @@ public class GeminiClient : IGeminiClient
 
         [JsonPropertyName("contents")]
         public List<GeminiContent> Contents { get; set; } = [];
+
+        [JsonPropertyName("generationConfig")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public GeminiGenerationConfig? GenerationConfig { get; set; }
+    }
+
+    private sealed class GeminiGenerationConfig
+    {
+        [JsonPropertyName("responseMimeType")]
+        public string ResponseMimeType { get; set; } = string.Empty;
     }
 
     private sealed class GeminiContent

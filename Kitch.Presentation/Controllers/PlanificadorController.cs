@@ -1,5 +1,6 @@
 using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.Interfaces;
+using Kitch.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -25,6 +26,12 @@ public class PlanificadorController : ApiControllerBase
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
         }
 
+        // Solo podés ver tu propio planificador (salvo que seas Admin).
+        if (usuarioActualId != usuarioId && !User.IsInRole(RolUsuario.Admin))
+        {
+            return Forbid();
+        }
+
         var comidas = await _planificadorService.GetByUsuarioIdAsync(usuarioId);
         return Ok(comidas);
     }
@@ -37,6 +44,12 @@ public class PlanificadorController : ApiControllerBase
         if (!TryGetUsuarioId(out var usuarioActualId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        // Solo podés ver tu propio planificador (salvo que seas Admin).
+        if (usuarioActualId != usuarioId && !User.IsInRole(RolUsuario.Admin))
+        {
+            return Forbid();
         }
 
         var comidas = await _planificadorService.GetByFechaAsync(usuarioId, fecha);
@@ -71,6 +84,11 @@ public class PlanificadorController : ApiControllerBase
             var createdComida = await _planificadorService.CreateAsync(comida);
             return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
         }
+        catch (KeyNotFoundException ex)
+        {
+            // La receta indicada no existe.
+            return NotFound(ex.Message);
+        }
         catch (InvalidOperationException ex)
         {
             return Conflict(ex.Message);
@@ -80,14 +98,25 @@ public class PlanificadorController : ApiControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] ComidaPlanificadaUpdateDto comida)
     {
-        var updated = await _planificadorService.UpdateAsync(id, comida);
-
-        if (!updated)
+        try
         {
-            return NotFound();
-        }
+            var updated = await _planificadorService.UpdateAsync(id, comida);
 
-        return NoContent();
+            if (!updated)
+            {
+                return NotFound();
+            }
+
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(ex.Message);
+        }
     }
 
     [HttpDelete("{id:int}")]
