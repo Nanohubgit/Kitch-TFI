@@ -4,11 +4,16 @@ namespace Kitch.Application.DTOs.StockUsuarios;
 
 public class StockUsuarioCreateDto
 {
-    [Required]
+    // Lo setea el controller a partir del token; el cliente no lo manda.
     public int UsuarioId { get; set; }
 
-    [Required]
+    // Forma 1: si ya sabés el id del ingrediente del catálogo, lo pasás acá.
     public int IngredienteId { get; set; }
+
+    // Forma 2 (recomendada para el usuario): cargás por nombre y el sistema
+    // resuelve el ingrediente del catálogo o lo crea si no existe.
+    [MaxLength(100)]
+    public string? NombreIngrediente { get; set; }
 
     [Range(0, double.MaxValue)]
     public decimal Cantidad { get; set; }
@@ -29,6 +34,8 @@ public class StockUsuarioUpdateDto
 public class StockUsuarioResponseDto
 {
     public int Id { get; set; }
+    public int IngredienteId { get; set; }
+    public string NombreIngrediente { get; set; } = string.Empty;
     public decimal Cantidad { get; set; }
     public string UnidadMedida { get; set; } = string.Empty;
 }

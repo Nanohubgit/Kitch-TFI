@@ -84,6 +84,11 @@ public class PlanificadorController : ApiControllerBase
             var createdComida = await _planificadorService.CreateAsync(comida);
             return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
         }
+        catch (KeyNotFoundException ex)
+        {
+            // La receta indicada no existe.
+            return NotFound(ex.Message);
+        }
         catch (InvalidOperationException ex)
         {
             return Conflict(ex.Message);
@@ -93,14 +98,25 @@ public class PlanificadorController : ApiControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] ComidaPlanificadaUpdateDto comida)
     {
-        var updated = await _planificadorService.UpdateAsync(id, comida);
-
-        if (!updated)
+        try
         {
-            return NotFound();
-        }
+            var updated = await _planificadorService.UpdateAsync(id, comida);
 
-        return NoContent();
+            if (!updated)
+            {
+                return NotFound();
+            }
+
+            return NoContent();
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(ex.Message);
+        }
     }
 
     [HttpDelete("{id:int}")]

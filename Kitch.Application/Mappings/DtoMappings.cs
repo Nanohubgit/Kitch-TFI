@@ -53,6 +53,8 @@ public static class DtoMappings
     public static StockUsuarioResponseDto ToResponseDto(this StockUsuario stock) => new()
     {
         Id = stock.Id,
+        IngredienteId = stock.IngredienteId,
+        NombreIngrediente = stock.Ingrediente?.Nombre ?? string.Empty,
         Cantidad = stock.Cantidad,
         UnidadMedida = stock.UnidadMedida
     };
@@ -107,6 +109,7 @@ public static class DtoMappings
 
     public static IngredienteResponseDto ToResponseDto(this Ingrediente ingrediente) => new()
     {
+        Id = ingrediente.Id,
         Nombre = ingrediente.Nombre,
         Descripcion = ingrediente.Descripcion
     };

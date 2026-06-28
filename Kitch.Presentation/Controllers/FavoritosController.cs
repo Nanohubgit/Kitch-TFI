@@ -1,5 +1,6 @@
 using Kitch.Application.DTOs.Favoritos;
 using Kitch.Application.Interfaces;
+using Kitch.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -23,6 +24,12 @@ public class FavoritosController : ApiControllerBase
         if (!TryGetUsuarioId(out var usuarioActualId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        // Solo podés ver tus propios favoritos (salvo que seas Admin).
+        if (usuarioActualId != usuarioId && !User.IsInRole(RolUsuario.Admin))
+        {
+            return Forbid();
         }
 
         var favoritos = await _favoritoService.GetByUsuarioIdAsync(usuarioId);

@@ -65,7 +65,7 @@ public class StockUsuariosController : ApiControllerBase
             var createdStock = await _stockUsuarioService.CreateAsync(stock);
             return CreatedAtAction(nameof(GetById), new { id = createdStock.Id }, createdStock);
         }
-        catch (ArgumentException ex)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
             return BadRequest(ex.Message);
         }

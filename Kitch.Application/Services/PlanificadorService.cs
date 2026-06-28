@@ -9,10 +9,14 @@ namespace Kitch.Application.Services;
 public class PlanificadorService : IPlanificadorService
 {
     private readonly IRepository<ComidaPlanificada> _repository;
+    private readonly IRepository<Receta> _recetaRepository;
 
-    public PlanificadorService(IRepository<ComidaPlanificada> repository)
+    public PlanificadorService(
+        IRepository<ComidaPlanificada> repository,
+        IRepository<Receta> recetaRepository)
     {
         _repository = repository;
+        _recetaRepository = recetaRepository;
     }
 
     public async Task<IEnumerable<ComidaPlanificadaResponseDto>> GetByUsuarioIdAsync(int usuarioId)
@@ -42,6 +46,8 @@ public class PlanificadorService : IPlanificadorService
 
     public async Task<ComidaPlanificadaResponseDto> CreateAsync(ComidaPlanificadaCreateDto comida)
     {
+        await ValidarRecetaExisteAsync(comida.RecetaId);
+
         if (await ExisteConflictoAsync(comida.UsuarioId, comida.FechaAsignada, comida.Turno))
         {
             throw new InvalidOperationException("Ya existe una comida planificada para ese usuario, fecha y turno.");
@@ -67,6 +73,8 @@ public class PlanificadorService : IPlanificadorService
         {
             return false;
         }
+
+        await ValidarRecetaExisteAsync(comida.RecetaId);
 
         if (await _repository.AnyAsync(existing =>
                 existing.Id != id &&
@@ -99,6 +107,16 @@ public class PlanificadorService : IPlanificadorService
         await _repository.DeleteAsync(comida);
 
         return true;
+    }
+
+    private async Task ValidarRecetaExisteAsync(int recetaId)
+    {
+        var receta = await _recetaRepository.GetByIdAsync(recetaId);
+        if (receta is null)
+        {
+            throw new KeyNotFoundException(
+                $"La receta con id {recetaId} no existe. Generá y guardá una receta primero para obtener su id.");
+        }
     }
 
     private async Task<bool> ExisteConflictoAsync(int usuarioId, DateTime fecha, string turno)
