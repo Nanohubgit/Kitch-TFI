@@ -1,5 +1,6 @@
 using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.Interfaces;
+using Kitch.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -25,6 +26,12 @@ public class PlanificadorController : ApiControllerBase
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
         }
 
+        // Solo podés ver tu propio planificador (salvo que seas Admin).
+        if (usuarioActualId != usuarioId && !User.IsInRole(RolUsuario.Admin))
+        {
+            return Forbid();
+        }
+
         var comidas = await _planificadorService.GetByUsuarioIdAsync(usuarioId);
         return Ok(comidas);
     }
@@ -37,6 +44,12 @@ public class PlanificadorController : ApiControllerBase
         if (!TryGetUsuarioId(out var usuarioActualId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        // Solo podés ver tu propio planificador (salvo que seas Admin).
+        if (usuarioActualId != usuarioId && !User.IsInRole(RolUsuario.Admin))
+        {
+            return Forbid();
         }
 
         var comidas = await _planificadorService.GetByFechaAsync(usuarioId, fecha);
