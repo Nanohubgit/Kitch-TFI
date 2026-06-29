@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -7,7 +8,7 @@ namespace Kitch.Infrastructure.Services;
 
 public class GeminiClient : IGeminiClient
 {
-    private const string ModeloEndpoint = "v1beta/models/gemini-2.5-flash:generateContent";
+    private const string ModeloEndpoint = "v1beta/models/gemini-2.5-flash-lite:generateContent";
 
     private readonly IHttpClientFactory _httpClientFactory;
 
