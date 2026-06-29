@@ -38,6 +38,16 @@ public class PrevisualizarDescuentoStockRequestDto
     public int PorcionesCocinadas { get; set; }
 }
 
+// Confirma el descuento real del stock tras cocinar. El usuario sale del token, no del body.
+public class ConfirmarDescuentoStockRequestDto
+{
+    [Required]
+    public int RecetaId { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int PorcionesCocinadas { get; set; }
+}
+
 public class IngredienteDescuentoDto
 {
     public decimal CantidadDisponible { get; set; }

@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<IIngredienteService, IngredienteService>();
         services.AddScoped<IChatIaService, ChatIaService>();
         services.AddScoped<IRecetaIaService, RecetaIaService>();
+        services.AddScoped<IRecomendacionService, RecomendacionService>();
 
         return services;
     }
