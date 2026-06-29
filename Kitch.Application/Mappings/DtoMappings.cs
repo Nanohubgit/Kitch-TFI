@@ -62,6 +62,8 @@ public static class DtoMappings
 
     public static FavoritoResponseDto ToResponseDto(this RecetaFavorita favorito) => new()
     {
+        Id = favorito.Id,
+        RecetaId = favorito.RecetaId,
         UsuarioEmail = favorito.Usuario?.Email ?? string.Empty,
         RecetaTitulo = favorito.Receta?.Titulo ?? string.Empty
     };
