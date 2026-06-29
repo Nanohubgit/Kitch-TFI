@@ -69,21 +69,44 @@ public class GeminiClient : IGeminiClient
                 : null
         };
 
-        using var response = await client.PostAsJsonAsync(ModeloEndpoint, request);
-        response.EnsureSuccessStatusCode();
+        // Gemini puede responder 503 (modelo sobrecargado) o 429 (límite de uso) de forma
+        // transitoria. Reintentamos unas pocas veces con espera creciente antes de fallar.
+        const int maxIntentos = 3;
 
-        var resultado = await response.Content.ReadFromJsonAsync<GeminiResponse>();
+        for (var intento = 1; ; intento++)
+        {
+            using var response = await client.PostAsJsonAsync(ModeloEndpoint, request);
 
-        // Extraemos el texto limpio de la primera candidata devuelta por el modelo.
-        var textoLimpio = resultado?
-            .Candidates?
-            .FirstOrDefault()?
-            .Content?
-            .Parts?
-            .FirstOrDefault()?
-            .Text;
+            if (response.IsSuccessStatusCode)
+            {
+                var resultado = await response.Content.ReadFromJsonAsync<GeminiResponse>();
 
-        return textoLimpio ?? string.Empty;
+                // Extraemos el texto limpio de la primera candidata devuelta por el modelo.
+                var textoLimpio = resultado?
+                    .Candidates?
+                    .FirstOrDefault()?
+                    .Content?
+                    .Parts?
+                    .FirstOrDefault()?
+                    .Text;
+
+                return textoLimpio ?? string.Empty;
+            }
+
+            var esTransitorio = response.StatusCode == HttpStatusCode.ServiceUnavailable ||
+                response.StatusCode == HttpStatusCode.TooManyRequests;
+
+            // Si todavía quedan intentos y el error es transitorio, esperamos y reintentamos.
+            if (esTransitorio && intento < maxIntentos)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(700 * intento));
+                continue;
+            }
+
+            // Sin más reintentos (o error no transitorio): lanzamos con el código de estado
+            // para que la capa de aplicación devuelva un mensaje claro al usuario.
+            response.EnsureSuccessStatusCode();
+        }
     }
 
     private sealed class GeminiRequest

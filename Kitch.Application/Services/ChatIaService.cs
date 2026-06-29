@@ -148,6 +148,15 @@ public class ChatIaService : IChatIaService
                     "(se alcanzó el límite de uso de la API de IA). Esperá unos segundos y volvé a intentar."
             };
         }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = "El asistente de IA está sobrecargado en este momento (problema temporal del proveedor). " +
+                    "Esperá unos segundos y volvé a intentar."
+            };
+        }
         catch (HttpRequestException)
         {
             return new ChatRespuestaDto
