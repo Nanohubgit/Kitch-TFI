@@ -17,31 +17,50 @@ public class GeminiClient : IGeminiClient
     }
 
     public Task<string> GenerarRespuestaAsync(string prompt, string systemInstruction) =>
-        EnviarAsync(prompt, systemInstruction, jsonMode: false);
+        EnviarAsync(
+            [new GeminiContent { Role = "user", Parts = [new GeminiPart { Text = prompt }] }],
+            systemInstruction,
+            jsonMode: false);
 
     public Task<string> GenerarRespuestaJsonAsync(string prompt, string systemInstruction) =>
-        EnviarAsync(prompt, systemInstruction, jsonMode: true);
+        EnviarAsync(
+            [new GeminiContent { Role = "user", Parts = [new GeminiPart { Text = prompt }] }],
+            systemInstruction,
+            jsonMode: true);
 
-    private async Task<string> EnviarAsync(string prompt, string systemInstruction, bool jsonMode)
+    public Task<string> GenerarRespuestaConversacionAsync(
+        IEnumerable<MensajeIa> mensajes,
+        string systemInstruction,
+        bool jsonMode = false)
+    {
+        // Mapeamos cada turno del historial al formato nativo de Gemini.
+        // La API solo acepta los roles "user" y "model".
+        var contents = mensajes
+            .Select(mensaje => new GeminiContent
+            {
+                Role = string.Equals(mensaje.Rol, "model", StringComparison.OrdinalIgnoreCase)
+                    ? "model"
+                    : "user",
+                Parts = [new GeminiPart { Text = mensaje.Texto }]
+            })
+            .ToList();
+
+        return EnviarAsync(contents, systemInstruction, jsonMode);
+    }
+
+    private async Task<string> EnviarAsync(List<GeminiContent> contents, string systemInstruction, bool jsonMode)
     {
         var client = _httpClientFactory.CreateClient("GeminiClient");
 
         // Armamos el body con el formato nativo que exige la API de Google:
-        // system_instruction para el contexto base y contents para el mensaje del usuario.
+        // system_instruction para el contexto base y contents para la conversación.
         var request = new GeminiRequest
         {
             SystemInstruction = new GeminiContent
             {
                 Parts = [new GeminiPart { Text = systemInstruction }]
             },
-            Contents =
-            [
-                new GeminiContent
-                {
-                    Role = "user",
-                    Parts = [new GeminiPart { Text = prompt }]
-                }
-            ],
+            Contents = contents,
             // En modo JSON le pedimos al modelo que devuelva únicamente JSON válido,
             // así lo podemos deserializar sin parsear texto libre.
             GenerationConfig = jsonMode
