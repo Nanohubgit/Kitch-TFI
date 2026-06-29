@@ -1,6 +1,5 @@
 using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,38 +17,26 @@ public class PlanificadorController : ApiControllerBase
         _planificadorService = planificadorService;
     }
 
-    [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetByUsuarioId(int usuarioId)
+    // Tu propio planificador. El usuario sale del token; no se pasa id ni email por la URL.
+    [HttpGet("mias")]
+    public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetMias()
     {
-        if (!TryGetUsuarioId(out var usuarioActualId))
+        if (!TryGetUsuarioId(out var usuarioId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
-        // Solo podés ver tu propio planificador (salvo que seas Admin).
-        if (usuarioActualId != usuarioId && !User.IsInRole(RolUsuario.Admin))
-        {
-            return Forbid();
         }
 
         var comidas = await _planificadorService.GetByUsuarioIdAsync(usuarioId);
         return Ok(comidas);
     }
 
-    [HttpGet("usuario/{usuarioId:int}/fecha")]
-    public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetByFecha(
-        int usuarioId,
+    [HttpGet("mias/fecha")]
+    public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetMiasPorFecha(
         [FromQuery] DateTime fecha)
     {
-        if (!TryGetUsuarioId(out var usuarioActualId))
+        if (!TryGetUsuarioId(out var usuarioId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
-        // Solo podés ver tu propio planificador (salvo que seas Admin).
-        if (usuarioActualId != usuarioId && !User.IsInRole(RolUsuario.Admin))
-        {
-            return Forbid();
         }
 
         var comidas = await _planificadorService.GetByFechaAsync(usuarioId, fecha);
@@ -59,7 +46,12 @@ public class PlanificadorController : ApiControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ComidaPlanificadaResponseDto>> GetById(int id)
     {
-        var comida = await _planificadorService.GetByIdAsync(id);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var comida = await _planificadorService.GetByIdAsync(id, usuarioId);
 
         if (comida is null)
         {
@@ -98,9 +90,14 @@ public class PlanificadorController : ApiControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] ComidaPlanificadaUpdateDto comida)
     {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
         try
         {
-            var updated = await _planificadorService.UpdateAsync(id, comida);
+            var updated = await _planificadorService.UpdateAsync(id, comida, usuarioId);
 
             if (!updated)
             {
@@ -122,7 +119,12 @@ public class PlanificadorController : ApiControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _planificadorService.DeleteAsync(id);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var deleted = await _planificadorService.DeleteAsync(id, usuarioId);
 
         if (!deleted)
         {

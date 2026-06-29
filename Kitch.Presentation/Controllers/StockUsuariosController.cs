@@ -1,7 +1,5 @@
 using Kitch.Application.DTOs.StockUsuarios;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Constants;
-using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -19,18 +17,13 @@ public class StockUsuariosController : ApiControllerBase
         _stockUsuarioService = stockUsuarioService;
     }
 
-    [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<StockUsuarioResponseDto>>> GetByUsuarioId(int usuarioId)
+    // Tu propia alacena. El usuario sale del token; no se pasa id ni email por la URL.
+    [HttpGet("mias")]
+    public async Task<ActionResult<IEnumerable<StockUsuarioResponseDto>>> GetMias()
     {
-        if (!TryGetUsuarioId(out var usuarioActualId))
+        if (!TryGetUsuarioId(out var usuarioId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
-        // Solo podés ver tu propio stock (salvo que seas Admin).
-        if (usuarioActualId != usuarioId && !User.IsInRole(RolUsuario.Admin))
-        {
-            return Forbid();
         }
 
         var stock = await _stockUsuarioService.GetByUsuarioIdAsync(usuarioId);
@@ -40,7 +33,12 @@ public class StockUsuariosController : ApiControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<StockUsuarioResponseDto>> GetById(int id)
     {
-        var stock = await _stockUsuarioService.GetByIdAsync(id);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var stock = await _stockUsuarioService.GetByIdAsync(id, usuarioId);
 
         if (stock is null)
         {
@@ -74,7 +72,12 @@ public class StockUsuariosController : ApiControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] StockUsuarioUpdateDto stock)
     {
-        var updated = await _stockUsuarioService.UpdateAsync(id, stock);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var updated = await _stockUsuarioService.UpdateAsync(id, stock, usuarioId);
 
         if (!updated)
         {
@@ -87,7 +90,12 @@ public class StockUsuariosController : ApiControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _stockUsuarioService.DeleteAsync(id);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var deleted = await _stockUsuarioService.DeleteAsync(id, usuarioId);
 
         if (!deleted)
         {
