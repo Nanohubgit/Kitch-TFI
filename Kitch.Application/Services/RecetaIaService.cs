@@ -184,6 +184,27 @@ public class RecetaIaService : IRecetaIaService
         };
     }
 
+    public async Task AsegurarIngredientesEnCatalogoAsync(RecetaGeneradaDto receta)
+    {
+        if (receta is null)
+        {
+            return;
+        }
+
+        var nombresProcesados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var ingrediente in receta.Ingredientes)
+        {
+            var nombre = ingrediente.Nombre?.Trim();
+            if (string.IsNullOrWhiteSpace(nombre) || !nombresProcesados.Add(nombre))
+            {
+                continue;
+            }
+
+            await ObtenerOCrearIngredienteAsync(nombre);
+        }
+    }
+
     private async Task<int> ObtenerOCrearIngredienteAsync(string nombre)
     {
         // SQL Server compara strings sin distinguir mayúsculas por defecto, así que
