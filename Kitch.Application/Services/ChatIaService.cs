@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -130,7 +132,31 @@ public class ChatIaService : IChatIaService
         var mensajes = ConstruirConversacion(contexto, request);
 
         // 3. Le pedimos al modelo el sobre JSON con la acción a ejecutar.
-        var json = await _geminiClient.GenerarRespuestaConversacionAsync(mensajes, systemInstruction, jsonMode: true);
+        //    Si la API de IA falla (típico: 429 por límite de uso de la cuota), devolvemos
+        //    un mensaje claro en vez de un 500 "error desconocido".
+        string json;
+        try
+        {
+            json = await _geminiClient.GenerarRespuestaConversacionAsync(mensajes, systemInstruction, jsonMode: true);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = "El asistente está recibiendo demasiadas consultas en este momento " +
+                    "(se alcanzó el límite de uso de la API de IA). Esperá unos segundos y volvé a intentar."
+            };
+        }
+        catch (HttpRequestException)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = "No pude conectarme con el asistente de IA en este momento. Probá de nuevo en unos instantes."
+            };
+        }
+
         var sobre = DeserializarSobre(json);
 
         if (sobre is null)
@@ -180,8 +206,17 @@ public class ChatIaService : IChatIaService
         // aunque el cliente no la reenvíe.
         UltimaRecetaPorUsuario[usuarioId] = receta;
 
-        // Damos de alta automáticamente en el catálogo los ingredientes usados.
-        await _recetaIaService.AsegurarIngredientesEnCatalogoAsync(receta);
+        // Damos de alta en el catálogo los ingredientes usados, pero "best-effort":
+        // generar es un borrador, no debe romperse si el alta de catálogo falla. El catálogo
+        // se completa igual cuando el usuario guarda la receta (ahí sí se persiste todo).
+        try
+        {
+            await _recetaIaService.AsegurarIngredientesEnCatalogoAsync(receta);
+        }
+        catch
+        {
+            // Ignoramos el error a propósito: el borrador igual se devuelve.
+        }
 
         return new ChatRespuestaDto
         {
