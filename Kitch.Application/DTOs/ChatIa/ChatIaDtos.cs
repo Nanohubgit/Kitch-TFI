@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.DTOs.Recomendacion;
 using Kitch.Application.DTOs.RecetaIa;
 using Kitch.Application.DTOs.Sustituciones;
@@ -40,6 +41,7 @@ public static class ChatAccion
     public const string Sustituir = "sustituir";
     public const string Recomendar = "recomendar";
     public const string EliminarReceta = "eliminar_receta";
+    public const string PlanificarReceta = "planificar_receta";
 }
 
 // Respuesta unificada del chat. Según la acción se completan distintos campos,
@@ -69,4 +71,11 @@ public class ChatRespuestaDto
 
     // Cantidad de recetas borradas (acción eliminar_receta).
     public int? RecetasEliminadas { get; set; }
+
+    // Comida que quedó planificada (acción planificar_receta).
+    public ComidaPlanificadaResponseDto? ComidaPlanificada { get; set; }
+
+    // Ingredientes que se agregaron automáticamente a la lista de compras al planificar
+    // (lo que le faltaba al usuario para esa receta).
+    public List<string>? IngredientesAgregadosALista { get; set; }
 }

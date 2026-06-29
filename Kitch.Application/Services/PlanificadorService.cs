@@ -65,6 +65,12 @@ public class PlanificadorService : IPlanificadorService
 
     public async Task<ComidaPlanificadaResponseDto> CreateAsync(ComidaPlanificadaCreateDto comida)
     {
+        var resultado = await PlanificarAsync(comida);
+        return resultado.Comida;
+    }
+
+    public async Task<PlanificacionResultadoDto> PlanificarAsync(ComidaPlanificadaCreateDto comida)
+    {
         await ValidarRecetaExisteAsync(comida.RecetaId);
 
         if (await ExisteConflictoAsync(comida.UsuarioId, comida.FechaAsignada, comida.Turno))
@@ -84,22 +90,28 @@ public class PlanificadorService : IPlanificadorService
 
         // Al planificar la receta, sumamos a la lista de compras lo que falta para prepararla
         // (lo que pide la receta menos lo que el usuario ya tiene en su alacena).
-        await AgregarFaltantesAListaCompraAsync(comida.UsuarioId, comida.RecetaId);
+        var agregados = await AgregarFaltantesAListaCompraAsync(comida.UsuarioId, comida.RecetaId);
 
-        return created.ToResponseDto();
+        return new PlanificacionResultadoDto
+        {
+            Comida = created.ToResponseDto(),
+            IngredientesAgregadosALista = agregados
+        };
     }
 
     // Calcula los ingredientes faltantes para una receta y los persiste en la lista de
     // compras del usuario. Si un ingrediente ya estaba en la lista, suma la cantidad
     // faltante en lugar de duplicar el ítem.
-    private async Task AgregarFaltantesAListaCompraAsync(int usuarioId, int recetaId)
+    private async Task<List<string>> AgregarFaltantesAListaCompraAsync(int usuarioId, int recetaId)
     {
+        var agregados = new List<string>();
+
         var ingredientesReceta = await _ingredienteRecetaRepository.FindAsync(
             ingrediente => ingrediente.RecetaId == recetaId);
 
         if (ingredientesReceta.Count == 0)
         {
-            return;
+            return agregados;
         }
 
         var stock = await _stockRepository.FindAsync(item => item.UsuarioId == usuarioId);
@@ -120,7 +132,7 @@ public class PlanificadorService : IPlanificadorService
 
         if (faltantes.Count == 0)
         {
-            return;
+            return agregados;
         }
 
         // Nombres reales de los ingredientes faltantes.
@@ -158,7 +170,11 @@ public class PlanificadorService : IPlanificadorService
                     EstaComprado = false
                 });
             }
+
+            agregados.Add(nombre);
         }
+
+        return agregados;
     }
 
     public async Task<bool> UpdateAsync(int id, ComidaPlanificadaUpdateDto comida, int usuarioId)
