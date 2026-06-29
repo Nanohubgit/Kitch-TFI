@@ -108,7 +108,7 @@ public class UsuarioService : IUsuarioService
         return true;
     }
 
-    public async Task<bool> CambiarRolAsync(int usuarioId, string nuevoRol)
+    public async Task<bool> CambiarRolAsync(int usuarioId, string nuevoRol, int adminEjecutorId)
     {
         var rol = nuevoRol?.Trim() ?? string.Empty;
 
@@ -125,13 +125,27 @@ public class UsuarioService : IUsuarioService
             return false;
         }
 
+        // El admin no puede degradarse a sí mismo: evita quedar afuera por accidente.
+        if (usuarioId == adminEjecutorId && rol != RolUsuario.Admin)
+        {
+            throw new InvalidOperationException("No podés cambiar tu propio rol de administrador.");
+        }
+
+        // Si se está degradando a un admin, exigimos que quede al menos otro admin activo.
+        if (usuario.Rol == RolUsuario.Admin && rol != RolUsuario.Admin &&
+            !await ExisteOtroAdminActivoAsync(usuarioId))
+        {
+            throw new InvalidOperationException(
+                "No se puede degradar al último administrador activo del sistema.");
+        }
+
         usuario.Rol = rol;
         await _repository.UpdateAsync(usuario);
 
         return true;
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public async Task<bool> DeleteAsync(int id, int adminEjecutorId)
     {
         var usuario = await _repository.GetByIdAsync(id);
 
@@ -140,8 +154,26 @@ public class UsuarioService : IUsuarioService
             return false;
         }
 
+        // Un admin no puede borrarse a sí mismo: evita el auto-lockout.
+        if (id == adminEjecutorId)
+        {
+            throw new InvalidOperationException("No podés eliminar tu propia cuenta de administrador.");
+        }
+
+        // No se permite borrar al último admin activo: el sistema siempre debe tener administrador.
+        if (usuario.Rol == RolUsuario.Admin && !await ExisteOtroAdminActivoAsync(id))
+        {
+            throw new InvalidOperationException(
+                "No se puede eliminar al último administrador activo del sistema.");
+        }
+
         await _repository.DeleteAsync(usuario);
 
         return true;
     }
+
+    // Hay otro admin activo además del indicado por excluirUsuarioId.
+    private async Task<bool> ExisteOtroAdminActivoAsync(int excluirUsuarioId) =>
+        await _repository.AnyAsync(u =>
+            u.Id != excluirUsuarioId && u.Rol == RolUsuario.Admin && u.Activo);
 }
