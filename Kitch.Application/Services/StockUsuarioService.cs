@@ -27,10 +27,11 @@ public class StockUsuarioService : IStockUsuarioService
         return stock.Select(item => item.ToResponseDto());
     }
 
-    public async Task<StockUsuarioResponseDto?> GetByIdAsync(int id)
+    public async Task<StockUsuarioResponseDto?> GetByIdAsync(int id, int usuarioId)
     {
+        // Solo traemos el ítem si es del usuario; si es de otro, devolvemos null (como inexistente).
         var stock = await _repository.FindWithIncludesAsync(
-            item => item.Id == id,
+            item => item.Id == id && item.UsuarioId == usuarioId,
             item => item.Ingrediente);
         return stock.FirstOrDefault()?.ToResponseDto();
     }
@@ -67,7 +68,7 @@ public class StockUsuarioService : IStockUsuarioService
         var created = await _repository.AddAsync(entity);
 
         // Releemos con el ingrediente incluido para devolver el nombre en la respuesta.
-        return (await GetByIdAsync(created.Id))!;
+        return (await GetByIdAsync(created.Id, stock.UsuarioId))!;
     }
 
     private async Task<int> ResolverIngredienteIdAsync(int ingredienteId, string? nombreIngrediente)
@@ -108,13 +109,14 @@ public class StockUsuarioService : IStockUsuarioService
         throw new InvalidOperationException("Debés indicar el ingrediente por id o por nombre.");
     }
 
-    public async Task<bool> UpdateAsync(int id, StockUsuarioUpdateDto stock)
+    public async Task<bool> UpdateAsync(int id, StockUsuarioUpdateDto stock, int usuarioId)
     {
         ValidateCantidad(stock.Cantidad);
 
         var existingStock = await _repository.GetByIdAsync(id);
 
-        if (existingStock is null)
+        // Solo podés editar tu propia alacena.
+        if (existingStock is null || existingStock.UsuarioId != usuarioId)
         {
             return false;
         }
@@ -127,11 +129,12 @@ public class StockUsuarioService : IStockUsuarioService
         return true;
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public async Task<bool> DeleteAsync(int id, int usuarioId)
     {
         var stock = await _repository.GetByIdAsync(id);
 
-        if (stock is null)
+        // Solo podés borrar de tu propia alacena.
+        if (stock is null || stock.UsuarioId != usuarioId)
         {
             return false;
         }

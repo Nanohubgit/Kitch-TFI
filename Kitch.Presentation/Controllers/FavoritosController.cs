@@ -1,6 +1,5 @@
 using Kitch.Application.DTOs.Favoritos;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,18 +17,13 @@ public class FavoritosController : ApiControllerBase
         _favoritoService = favoritoService;
     }
 
-    [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<FavoritoResponseDto>>> GetByUsuarioId(int usuarioId)
+    // Tus propios favoritos. El usuario sale del token; no se pasa id ni email por la URL.
+    [HttpGet("mias")]
+    public async Task<ActionResult<IEnumerable<FavoritoResponseDto>>> GetMias()
     {
-        if (!TryGetUsuarioId(out var usuarioActualId))
+        if (!TryGetUsuarioId(out var usuarioId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
-        // Solo podés ver tus propios favoritos (salvo que seas Admin).
-        if (usuarioActualId != usuarioId && !User.IsInRole(RolUsuario.Admin))
-        {
-            return Forbid();
         }
 
         var favoritos = await _favoritoService.GetByUsuarioIdAsync(usuarioId);
@@ -39,7 +33,12 @@ public class FavoritosController : ApiControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<FavoritoResponseDto>> GetById(int id)
     {
-        var favorito = await _favoritoService.GetByIdAsync(id);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var favorito = await _favoritoService.GetByIdAsync(id, usuarioId);
 
         if (favorito is null)
         {
@@ -63,6 +62,14 @@ public class FavoritosController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<FavoritoResponseDto>> AddFavorito([FromBody] FavoritoCreateDto favorito)
     {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        // El dueño del favorito sale del token, no del body: nadie puede agregar favoritos a otro.
+        favorito.UsuarioId = usuarioId;
+
         try
         {
             var createdFavorito = await _favoritoService.AddFavoritoAsync(favorito);
@@ -77,7 +84,12 @@ public class FavoritosController : ApiControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _favoritoService.DeleteAsync(id);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var deleted = await _favoritoService.DeleteAsync(id, usuarioId);
 
         if (!deleted)
         {

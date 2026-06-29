@@ -25,10 +25,10 @@ public class FavoritoService : IFavoritoService
         return favoritos.Select(favorito => favorito.ToResponseDto());
     }
 
-    public async Task<FavoritoResponseDto?> GetByIdAsync(int id)
+    public async Task<FavoritoResponseDto?> GetByIdAsync(int id, int usuarioId)
     {
         var favoritos = await _repository.FindWithIncludesAsync(
-            favorito => favorito.Id == id,
+            favorito => favorito.Id == id && favorito.UsuarioId == usuarioId,
             favorito => favorito.Usuario,
             favorito => favorito.Receta);
 
@@ -75,11 +75,12 @@ public class FavoritoService : IFavoritoService
         return true;
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public async Task<bool> DeleteAsync(int id, int usuarioId)
     {
         var favorito = await _repository.GetByIdAsync(id);
 
-        if (favorito is null)
+        // Solo podés borrar tus propios favoritos.
+        if (favorito is null || favorito.UsuarioId != usuarioId)
         {
             return false;
         }

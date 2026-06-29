@@ -17,10 +17,11 @@ public class ListaCompraController : ApiControllerBase
         _listaCompraService = listaCompraService;
     }
 
-    [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<ItemListaCompraResponseDto>>> GetByUsuarioId(int usuarioId)
+    // Tu propia lista de compras. El usuario sale del token; no se pasa id ni email por la URL.
+    [HttpGet("mias")]
+    public async Task<ActionResult<IEnumerable<ItemListaCompraResponseDto>>> GetMias()
     {
-        if (!TryGetUsuarioId(out var usuarioActualId))
+        if (!TryGetUsuarioId(out var usuarioId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
         }
@@ -44,7 +45,12 @@ public class ListaCompraController : ApiControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ItemListaCompraResponseDto>> GetById(int id)
     {
-        var item = await _listaCompraService.GetByIdAsync(id);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var item = await _listaCompraService.GetByIdAsync(id, usuarioId);
 
         if (item is null)
         {
@@ -71,7 +77,12 @@ public class ListaCompraController : ApiControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] ItemListaCompraUpdateDto item)
     {
-        var updated = await _listaCompraService.UpdateAsync(id, item);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var updated = await _listaCompraService.UpdateAsync(id, item, usuarioId);
 
         if (!updated)
         {
@@ -84,7 +95,12 @@ public class ListaCompraController : ApiControllerBase
     [HttpPatch("{id:int}/comprado")]
     public async Task<IActionResult> MarcarComoComprado(int id)
     {
-        var updated = await _listaCompraService.MarcarComoCompradoAsync(id);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var updated = await _listaCompraService.MarcarComoCompradoAsync(id, usuarioId);
 
         if (!updated)
         {
@@ -97,7 +113,12 @@ public class ListaCompraController : ApiControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _listaCompraService.DeleteAsync(id);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var deleted = await _listaCompraService.DeleteAsync(id, usuarioId);
 
         if (!deleted)
         {

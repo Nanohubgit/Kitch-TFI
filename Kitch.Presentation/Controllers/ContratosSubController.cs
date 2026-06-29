@@ -9,7 +9,7 @@ namespace Kitch.Presentation.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class ContratosSubController : ControllerBase
+public class ContratosSubController : ApiControllerBase
 {
     private readonly IContratoSubService _contratoSubService;
 
@@ -25,9 +25,15 @@ public class ContratosSubController : ControllerBase
         return Ok(contratos);
     }
 
-    [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<ContratoSubResponseDto>>> GetByUsuarioId(int usuarioId)
+    // Tus propios contratos. El usuario sale del token; no se pasa id ni email por la URL.
+    [HttpGet("mios")]
+    public async Task<ActionResult<IEnumerable<ContratoSubResponseDto>>> GetMios()
     {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
         var contratos = await _contratoSubService.GetByUsuarioIdAsync(usuarioId);
         return Ok(contratos);
     }
