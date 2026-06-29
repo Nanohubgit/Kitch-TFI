@@ -56,7 +56,8 @@ public static class DtoMappings
         IngredienteId = stock.IngredienteId,
         NombreIngrediente = stock.Ingrediente?.Nombre ?? string.Empty,
         Cantidad = stock.Cantidad,
-        UnidadMedida = stock.UnidadMedida
+        UnidadMedida = stock.UnidadMedida,
+        FechaCaducidad = stock.FechaCaducidad
     };
 
     public static FavoritoResponseDto ToResponseDto(this RecetaFavorita favorito) => new()

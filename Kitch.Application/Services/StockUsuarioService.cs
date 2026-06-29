@@ -60,7 +60,8 @@ public class StockUsuarioService : IStockUsuarioService
             UsuarioId = stock.UsuarioId,
             IngredienteId = ingredienteId,
             Cantidad = stock.Cantidad,
-            UnidadMedida = stock.UnidadMedida.Trim()
+            UnidadMedida = stock.UnidadMedida.Trim(),
+            FechaCaducidad = stock.FechaCaducidad
         };
 
         var created = await _repository.AddAsync(entity);
