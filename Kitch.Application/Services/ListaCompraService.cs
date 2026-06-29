@@ -34,10 +34,17 @@ public class ListaCompraService : IListaCompraService
         return items.Select(item => item.ToResponseDto());
     }
 
-    public async Task<ItemListaCompraResponseDto?> GetByIdAsync(int id)
+    public async Task<ItemListaCompraResponseDto?> GetByIdAsync(int id, int usuarioId)
     {
         var item = await _itemRepository.GetByIdAsync(id);
-        return item?.ToResponseDto();
+
+        // Si el ítem no es tuyo, lo tratamos como inexistente (no revelamos que existe).
+        if (item is null || item.UsuarioId != usuarioId)
+        {
+            return null;
+        }
+
+        return item.ToResponseDto();
     }
 
     public async Task<ItemListaCompraResponseDto> CreateAsync(ItemListaCompraCreateDto item)
@@ -54,11 +61,12 @@ public class ListaCompraService : IListaCompraService
         return created.ToResponseDto();
     }
 
-    public async Task<bool> UpdateAsync(int id, ItemListaCompraUpdateDto item)
+    public async Task<bool> UpdateAsync(int id, ItemListaCompraUpdateDto item, int usuarioId)
     {
         var existingItem = await _itemRepository.GetByIdAsync(id);
 
-        if (existingItem is null)
+        // Solo podés editar tus propios ítems.
+        if (existingItem is null || existingItem.UsuarioId != usuarioId)
         {
             return false;
         }
@@ -72,11 +80,12 @@ public class ListaCompraService : IListaCompraService
         return true;
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public async Task<bool> DeleteAsync(int id, int usuarioId)
     {
         var item = await _itemRepository.GetByIdAsync(id);
 
-        if (item is null)
+        // Solo podés borrar tus propios ítems.
+        if (item is null || item.UsuarioId != usuarioId)
         {
             return false;
         }
@@ -86,11 +95,12 @@ public class ListaCompraService : IListaCompraService
         return true;
     }
 
-    public async Task<bool> MarcarComoCompradoAsync(int id)
+    public async Task<bool> MarcarComoCompradoAsync(int id, int usuarioId)
     {
         var item = await _itemRepository.GetByIdAsync(id);
 
-        if (item is null)
+        // Solo podés marcar como comprado tus propios ítems.
+        if (item is null || item.UsuarioId != usuarioId)
         {
             return false;
         }
@@ -126,7 +136,7 @@ public class ListaCompraService : IListaCompraService
         }
 
         // 5. Armo la lista final con el nombre real de cada ingrediente
-         
+
         var listaDeCompra = await ArmarListaDeCompraAsync(usuarioId, cantidadesFaltantes);
         var listaDeCompraDto = listaDeCompra.Select(item => item.ToResponseDto()).ToList();
         return listaDeCompraDto;

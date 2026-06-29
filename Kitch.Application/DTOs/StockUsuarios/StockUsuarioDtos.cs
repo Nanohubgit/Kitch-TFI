@@ -20,6 +20,9 @@ public class StockUsuarioCreateDto
 
     [Required, MaxLength(50)]
     public string UnidadMedida { get; set; } = string.Empty;
+
+    // Opcional: fecha de caducidad estimada del ingrediente.
+    public DateTime? FechaCaducidad { get; set; }
 }
 
 public class StockUsuarioUpdateDto
@@ -38,4 +41,5 @@ public class StockUsuarioResponseDto
     public string NombreIngrediente { get; set; } = string.Empty;
     public decimal Cantidad { get; set; }
     public string UnidadMedida { get; set; } = string.Empty;
+    public DateTime? FechaCaducidad { get; set; }
 }

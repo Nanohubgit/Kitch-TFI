@@ -56,11 +56,14 @@ public static class DtoMappings
         IngredienteId = stock.IngredienteId,
         NombreIngrediente = stock.Ingrediente?.Nombre ?? string.Empty,
         Cantidad = stock.Cantidad,
-        UnidadMedida = stock.UnidadMedida
+        UnidadMedida = stock.UnidadMedida,
+        FechaCaducidad = stock.FechaCaducidad
     };
 
     public static FavoritoResponseDto ToResponseDto(this RecetaFavorita favorito) => new()
     {
+        Id = favorito.Id,
+        RecetaId = favorito.RecetaId,
         UsuarioEmail = favorito.Usuario?.Email ?? string.Empty,
         RecetaTitulo = favorito.Receta?.Titulo ?? string.Empty
     };

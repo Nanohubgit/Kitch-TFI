@@ -8,7 +8,7 @@ namespace Kitch.Presentation.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class PagosController : ControllerBase
+public class PagosController : ApiControllerBase
 {
     private readonly IPagoService _pagoService;
 
@@ -24,9 +24,15 @@ public class PagosController : ControllerBase
         return Ok(pagos);
     }
 
-    [HttpGet("usuario/{usuarioId:int}")]
-    public async Task<ActionResult<IEnumerable<PagoResponseDto>>> GetByUsuarioId(int usuarioId)
+    // Tus propios pagos. El usuario sale del token; no se pasa id ni email por la URL.
+    [HttpGet("mios")]
+    public async Task<ActionResult<IEnumerable<PagoResponseDto>>> GetMios()
     {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+        }
+
         var pagos = await _pagoService.GetByUsuarioIdAsync(usuarioId);
         return Ok(pagos);
     }
