@@ -39,6 +39,7 @@ public static class ChatAccion
     public const string GuardarReceta = "guardar_receta";
     public const string Sustituir = "sustituir";
     public const string Recomendar = "recomendar";
+    public const string EliminarReceta = "eliminar_receta";
 }
 
 // Respuesta unificada del chat. Según la acción se completan distintos campos,
@@ -65,4 +66,7 @@ public class ChatRespuestaDto
 
     // Recetas recomendadas según la alacena (acción recomendar).
     public List<RecetaCompatibleDto>? Recomendaciones { get; set; }
+
+    // Cantidad de recetas borradas (acción eliminar_receta).
+    public int? RecetasEliminadas { get; set; }
 }

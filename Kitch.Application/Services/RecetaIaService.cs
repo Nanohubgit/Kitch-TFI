@@ -95,7 +95,9 @@ public class RecetaIaService : IRecetaIaService
             throw new InvalidOperationException("No se recibió la receta a guardar.");
         }
 
-        var titulo = receta.Titulo?.Trim() ?? string.Empty;
+        // Si el usuario no aclaró un nombre (o quedó el placeholder "string"), generamos uno
+        // descriptivo a partir de los ingredientes para no guardar recetas con título basura.
+        var titulo = GenerarTituloPorDefecto(receta.Titulo, receta.Ingredientes);
 
         // Reglas de negocio: toda receta necesita al menos un ingrediente y un paso.
         var ingredientesValidos = receta.Ingredientes
@@ -104,11 +106,6 @@ public class RecetaIaService : IRecetaIaService
         var pasosValidos = receta.Pasos
             .Where(paso => !string.IsNullOrWhiteSpace(paso))
             .ToList();
-
-        if (string.IsNullOrWhiteSpace(titulo))
-        {
-            throw new InvalidOperationException("La receta debe tener un título.");
-        }
 
         if (ingredientesValidos.Count == 0)
         {
@@ -224,6 +221,28 @@ public class RecetaIaService : IRecetaIaService
         });
 
         return creado.Id;
+    }
+
+    // Devuelve el título de la receta o, si vino vacío o como placeholder ("string"),
+    // arma uno descriptivo a partir de los primeros ingredientes.
+    public static string GenerarTituloPorDefecto(string? titulo, IEnumerable<IngredienteGeneradoDto> ingredientes)
+    {
+        var limpio = titulo?.Trim();
+        if (!string.IsNullOrWhiteSpace(limpio) &&
+            !limpio.Equals("string", StringComparison.OrdinalIgnoreCase))
+        {
+            return limpio;
+        }
+
+        var nombres = (ingredientes ?? [])
+            .Select(ingrediente => ingrediente.Nombre?.Trim())
+            .Where(nombre => !string.IsNullOrWhiteSpace(nombre))
+            .Take(2)
+            .ToList();
+
+        return nombres.Count > 0
+            ? $"Receta con {string.Join(" y ", nombres)}"
+            : "Receta sin título";
     }
 
     private static DificultadReceta ParsearDificultad(string? dificultad)

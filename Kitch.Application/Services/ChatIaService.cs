@@ -20,16 +20,18 @@ public class ChatIaService : IChatIaService
         "Si te preguntan algo ajeno a la cocina, rechazalo con amabilidad (accion 'conversar'). " +
         "Conocés la alacena del usuario (te la pasamos como contexto) y la usás para recomendar y avisar qué le falta.\n\n" +
         "RESPONDÉS SIEMPRE con un ÚNICO objeto JSON válido, sin texto extra ni markdown, con esta forma EXACTA:\n" +
-        "{\"accion\": \"conversar\"|\"generar_receta\"|\"guardar_receta\"|\"sustituir\"|\"recomendar\", " +
+        "{\"accion\": \"conversar\"|\"generar_receta\"|\"guardar_receta\"|\"sustituir\"|\"recomendar\"|\"eliminar_receta\", " +
         "\"mensaje\": string, " +
         "\"receta\": {\"titulo\": string, \"descripcion\": string, \"tiempoPreparacionMinutos\": number, " +
         "\"porciones\": number, \"dificultad\": \"Facil\"|\"Medio\"|\"Dificil\", \"caloriasEstimadas\": number, " +
         "\"ingredientes\": [{\"nombre\": string, \"cantidad\": number, \"unidadMedida\": string}], \"pasos\": [string]} | null, " +
-        "\"ingredienteSustituir\": string | null}\n\n" +
+        "\"ingredienteSustituir\": string | null, \"tituloEliminar\": string | null}\n\n" +
         "REGLAS DE LA 'accion':\n" +
         "- 'conversar': charla general, dudas, consejos. 'receta' va en null.\n" +
         "- 'generar_receta': el usuario pide una receta. Completás 'receta' (mín. 1 ingrediente y 1 paso, " +
-        "tiempo y porciones > 0). Usá preferentemente lo que hay en la alacena. En 'mensaje' presentás la receta.\n" +
+        "tiempo y porciones > 0). Usá preferentemente lo que hay en la alacena. En 'mensaje' presentás la receta. " +
+        "SIEMPRE poné en 'titulo' un nombre descriptivo y real del plato (ej. 'Tortilla de papas'); NUNCA uses 'string', " +
+        "'receta' ni dejes el título vacío. Si el usuario no aclara el nombre, inventá uno acorde a los ingredientes.\n" +
         "- 'guardar_receta': el usuario quiere conservar/guardar la última receta o agregarla a favoritos. " +
         "Interpretá la INTENCIÓN, no palabras exactas: valen frases como 'guardala', 'guarda la receta', " +
         "'guardámela', 'agregala a favoritos', 'dale, sumala', 'me encantó, la quiero tener', 'sí, está buena, guardala'. " +
@@ -39,7 +41,10 @@ public class ChatIaService : IChatIaService
         "original en 'ingredienteSustituir'. En 'mensaje' explicás brevemente; el sistema completa la lista de sustitutos.\n" +
         "- 'recomendar': el usuario pide ideas/recetas según lo que tiene. 'receta' va en null; el sistema agrega " +
         "las recetas compatibles. En 'mensaje' introducís las recomendaciones.\n" +
-        "Nunca inventes que guardaste algo si la acción no fue 'guardar_receta'.";
+        "- 'eliminar_receta': el usuario quiere borrar/eliminar una receta guardada (ej. 'borrá la receta de tortilla', " +
+        "'eliminá la tarta de manzana'). Poné el nombre de la receta a borrar en 'tituloEliminar'. En 'mensaje' confirmás. " +
+        "El sistema borra solo recetas que el usuario tenga guardadas.\n" +
+        "Nunca inventes que guardaste o borraste algo si la acción no fue 'guardar_receta' o 'eliminar_receta'.";
 
     private const string NombrePorDefecto = "Chef";
 
@@ -55,6 +60,8 @@ public class ChatIaService : IChatIaService
     private readonly IRecetaIaService _recetaIaService;
     private readonly ISustitucionService _sustitucionService;
     private readonly IRecomendacionService _recomendacionService;
+    private readonly IRepository<Receta> _recetaRepository;
+    private readonly IRepository<RecetaFavorita> _favoritoRepository;
 
     public ChatIaService(
         IGeminiClient geminiClient,
@@ -63,7 +70,9 @@ public class ChatIaService : IChatIaService
         IRepository<Ingrediente> ingredienteRepository,
         IRecetaIaService recetaIaService,
         ISustitucionService sustitucionService,
-        IRecomendacionService recomendacionService)
+        IRecomendacionService recomendacionService,
+        IRepository<Receta> recetaRepository,
+        IRepository<RecetaFavorita> favoritoRepository)
     {
         _geminiClient = geminiClient;
         _usuarioRepository = usuarioRepository;
@@ -72,6 +81,8 @@ public class ChatIaService : IChatIaService
         _recetaIaService = recetaIaService;
         _sustitucionService = sustitucionService;
         _recomendacionService = recomendacionService;
+        _recetaRepository = recetaRepository;
+        _favoritoRepository = favoritoRepository;
     }
 
     public async Task<ChatRespuestaDto> ProcesarMensajeAsync(int usuarioId, ChatRequestDto request)
@@ -117,6 +128,7 @@ public class ChatIaService : IChatIaService
             ChatAccion.GuardarReceta => await ResolverGuardarRecetaAsync(usuarioId, sobre, request.RecetaActual),
             ChatAccion.Sustituir => await ResolverSustituirAsync(usuarioId, sobre),
             ChatAccion.Recomendar => await ResolverRecomendarAsync(usuarioId, sobre),
+            ChatAccion.EliminarReceta => await ResolverEliminarRecetaAsync(usuarioId, sobre),
             _ => new ChatRespuestaDto
             {
                 Accion = ChatAccion.Conversar,
@@ -130,7 +142,7 @@ public class ChatIaService : IChatIaService
     private async Task<ChatRespuestaDto> ResolverGenerarRecetaAsync(SobreAgente sobre)
     {
         var receta = sobre.Receta;
-        if (receta is null || string.IsNullOrWhiteSpace(receta.Titulo) || receta.Ingredientes.Count == 0)
+        if (receta is null || receta.Ingredientes.Count == 0)
         {
             return new ChatRespuestaDto
             {
@@ -138,6 +150,9 @@ public class ChatIaService : IChatIaService
                 Mensaje = "No pude armar una receta válida esta vez. Probá pedírmela de nuevo o cargá más ingredientes en tu alacena."
             };
         }
+
+        // Si el agente no puso un título válido, generamos uno descriptivo (nunca "string").
+        receta.Titulo = RecetaIaService.GenerarTituloPorDefecto(receta.Titulo, receta.Ingredientes);
 
         // Damos de alta automáticamente en el catálogo los ingredientes usados.
         await _recetaIaService.AsegurarIngredientesEnCatalogoAsync(receta);
@@ -240,6 +255,58 @@ public class ChatIaService : IChatIaService
                     : "Según lo que tenés en tu alacena, estas son las recetas que más te convienen:")
                 : sobre.Mensaje,
             Recomendaciones = recomendaciones
+        };
+    }
+
+    private async Task<ChatRespuestaDto> ResolverEliminarRecetaAsync(int usuarioId, SobreAgente sobre)
+    {
+        var titulo = sobre.TituloEliminar?.Trim();
+        if (string.IsNullOrWhiteSpace(titulo))
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = "¿Cuál receta querés que borre? Decime el título."
+            };
+        }
+
+        // Solo borramos recetas que el usuario tenga guardadas en favoritos: así nadie
+        // puede eliminar recetas de otros usuarios desde el chat.
+        var favoritos = await _favoritoRepository.FindWithIncludesAsync(
+            favorito => favorito.UsuarioId == usuarioId,
+            favorito => favorito.Receta);
+
+        var recetas = favoritos
+            .Select(favorito => favorito.Receta)
+            .Where(receta => receta is not null &&
+                string.Equals(receta.Titulo.Trim(), titulo, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(receta => receta!.Id)
+            .Select(grupo => grupo.First()!)
+            .ToList();
+
+        if (recetas.Count == 0)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.EliminarReceta,
+                Mensaje = $"No encontré ninguna receta guardada con el título \"{titulo}\".",
+                RecetasEliminadas = 0
+            };
+        }
+
+        // Borrar la receta arrastra en cascada sus ingredientes, pasos, favoritos y planificación.
+        foreach (var receta in recetas)
+        {
+            await _recetaRepository.DeleteAsync(receta);
+        }
+
+        return new ChatRespuestaDto
+        {
+            Accion = ChatAccion.EliminarReceta,
+            Mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
+                ? $"Listo, borré \"{titulo}\" de tus recetas."
+                : sobre.Mensaje,
+            RecetasEliminadas = recetas.Count
         };
     }
 
@@ -348,5 +415,8 @@ public class ChatIaService : IChatIaService
 
         [JsonPropertyName("ingredienteSustituir")]
         public string? IngredienteSustituir { get; set; }
+
+        [JsonPropertyName("tituloEliminar")]
+        public string? TituloEliminar { get; set; }
     }
 }

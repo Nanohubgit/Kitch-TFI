@@ -16,6 +16,9 @@ public static class DependencyInjection
         // AuthService se queda en Infrastructure porque maneja JWT (detalle de infraestructura)
         services.AddScoped<IAuthService, AuthService>();
 
+        // CRUD del catálogo de sustitutos (su implementación vive en Infrastructure).
+        services.AddScoped<ISustitutoService, SustitutoService>();
+
         services.AddScoped<IGeminiClient, GeminiClient>();
 
         services.AddHttpClient("GeminiClient", (serviceProvider, client) =>
