@@ -42,6 +42,7 @@ public static class ChatAccion
     public const string Recomendar = "recomendar";
     public const string EliminarReceta = "eliminar_receta";
     public const string PlanificarReceta = "planificar_receta";
+    public const string CocinarReceta = "cocinar_receta";
 }
 
 // Respuesta unificada del chat. Según la acción se completan distintos campos,
@@ -78,4 +79,11 @@ public class ChatRespuestaDto
     // Ingredientes que se agregaron automáticamente a la lista de compras al planificar
     // (lo que le faltaba al usuario para esa receta).
     public List<string>? IngredientesAgregadosALista { get; set; }
+
+    // Ingredientes descontados de la alacena al cocinar (acción cocinar_receta).
+    // Cada string es del estilo "Huevo: -3 u".
+    public List<string>? StockDescontado { get; set; }
+
+    // Ingredientes que no alcanzaron a cubrirse con el stock al cocinar (acción cocinar_receta).
+    public List<string>? StockFaltante { get; set; }
 }

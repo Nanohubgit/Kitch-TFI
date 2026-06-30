@@ -8,4 +8,9 @@ public interface IPreparacionService
     Task<PrevisualizarDescuentoStockResponseDto> PrevisualizarDescuentoStockAsync(PrevisualizarDescuentoStockRequestDto request);
     // usuarioId es necesario para ubicar el stock del usuario que cocina la receta.
     Task DescontarIngredientesAsync(int usuarioId, int recetaId, int porciones);
+
+    // Descuento PARCIAL: resta lo que haya en la alacena (clamp en 0) y devuelve qué se
+    // descontó y qué faltó, sin fallar por stock insuficiente. Usado por el chat ("cociné esto").
+    // Si porciones <= 0 se asume que se cocinó la receta completa (porciones base).
+    Task<DescuentoStockResultadoDto> DescontarIngredientesParcialAsync(int usuarioId, int recetaId, int porciones);
 }

@@ -165,6 +165,74 @@ public class PreparacionService : IPreparacionService
         }
     }
 
+    public async Task<DescuentoStockResultadoDto> DescontarIngredientesParcialAsync(int usuarioId, int recetaId, int porciones)
+    {
+        var receta = await _recetaRepository.GetByIdAsync(recetaId)
+            ?? throw new InvalidOperationException("La receta no existe.");
+
+        var ingredientesReceta = await _ingredienteRecetaRepository.FindAsync(
+            ingrediente => ingrediente.RecetaId == recetaId);
+
+        if (ingredientesReceta.Count == 0)
+        {
+            throw new InvalidOperationException("La receta no tiene ingredientes cargados.");
+        }
+
+        // Si no especifican porciones, se asume la receta completa (factor 1).
+        var porcionesBase = receta.Porciones > 0 ? receta.Porciones : 1;
+        var factor = porciones > 0 ? (decimal)porciones / porcionesBase : 1m;
+
+        var stockUsuario = await _stockRepository.FindAsync(stock => stock.UsuarioId == usuarioId);
+        var stockPorIngrediente = stockUsuario.ToDictionary(stock => stock.IngredienteId);
+
+        var resultado = new DescuentoStockResultadoDto { Receta = receta.Titulo };
+
+        foreach (var ingrediente in ingredientesReceta)
+        {
+            var cantidadNecesaria = Math.Round(ingrediente.Cantidad * factor, 2);
+            if (cantidadNecesaria <= 0)
+            {
+                continue;
+            }
+
+            var nombre = await ObtenerNombreIngredienteAsync(ingrediente.IngredienteId);
+
+            // Cuánto hay disponible (0 si no tiene ese ingrediente cargado en la alacena).
+            var disponible = stockPorIngrediente.TryGetValue(ingrediente.IngredienteId, out var stock)
+                ? stock.Cantidad
+                : 0m;
+
+            // Descontamos lo que se pueda sin pasarnos de 0.
+            var aDescontar = Math.Min(disponible, cantidadNecesaria);
+            if (aDescontar > 0 && stock is not null)
+            {
+                stock.Cantidad = Math.Round(disponible - aDescontar, 2);
+                await _stockRepository.UpdateAsync(stock);
+
+                resultado.Descontados.Add(new IngredienteMovimientoStockDto
+                {
+                    Nombre = nombre,
+                    Cantidad = aDescontar,
+                    UnidadMedida = ingrediente.UnidadMedida
+                });
+            }
+
+            // Lo que no alcanzó a cubrir el stock queda reportado como faltante.
+            var faltante = Math.Round(cantidadNecesaria - aDescontar, 2);
+            if (faltante > 0)
+            {
+                resultado.Faltantes.Add(new IngredienteMovimientoStockDto
+                {
+                    Nombre = nombre,
+                    Cantidad = faltante,
+                    UnidadMedida = ingrediente.UnidadMedida
+                });
+            }
+        }
+
+        return resultado;
+    }
+
     private async Task<string> ObtenerNombreIngredienteAsync(int ingredienteId)
     {
         var ingrediente = await _ingredienteRepository.GetByIdAsync(ingredienteId);

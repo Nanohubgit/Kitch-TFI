@@ -25,20 +25,20 @@ public class RecetaIaService : IRecetaIaService
         PropertyNameCaseInsensitive = true
     };
 
-    private readonly IGeminiClient _geminiClient;
+    private readonly IAsistenteIaClient _asistenteIa;
     private readonly IRepository<StockUsuario> _stockRepository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
     private readonly IRepository<Receta> _recetaRepository;
     private readonly IRepository<RecetaFavorita> _favoritoRepository;
 
     public RecetaIaService(
-        IGeminiClient geminiClient,
+        IAsistenteIaClient asistenteIa,
         IRepository<StockUsuario> stockRepository,
         IRepository<Ingrediente> ingredienteRepository,
         IRepository<Receta> recetaRepository,
         IRepository<RecetaFavorita> favoritoRepository)
     {
-        _geminiClient = geminiClient;
+        _asistenteIa = asistenteIa;
         _stockRepository = stockRepository;
         _ingredienteRepository = ingredienteRepository;
         _recetaRepository = recetaRepository;
@@ -75,7 +75,7 @@ public class RecetaIaService : IRecetaIaService
             prompt.AppendLine($"Preferencias o restricciones del usuario: {preferencias}");
         }
 
-        var json = await _geminiClient.GenerarRespuestaJsonAsync(prompt.ToString(), InstruccionGeneracion);
+        var json = await _asistenteIa.GenerarRespuestaJsonAsync(prompt.ToString(), InstruccionGeneracion);
 
         var receta = DeserializarReceta(json);
 

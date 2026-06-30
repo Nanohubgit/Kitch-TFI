@@ -19,17 +19,20 @@ public static class DependencyInjection
         // CRUD del catálogo de sustitutos (su implementación vive en Infrastructure).
         services.AddScoped<ISustitutoService, SustitutoService>();
 
-        services.AddScoped<IGeminiClient, GeminiClient>();
+        // Cliente de IA: usamos Groq (free tier más generosa, API compatible con OpenAI).
+        // Se inyecta detrás de IAsistenteIaClient para no acoplar la aplicación al proveedor.
+        services.AddScoped<IAsistenteIaClient, GroqClient>();
 
-        services.AddHttpClient("GeminiClient", (serviceProvider, client) =>
+        services.AddHttpClient("GroqClient", (serviceProvider, client) =>
         {
-            // Buscamos la configuración que Nano ya guardó en los User Secrets
+            // La API Key de Groq la leemos de la configuración (User Secrets / appsettings).
             var configuration = serviceProvider.GetRequiredService<IConfiguration>();
-            var apiKey = configuration["Gemini:ApiKey"];
+            var apiKey = configuration["Groq:ApiKey"];
 
-            client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/");
-            // Inyectamos la API Key de Google de forma segura en los headers correspondientes o preparamos la URL base
-            client.DefaultRequestHeaders.Add("x-goog-api-key", apiKey);
+            client.BaseAddress = new Uri("https://api.groq.com/");
+            // Groq usa autenticación Bearer estándar de OpenAI.
+            client.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
         });
 
         return services;

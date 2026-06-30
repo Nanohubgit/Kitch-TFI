@@ -63,3 +63,19 @@ public class PrevisualizarDescuentoStockResponseDto
     public int PorcionesCocinadas { get; set; }
     public List<IngredienteDescuentoDto> Ingredientes { get; set; } = new();
 }
+
+// Resultado de un descuento PARCIAL: descuenta lo que haya en la alacena (sin pasarse de 0)
+// y reporta lo que faltó. A diferencia del descuento atómico, nunca falla por stock insuficiente.
+public class DescuentoStockResultadoDto
+{
+    public string Receta { get; set; } = string.Empty;
+    public List<IngredienteMovimientoStockDto> Descontados { get; set; } = new();
+    public List<IngredienteMovimientoStockDto> Faltantes { get; set; } = new();
+}
+
+public class IngredienteMovimientoStockDto
+{
+    public string Nombre { get; set; } = string.Empty;
+    public decimal Cantidad { get; set; }
+    public string UnidadMedida { get; set; } = string.Empty;
+}

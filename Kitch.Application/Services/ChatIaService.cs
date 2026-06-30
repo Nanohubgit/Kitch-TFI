@@ -24,13 +24,14 @@ public class ChatIaService : IChatIaService
         "Si te preguntan algo ajeno a la cocina, rechazalo con amabilidad (accion 'conversar'). " +
         "Conocés la alacena del usuario (te la pasamos como contexto) y la usás para recomendar y avisar qué le falta.\n\n" +
         "RESPONDÉS SIEMPRE con un ÚNICO objeto JSON válido, sin texto extra ni markdown, con esta forma EXACTA:\n" +
-        "{\"accion\": \"conversar\"|\"generar_receta\"|\"guardar_receta\"|\"sustituir\"|\"recomendar\"|\"eliminar_receta\"|\"planificar_receta\", " +
+        "{\"accion\": \"conversar\"|\"generar_receta\"|\"guardar_receta\"|\"sustituir\"|\"recomendar\"|\"eliminar_receta\"|\"planificar_receta\"|\"cocinar_receta\", " +
         "\"mensaje\": string, " +
         "\"receta\": {\"titulo\": string, \"descripcion\": string, \"tiempoPreparacionMinutos\": number, " +
         "\"porciones\": number, \"dificultad\": \"Facil\"|\"Medio\"|\"Dificil\", \"caloriasEstimadas\": number, " +
         "\"ingredientes\": [{\"nombre\": string, \"cantidad\": number, \"unidadMedida\": string}], \"pasos\": [string]} | null, " +
         "\"ingredienteSustituir\": string | null, \"tituloEliminar\": string | null, \"eliminarTodas\": boolean, " +
-        "\"tituloPlanificar\": string | null, \"fechaPlanificar\": string | null, \"turnoPlanificar\": string | null}\n\n" +
+        "\"tituloPlanificar\": string | null, \"fechaPlanificar\": string | null, \"turnoPlanificar\": string | null, " +
+        "\"tituloCocinar\": string | null, \"porcionesCocinar\": number | null}\n\n" +
         "REGLAS DE LA 'accion':\n" +
         "- 'conversar': charla general, dudas, consejos. 'receta' va en null.\n" +
         "- 'generar_receta': el usuario pide una receta. Completás 'receta' (mín. 1 ingrediente y 1 paso, " +
@@ -59,7 +60,13 @@ public class ChatIaService : IChatIaService
         "En 'turnoPlanificar' poné el momento: 'Desayuno', 'Almuerzo', 'Merienda' o 'Cena'. " +
         "En 'mensaje' confirmás. El sistema agrega solo lo que el usuario tenga guardado y, si le faltan ingredientes, " +
         "los suma automáticamente a su lista de compras.\n" +
-        "Nunca inventes que guardaste, borraste o planificaste algo si la acción no fue la correspondiente.";
+        "- 'cocinar_receta': el usuario avisa que YA cocinó/preparó una receta y quiere descontar los " +
+        "ingredientes usados de su alacena (ej. 'ya la hice', 'cociné la tortilla', 'preparé esta receta', " +
+        "'descontá los ingredientes', 'ya la cociné, bajá el stock'). En 'tituloCocinar' poné el nombre de la receta " +
+        "(o dejalo null si se refiere a la última receta de la conversación). En 'porcionesCocinar' poné cuántas " +
+        "porciones cocinó si lo aclara (ej. 'hice 2 porciones'); si no lo aclara, dejalo null (se asume la receta completa). " +
+        "En 'mensaje' confirmás. El sistema descuenta del stock lo que haya y avisa si faltó algo.\n" +
+        "Nunca inventes que guardaste, borraste, planificaste o cocinaste algo si la acción no fue la correspondiente.";
 
     private const string NombrePorDefecto = "Chef";
 
@@ -73,7 +80,7 @@ public class ChatIaService : IChatIaService
         PropertyNameCaseInsensitive = true
     };
 
-    private readonly IGeminiClient _geminiClient;
+    private readonly IAsistenteIaClient _asistenteIa;
     private readonly IRepository<Usuario> _usuarioRepository;
     private readonly IRepository<StockUsuario> _stockRepository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
@@ -83,9 +90,10 @@ public class ChatIaService : IChatIaService
     private readonly IRepository<Receta> _recetaRepository;
     private readonly IRepository<RecetaFavorita> _favoritoRepository;
     private readonly IPlanificadorService _planificadorService;
+    private readonly IPreparacionService _preparacionService;
 
     public ChatIaService(
-        IGeminiClient geminiClient,
+        IAsistenteIaClient asistenteIa,
         IRepository<Usuario> usuarioRepository,
         IRepository<StockUsuario> stockRepository,
         IRepository<Ingrediente> ingredienteRepository,
@@ -94,9 +102,10 @@ public class ChatIaService : IChatIaService
         IRecomendacionService recomendacionService,
         IRepository<Receta> recetaRepository,
         IRepository<RecetaFavorita> favoritoRepository,
-        IPlanificadorService planificadorService)
+        IPlanificadorService planificadorService,
+        IPreparacionService preparacionService)
     {
-        _geminiClient = geminiClient;
+        _asistenteIa = asistenteIa;
         _usuarioRepository = usuarioRepository;
         _stockRepository = stockRepository;
         _ingredienteRepository = ingredienteRepository;
@@ -106,6 +115,7 @@ public class ChatIaService : IChatIaService
         _recetaRepository = recetaRepository;
         _favoritoRepository = favoritoRepository;
         _planificadorService = planificadorService;
+        _preparacionService = preparacionService;
     }
 
     public async Task<ChatRespuestaDto> ProcesarMensajeAsync(int usuarioId, ChatRequestDto request)
@@ -137,7 +147,7 @@ public class ChatIaService : IChatIaService
         string json;
         try
         {
-            json = await _geminiClient.GenerarRespuestaConversacionAsync(mensajes, systemInstruction, jsonMode: true);
+            json = await _asistenteIa.GenerarRespuestaConversacionAsync(mensajes, systemInstruction, jsonMode: true);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
         {
@@ -186,6 +196,7 @@ public class ChatIaService : IChatIaService
             ChatAccion.Recomendar => await ResolverRecomendarAsync(usuarioId, sobre),
             ChatAccion.EliminarReceta => await ResolverEliminarRecetaAsync(usuarioId, sobre),
             ChatAccion.PlanificarReceta => await ResolverPlanificarRecetaAsync(usuarioId, sobre),
+            ChatAccion.CocinarReceta => await ResolverCocinarRecetaAsync(usuarioId, sobre),
             _ => new ChatRespuestaDto
             {
                 Accion = ChatAccion.Conversar,
@@ -532,6 +543,102 @@ public class ChatIaService : IChatIaService
             "o decime el nombre de una que ya tengas guardada.");
     }
 
+    private async Task<ChatRespuestaDto> ResolverCocinarRecetaAsync(int usuarioId, SobreAgente sobre)
+    {
+        // 1. Resolvemos qué receta cocinó y conseguimos su id real (tiene que estar guardada).
+        var (recetaId, tituloReceta, error) = await ResolverRecetaParaCocinarAsync(usuarioId, sobre);
+        if (recetaId is null)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = error!
+            };
+        }
+
+        // 2. Porciones cocinadas: las que aclaró el usuario o 0 = receta completa (porciones base).
+        var porciones = sobre.PorcionesCocinar is > 0 ? sobre.PorcionesCocinar.Value : 0;
+
+        try
+        {
+            var resultado = await _preparacionService.DescontarIngredientesParcialAsync(usuarioId, recetaId.Value, porciones);
+
+            var descontado = resultado.Descontados
+                .Select(ingrediente => $"{ingrediente.Nombre}: -{ingrediente.Cantidad} {ingrediente.UnidadMedida}")
+                .ToList();
+            var faltante = resultado.Faltantes
+                .Select(ingrediente => $"{ingrediente.Nombre}: faltaron {ingrediente.Cantidad} {ingrediente.UnidadMedida}")
+                .ToList();
+
+            var aviso = descontado.Count > 0
+                ? $" Desconté de tu alacena: {string.Join(", ", descontado)}."
+                : " No tenías stock cargado de los ingredientes, así que no descontué nada.";
+            if (faltante.Count > 0)
+            {
+                aviso += $" Ojo, no te alcanzaba para: {string.Join(", ", faltante)}.";
+            }
+
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.CocinarReceta,
+                Mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
+                    ? $"Listo, registré que cocinaste \"{tituloReceta}\"." + aviso
+                    : sobre.Mensaje + aviso,
+                StockDescontado = descontado,
+                StockFaltante = faltante
+            };
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = $"No pude descontar el stock: {ex.Message}"
+            };
+        }
+    }
+
+    // Devuelve el id de la receta que el usuario cocinó (debe estar guardada para tener id).
+    // Busca primero entre los favoritos por título; si no, guarda la última receta recordada.
+    private async Task<(int? recetaId, string? titulo, string? error)> ResolverRecetaParaCocinarAsync(
+        int usuarioId,
+        SobreAgente sobre)
+    {
+        var titulo = sobre.TituloCocinar?.Trim();
+
+        if (!string.IsNullOrWhiteSpace(titulo))
+        {
+            var favoritos = await _favoritoRepository.FindWithIncludesAsync(
+                favorito => favorito.UsuarioId == usuarioId,
+                favorito => favorito.Receta);
+
+            var receta = favoritos
+                .Select(favorito => favorito.Receta)
+                .FirstOrDefault(r => r is not null && CoincideTitulo(r.Titulo, titulo));
+
+            if (receta is not null)
+            {
+                return (receta.Id, receta.Titulo, null);
+            }
+        }
+
+        if (UltimaRecetaPorUsuario.TryGetValue(usuarioId, out var recordada) && EsRecetaValida(recordada))
+        {
+            try
+            {
+                var guardada = await _recetaIaService.GuardarRecetaAsync(usuarioId, recordada);
+                return (guardada.RecetaId, guardada.Titulo, null);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return (null, null, $"No pude preparar la receta para descontar el stock: {ex.Message}");
+            }
+        }
+
+        return (null, null, "No sé qué receta cocinaste. Generá o guardá una receta primero, " +
+            "o decime el nombre de una que ya tengas guardada.");
+    }
+
     private static DateTime ParsearFecha(string? fecha)
     {
         if (!string.IsNullOrWhiteSpace(fecha) &&
@@ -682,5 +789,11 @@ public class ChatIaService : IChatIaService
 
         [JsonPropertyName("turnoPlanificar")]
         public string? TurnoPlanificar { get; set; }
+
+        [JsonPropertyName("tituloCocinar")]
+        public string? TituloCocinar { get; set; }
+
+        [JsonPropertyName("porcionesCocinar")]
+        public int? PorcionesCocinar { get; set; }
     }
 }

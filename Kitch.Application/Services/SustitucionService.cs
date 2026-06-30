@@ -23,18 +23,18 @@ public class SustitucionService : ISustitucionService
     private readonly IRepository<SustitutoIngrediente> _sustitutoRepository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
     private readonly IRepository<StockUsuario> _stockRepository;
-    private readonly IGeminiClient _geminiClient;
+    private readonly IAsistenteIaClient _asistenteIa;
 
     public SustitucionService(
         IRepository<SustitutoIngrediente> sustitutoRepository,
         IRepository<Ingrediente> ingredienteRepository,
         IRepository<StockUsuario> stockRepository,
-        IGeminiClient geminiClient)
+        IAsistenteIaClient asistenteIa)
     {
         _sustitutoRepository = sustitutoRepository;
         _ingredienteRepository = ingredienteRepository;
         _stockRepository = stockRepository;
-        _geminiClient = geminiClient;
+        _asistenteIa = asistenteIa;
     }
 
     public async Task<IEnumerable<SustitutoSugerido>> BuscarSustitutosAsync(int usuarioId, int ingredienteId)
@@ -100,7 +100,7 @@ public class SustitucionService : ISustitucionService
     private async Task GenerarYPersistirSustitutosAsync(Ingrediente ingredienteOriginal)
     {
         var prompt = $"Ingrediente original: {ingredienteOriginal.Nombre}.";
-        var json = await _geminiClient.GenerarRespuestaJsonAsync(prompt, InstruccionSustitutos);
+        var json = await _asistenteIa.GenerarRespuestaJsonAsync(prompt, InstruccionSustitutos);
 
         var generados = DeserializarSustitutos(json);
         if (generados is null || generados.Count == 0)
