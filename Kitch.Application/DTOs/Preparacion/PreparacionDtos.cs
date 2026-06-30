@@ -63,8 +63,6 @@ public class PrevisualizarDescuentoStockResponseDto
     public List<IngredienteDescuentoDto> Ingredientes { get; set; } = new();
 }
 
-// Resultado de un descuento PARCIAL: descuenta lo que haya en la alacena (sin pasarse de 0)
-// y reporta lo que faltó. A diferencia del descuento atómico, nunca falla por stock insuficiente.
 public class DescuentoStockResultadoDto
 {
     public string Receta { get; set; } = string.Empty;

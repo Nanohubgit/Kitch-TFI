@@ -497,7 +497,6 @@ public class ChatIaService : IChatIaService
 
     private async Task<ChatRespuestaDto> ResolverCocinarRecetaAsync(int usuarioId, SobreAgente sobre)
     {
-        // 1. Resolvemos qué receta cocinó y conseguimos su id real (tiene que estar guardada).
         var (recetaId, tituloReceta, error) = await ResolverRecetaParaCocinarAsync(usuarioId, sobre);
         if (recetaId is null)
         {
@@ -508,7 +507,6 @@ public class ChatIaService : IChatIaService
             };
         }
 
-        // 2. Porciones cocinadas: las que aclaró el usuario o 0 = receta completa (porciones base).
         var porciones = sobre.PorcionesCocinar is > 0 ? sobre.PorcionesCocinar.Value : 0;
 
         try
@@ -550,8 +548,6 @@ public class ChatIaService : IChatIaService
         }
     }
 
-    // Devuelve el id de la receta que el usuario cocinó (debe estar guardada para tener id).
-    // Busca primero entre los favoritos por título; si no, guarda la última receta recordada.
     private async Task<(int? recetaId, string? titulo, string? error)> ResolverRecetaParaCocinarAsync(
         int usuarioId,
         SobreAgente sobre)

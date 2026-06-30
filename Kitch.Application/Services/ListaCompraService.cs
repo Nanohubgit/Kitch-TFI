@@ -135,8 +135,6 @@ public class ListaCompraService : IListaCompraService
 
         var faltantesCalculados = await ArmarListaDeCompraAsync(usuarioId, cantidadesFaltantes);
 
-        // Los faltantes de una receta planificada por la IA ya están persistidos.
-        // Evitamos mostrarlos dos veces al combinar ambas fuentes.
         var nombresPersistidos = itemsPersistidos
             .Select(item => item.NombreArticulo.Trim())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
