@@ -33,6 +33,7 @@ public static class ChatAccion
     public const string Recomendar = "recomendar";
     public const string EliminarReceta = "eliminar_receta";
     public const string PlanificarReceta = "planificar_receta";
+    public const string CocinarReceta = "cocinar_receta";
 }
 
 public class ChatRespuestaDto
@@ -56,4 +57,11 @@ public class ChatRespuestaDto
     public ComidaPlanificadaResponseDto? ComidaPlanificada { get; set; }
 
     public List<string>? IngredientesAgregadosALista { get; set; }
+
+    // Ingredientes descontados de la alacena al cocinar (acción cocinar_receta).
+    // Cada string es del estilo "Huevo: -3 u".
+    public List<string>? StockDescontado { get; set; }
+
+    // Ingredientes que no alcanzaron a cubrirse con el stock al cocinar (acción cocinar_receta).
+    public List<string>? StockFaltante { get; set; }
 }
