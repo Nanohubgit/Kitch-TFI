@@ -8,7 +8,6 @@ namespace Kitch.Presentation.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-// Módulo de Administración: la gestión de cuentas es exclusiva del rol Admin.
 [Authorize(Roles = RolUsuario.Admin)]
 public class UsuariosController : ApiControllerBase
 {

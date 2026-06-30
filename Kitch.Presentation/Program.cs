@@ -66,10 +66,8 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// Seeding seguro del administrador inicial (lee la contraseña de la configuración, no hardcodeada).
 await app.SeedAdminUserAsync();
 
-//swagger
     app.UseSwagger();
     app.UseSwaggerUI();
 
@@ -81,7 +79,6 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Controllers
 app.MapControllers();
 
 app.Run();

@@ -54,7 +54,6 @@ public class PlanificadorService : IPlanificadorService
     {
         var comida = await _repository.GetByIdAsync(id);
 
-        // Si la comida no es tuya, la tratamos como inexistente.
         if (comida is null || comida.UsuarioId != usuarioId)
         {
             return null;
@@ -88,8 +87,6 @@ public class PlanificadorService : IPlanificadorService
 
         var created = await _repository.AddAsync(entity);
 
-        // Al planificar la receta, sumamos a la lista de compras lo que falta para prepararla
-        // (lo que pide la receta menos lo que el usuario ya tiene en su alacena).
         var agregados = await AgregarFaltantesAListaCompraAsync(comida.UsuarioId, comida.RecetaId);
 
         return new PlanificacionResultadoDto
@@ -99,9 +96,6 @@ public class PlanificadorService : IPlanificadorService
         };
     }
 
-    // Calcula los ingredientes faltantes para una receta y los persiste en la lista de
-    // compras del usuario. Si un ingrediente ya estaba en la lista, suma la cantidad
-    // faltante en lugar de duplicar el ítem.
     private async Task<List<string>> AgregarFaltantesAListaCompraAsync(int usuarioId, int recetaId)
     {
         var agregados = new List<string>();
@@ -117,7 +111,6 @@ public class PlanificadorService : IPlanificadorService
         var stock = await _stockRepository.FindAsync(item => item.UsuarioId == usuarioId);
         var stockPorIngrediente = stock.ToDictionary(item => item.IngredienteId, item => item.Cantidad);
 
-        // Cuánto falta de cada ingrediente: requerimiento de la receta - stock actual.
         var faltantes = new Dictionary<int, decimal>();
         foreach (var ingrediente in ingredientesReceta)
         {
@@ -135,7 +128,6 @@ public class PlanificadorService : IPlanificadorService
             return agregados;
         }
 
-        // Nombres reales de los ingredientes faltantes.
         var ingredienteIds = faltantes.Keys.ToList();
         var ingredientes = await _ingredienteRepository.FindAsync(
             ingrediente => ingredienteIds.Contains(ingrediente.Id));
@@ -143,7 +135,6 @@ public class PlanificadorService : IPlanificadorService
             ingrediente => ingrediente.Id,
             ingrediente => ingrediente.Nombre);
 
-        // Lo que el usuario ya tiene en su lista, para sumar en vez de duplicar.
         var itemsExistentes = await _listaCompraRepository.FindAsync(item => item.UsuarioId == usuarioId);
 
         foreach (var (ingredienteId, cantidadFaltante) in faltantes)
@@ -181,7 +172,6 @@ public class PlanificadorService : IPlanificadorService
     {
         var existingComida = await _repository.GetByIdAsync(id);
 
-        // Solo podés editar tu propio planificador.
         if (existingComida is null || existingComida.UsuarioId != usuarioId)
         {
             return false;
@@ -198,7 +188,6 @@ public class PlanificadorService : IPlanificadorService
             throw new InvalidOperationException("Ya existe una comida planificada para ese usuario, fecha y turno.");
         }
 
-        // El dueño no cambia: se mantiene el del token, no se toma del body.
         existingComida.UsuarioId = usuarioId;
         existingComida.RecetaId = comida.RecetaId;
         existingComida.FechaAsignada = comida.FechaAsignada;
@@ -213,7 +202,6 @@ public class PlanificadorService : IPlanificadorService
     {
         var comida = await _repository.GetByIdAsync(id);
 
-        // Solo podés borrar de tu propio planificador.
         if (comida is null || comida.UsuarioId != usuarioId)
         {
             return false;

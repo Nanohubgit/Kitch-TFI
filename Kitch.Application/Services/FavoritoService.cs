@@ -79,7 +79,6 @@ public class FavoritoService : IFavoritoService
     {
         var favorito = await _repository.GetByIdAsync(id);
 
-        // Solo podés borrar tus propios favoritos.
         if (favorito is null || favorito.UsuarioId != usuarioId)
         {
             return false;

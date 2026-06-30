@@ -7,11 +7,6 @@ namespace Kitch.Presentation.Extensions;
 
 public static class DatabaseSeederExtensions
 {
-    /// <summary>
-    /// Siembra el usuario administrador inicial en tiempo de arranque (no en migraciones).
-    /// Ni el email ni la contraseña están hardcodeados: se leen de la configuración
-    /// (User Secrets / variables de entorno) bajo las claves "AdminConfig:Email" y "AdminConfig:Password".
-    /// </summary>
     public static async Task SeedAdminUserAsync(this WebApplication app)
     {
         using var scope = app.Services.CreateScope();
@@ -24,8 +19,6 @@ public static class DatabaseSeederExtensions
         var adminEmail = configuration["AdminConfig:Email"];
         var adminPassword = configuration["AdminConfig:Password"];
 
-        // Sin email o contraseña configurados no sembramos: evitamos crear un admin incompleto
-        // y evitamos hardcodear nada. Se avisa por log para que el operador lo configure.
         if (string.IsNullOrWhiteSpace(adminEmail))
         {
             logger.LogWarning(
@@ -40,7 +33,6 @@ public static class DatabaseSeederExtensions
             return;
         }
 
-        // Si el admin ya existe, no hacemos nada (idempotente).
         if (await context.Usuarios.AnyAsync(usuario => usuario.Email == adminEmail))
         {
             return;
@@ -51,7 +43,6 @@ public static class DatabaseSeederExtensions
             Nombre = "Admin",
             Apellido = "Kitch",
             Email = adminEmail,
-            // El hash se genera en runtime a partir de la contraseña leída de configuración.
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword),
             Activo = true,
             Rol = RolUsuario.Admin

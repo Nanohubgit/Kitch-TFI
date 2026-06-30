@@ -17,7 +17,6 @@ public class PlanificadorController : ApiControllerBase
         _planificadorService = planificadorService;
     }
 
-    // Tu propio planificador. El usuario sale del token; no se pasa id ni email por la URL.
     [HttpGet("mias")]
     public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetMias()
     {
@@ -78,7 +77,6 @@ public class PlanificadorController : ApiControllerBase
         }
         catch (KeyNotFoundException ex)
         {
-            // La receta indicada no existe.
             return NotFound(ex.Message);
         }
         catch (InvalidOperationException ex)

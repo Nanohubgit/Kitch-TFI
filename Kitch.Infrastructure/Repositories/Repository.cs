@@ -31,8 +31,6 @@ public class Repository<T> : IRepository<T> where T : class
         return await _dbSet.Where(predicate).ToListAsync();
     }
 
-    // Este método obtiene el listado completo de entidades que cumplen la condición
-    // permitiendo incluir propiedades relacionadas.
     public async Task<IReadOnlyList<T>> FindWithIncludesAsync(Expression<Func<T, bool>> predicate, params Expression<Func<T, object>>[] includes)
     {
         IQueryable<T> query = _dbSet.Where(predicate);

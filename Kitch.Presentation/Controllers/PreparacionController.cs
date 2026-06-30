@@ -41,7 +41,6 @@ public class PreparacionController : ApiControllerBase
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
         }
 
-        // El stock que se previsualiza es siempre el del usuario logueado, no el que venga en el body.
         request.UsuarioId = usuarioId;
 
         try
@@ -55,7 +54,6 @@ public class PreparacionController : ApiControllerBase
         }
     }
 
-    // "Finalizar y servir": descuenta de verdad los ingredientes de la alacena del usuario.
     [HttpPost("descontar-stock")]
     public async Task<IActionResult> DescontarStock([FromBody] ConfirmarDescuentoStockRequestDto request)
     {

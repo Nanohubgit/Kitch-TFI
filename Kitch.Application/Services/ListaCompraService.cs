@@ -38,7 +38,6 @@ public class ListaCompraService : IListaCompraService
     {
         var item = await _itemRepository.GetByIdAsync(id);
 
-        // Si el ítem no es tuyo, lo tratamos como inexistente (no revelamos que existe).
         if (item is null || item.UsuarioId != usuarioId)
         {
             return null;
@@ -65,7 +64,6 @@ public class ListaCompraService : IListaCompraService
     {
         var existingItem = await _itemRepository.GetByIdAsync(id);
 
-        // Solo podés editar tus propios ítems.
         if (existingItem is null || existingItem.UsuarioId != usuarioId)
         {
             return false;
@@ -84,7 +82,6 @@ public class ListaCompraService : IListaCompraService
     {
         var item = await _itemRepository.GetByIdAsync(id);
 
-        // Solo podés borrar tus propios ítems.
         if (item is null || item.UsuarioId != usuarioId)
         {
             return false;
@@ -99,7 +96,6 @@ public class ListaCompraService : IListaCompraService
     {
         var item = await _itemRepository.GetByIdAsync(id);
 
-        // Solo podés marcar como comprado tus propios ítems.
         if (item is null || item.UsuarioId != usuarioId)
         {
             return false;
@@ -113,7 +109,6 @@ public class ListaCompraService : IListaCompraService
 
     public async Task<IEnumerable<ItemListaCompraResponseDto>> GenerarListaFaltantesAsync(int usuarioId)
     {
-        // 1. Qué tengo que cocinar esta semana
         var comidasDeLaSemana = await ObtenerComidasDeLaSemanaAsync(usuarioId);
 
         if (comidasDeLaSemana.Count == 0)
@@ -121,13 +116,10 @@ public class ListaCompraService : IListaCompraService
             return Enumerable.Empty<ItemListaCompraResponseDto>();
         }
 
-        // 2. Cuánto necesito de cada ingrediente (Requerimiento Total)
         var requerimientoTotal = await CalcularRequerimientoTotalAsync(comidasDeLaSemana);
 
-        // 3. Cuánto ya tengo en mi alacena (Stock Actual)
         var stockActual = await ObtenerStockActualAsync(usuarioId);
 
-        // 4. Resto Requerimiento - Stock y me quedo solo con lo que da positivo
         var cantidadesFaltantes = CalcularFaltantes(requerimientoTotal, stockActual);
 
         if (cantidadesFaltantes.Count == 0)
@@ -135,7 +127,6 @@ public class ListaCompraService : IListaCompraService
             return Enumerable.Empty<ItemListaCompraResponseDto>();
         }
 
-        // 5. Armo la lista final con el nombre real de cada ingrediente
 
         var listaDeCompra = await ArmarListaDeCompraAsync(usuarioId, cantidadesFaltantes);
         var listaDeCompraDto = listaDeCompra.Select(item => item.ToResponseDto()).ToList();
@@ -171,8 +162,6 @@ public class ListaCompraService : IListaCompraService
 
         var requerimientoTotal = new Dictionary<int, decimal>();
 
-        // Recorro CADA comida planificada: si una receta aparece 2 veces en la semana,
-        // sus ingredientes se suman 2 veces.
         foreach (var comida in comidas)
         {
             if (!ingredientesPorReceta.TryGetValue(comida.RecetaId, out var ingredientes))
@@ -248,7 +237,6 @@ public class ListaCompraService : IListaCompraService
     {
         var hoy = DateTime.Today;
 
-        // DayOfWeek arranca en Domingo (0); con este cálculo el Lunes queda como inicio.
         var diasDesdeLunes = ((int)hoy.DayOfWeek + 6) % 7;
 
         var inicioSemana = hoy.AddDays(-diasDesdeLunes);

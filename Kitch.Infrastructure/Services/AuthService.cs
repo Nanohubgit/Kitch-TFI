@@ -57,8 +57,6 @@ public class AuthService : IAuthService
             Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
             Activo = true,
-            // El rol se fuerza siempre a Básico desde el servidor: el cliente nunca puede
-            // elegir su propio rol (mitigación de Mass Assignment / Privilege Escalation).
             Rol = RolUsuario.Basico
         };
 

@@ -24,7 +24,6 @@ public class PagosController : ApiControllerBase
         return Ok(pagos);
     }
 
-    // Tus propios pagos. El usuario sale del token; no se pasa id ni email por la URL.
     [HttpGet("mios")]
     public async Task<ActionResult<IEnumerable<PagoResponseDto>>> GetMios()
     {

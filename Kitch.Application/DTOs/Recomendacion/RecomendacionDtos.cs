@@ -2,8 +2,6 @@ using Kitch.Domain.Entities;
 
 namespace Kitch.Application.DTOs.Recomendacion;
 
-// Recomendación determinística (sin IA): mide cuánto de cada receta podés cubrir
-// con lo que tenés en la alacena y lista lo que te falta.
 public class RecetaCompatibleDto
 {
     public int RecetaId { get; set; }
