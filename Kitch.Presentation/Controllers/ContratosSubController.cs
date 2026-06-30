@@ -25,7 +25,6 @@ public class ContratosSubController : ApiControllerBase
         return Ok(contratos);
     }
 
-    // Tus propios contratos. El usuario sale del token; no se pasa id ni email por la URL.
     [HttpGet("mios")]
     public async Task<ActionResult<IEnumerable<ContratoSubResponseDto>>> GetMios()
     {

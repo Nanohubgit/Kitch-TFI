@@ -34,8 +34,6 @@ public class GeminiClient : IGeminiClient
         string systemInstruction,
         bool jsonMode = false)
     {
-        // Mapeamos cada turno del historial al formato nativo de Gemini.
-        // La API solo acepta los roles "user" y "model".
         var contents = mensajes
             .Select(mensaje => new GeminiContent
             {
@@ -53,8 +51,6 @@ public class GeminiClient : IGeminiClient
     {
         var client = _httpClientFactory.CreateClient("GeminiClient");
 
-        // Armamos el body con el formato nativo que exige la API de Google:
-        // system_instruction para el contexto base y contents para la conversación.
         var request = new GeminiRequest
         {
             SystemInstruction = new GeminiContent
@@ -62,15 +58,11 @@ public class GeminiClient : IGeminiClient
                 Parts = [new GeminiPart { Text = systemInstruction }]
             },
             Contents = contents,
-            // En modo JSON le pedimos al modelo que devuelva únicamente JSON válido,
-            // así lo podemos deserializar sin parsear texto libre.
             GenerationConfig = jsonMode
                 ? new GeminiGenerationConfig { ResponseMimeType = "application/json" }
                 : null
         };
 
-        // Gemini puede responder 503 (modelo sobrecargado) o 429 (límite de uso) de forma
-        // transitoria. Reintentamos unas pocas veces con espera creciente antes de fallar.
         const int maxIntentos = 3;
 
         for (var intento = 1; ; intento++)
@@ -81,7 +73,6 @@ public class GeminiClient : IGeminiClient
             {
                 var resultado = await response.Content.ReadFromJsonAsync<GeminiResponse>();
 
-                // Extraemos el texto limpio de la primera candidata devuelta por el modelo.
                 var textoLimpio = resultado?
                     .Candidates?
                     .FirstOrDefault()?
@@ -96,15 +87,12 @@ public class GeminiClient : IGeminiClient
             var esTransitorio = response.StatusCode == HttpStatusCode.ServiceUnavailable ||
                 response.StatusCode == HttpStatusCode.TooManyRequests;
 
-            // Si todavía quedan intentos y el error es transitorio, esperamos y reintentamos.
             if (esTransitorio && intento < maxIntentos)
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(700 * intento));
                 continue;
             }
 
-            // Sin más reintentos (o error no transitorio): lanzamos con el código de estado
-            // para que la capa de aplicación devuelva un mensaje claro al usuario.
             response.EnsureSuccessStatusCode();
         }
     }

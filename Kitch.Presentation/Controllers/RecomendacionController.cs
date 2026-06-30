@@ -17,8 +17,6 @@ public class RecomendacionController : ApiControllerBase
         _recomendacionService = recomendacionService;
     }
 
-    // Recomendación determinística por % de coincidencia con la alacena.
-    // Opcional: ?maxFaltantes=2 para el caso "te faltan pocos ingredientes".
     [HttpGet]
     public async Task<ActionResult<IEnumerable<RecetaCompatibleDto>>> Recomendar([FromQuery] int? maxFaltantes)
     {

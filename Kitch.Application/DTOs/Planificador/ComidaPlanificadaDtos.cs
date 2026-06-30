@@ -28,8 +28,6 @@ public class ComidaPlanificadaResponseDto
     public string Turno { get; set; } = string.Empty;
 }
 
-// Resultado de planificar una comida: la comida creada + los ingredientes que se
-// agregaron automáticamente a la lista de compras por faltarle al usuario.
 public class PlanificacionResultadoDto
 {
     public ComidaPlanificadaResponseDto Comida { get; set; } = new();

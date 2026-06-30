@@ -129,7 +129,6 @@ public class SuscripcionService : ISuscripcionService
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
             ?? throw new InvalidOperationException("El usuario no existe.");
 
-        // Regla de negocio: un usuario solo puede tener una suscripción activa al mismo tiempo.
         var tieneContratoActivo = await _contratoRepository.AnyAsync(contrato =>
             contrato.UsuarioId == usuarioId && contrato.Estado == EstadoContratoSub.Activo);
 

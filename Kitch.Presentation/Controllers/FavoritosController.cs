@@ -17,8 +17,11 @@ public class FavoritosController : ApiControllerBase
         _favoritoService = favoritoService;
     }
 
+<<<<<<< HEAD
     // Tus propios favoritos. El usuario sale del token; no se pasa id ni email por la URL.
     [HttpGet]
+=======
+>>>>>>> main
     [HttpGet("mias")]
     public async Task<ActionResult<IEnumerable<FavoritoResponseDto>>> GetMias()
     {
@@ -68,7 +71,6 @@ public class FavoritosController : ApiControllerBase
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
         }
 
-        // El dueño del favorito sale del token, no del body: nadie puede agregar favoritos a otro.
         favorito.UsuarioId = usuarioId;
 
         try

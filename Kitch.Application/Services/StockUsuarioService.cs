@@ -29,7 +29,6 @@ public class StockUsuarioService : IStockUsuarioService
 
     public async Task<StockUsuarioResponseDto?> GetByIdAsync(int id, int usuarioId)
     {
-        // Solo traemos el ítem si es del usuario; si es de otro, devolvemos null (como inexistente).
         var stock = await _repository.FindWithIncludesAsync(
             item => item.Id == id && item.UsuarioId == usuarioId,
             item => item.Ingrediente);
@@ -40,14 +39,12 @@ public class StockUsuarioService : IStockUsuarioService
     {
         ValidateCantidad(stock.Cantidad);
 
-        // Resolvemos el ingrediente: por id (si vino) o por nombre (lo busca o lo crea).
         var ingredienteId = await ResolverIngredienteIdAsync(stock.IngredienteId, stock.NombreIngrediente);
 
         var stockExistente = await _repository.FirstOrDefaultAsync(existente =>
             existente.UsuarioId == stock.UsuarioId &&
             existente.IngredienteId == ingredienteId);
 
-        // Si el usuario ya tenía ese ingrediente, sumamos la cantidad en lugar de duplicar.
         if (stockExistente is not null)
         {
             stockExistente.Cantidad += stock.Cantidad;
@@ -67,13 +64,11 @@ public class StockUsuarioService : IStockUsuarioService
 
         var created = await _repository.AddAsync(entity);
 
-        // Releemos con el ingrediente incluido para devolver el nombre en la respuesta.
         return (await GetByIdAsync(created.Id, stock.UsuarioId))!;
     }
 
     private async Task<int> ResolverIngredienteIdAsync(int ingredienteId, string? nombreIngrediente)
     {
-        // Caso A: vino un id explícito -> validamos que exista en el catálogo.
         if (ingredienteId > 0)
         {
             var existente = await _ingredienteRepository.GetByIdAsync(ingredienteId);
@@ -85,7 +80,6 @@ public class StockUsuarioService : IStockUsuarioService
             return ingredienteId;
         }
 
-        // Caso B: vino un nombre -> lo buscamos o lo creamos.
         if (!string.IsNullOrWhiteSpace(nombreIngrediente))
         {
             var nombre = nombreIngrediente.Trim();
@@ -115,7 +109,6 @@ public class StockUsuarioService : IStockUsuarioService
 
         var existingStock = await _repository.GetByIdAsync(id);
 
-        // Solo podés editar tu propia alacena.
         if (existingStock is null || existingStock.UsuarioId != usuarioId)
         {
             return false;
@@ -133,7 +126,6 @@ public class StockUsuarioService : IStockUsuarioService
     {
         var stock = await _repository.GetByIdAsync(id);
 
-        // Solo podés borrar de tu propia alacena.
         if (stock is null || stock.UsuarioId != usuarioId)
         {
             return false;

@@ -6,8 +6,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Kitch.Presentation.Controllers;
 
-// El catálogo maestro de ingredientes lo administra solo el Admin.
-// Los usuarios comunes no ven el catálogo completo: solo ven su propia alacena (StockUsuario).
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Roles = RolUsuario.Admin)]

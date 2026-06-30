@@ -9,6 +9,6 @@ public interface IUsuarioService
     Task<UsuarioResponseDto> CreateAsync(UsuarioCreateDto usuario);
     Task<bool> UpdateAsync(int id, UsuarioUpdateDto usuario);
     Task<bool> ActualizarPerfilAsync(int usuarioId, ActualizarPerfilDto perfil);
-    Task<bool> CambiarRolAsync(int usuarioId, string nuevoRol);
-    Task<bool> DeleteAsync(int id);
+    Task<bool> CambiarRolAsync(int usuarioId, string nuevoRol, int adminEjecutorId);
+    Task<bool> DeleteAsync(int id, int adminEjecutorId);
 }

@@ -8,9 +8,8 @@ namespace Kitch.Presentation.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-// Módulo de Administración: la gestión de cuentas es exclusiva del rol Admin.
 [Authorize(Roles = RolUsuario.Admin)]
-public class UsuariosController : ControllerBase
+public class UsuariosController : ApiControllerBase
 {
     private readonly IUsuarioService _usuarioService;
 
@@ -62,9 +61,14 @@ public class UsuariosController : ControllerBase
     [HttpPut("{id:int}/cambiar-rol")]
     public async Task<IActionResult> CambiarRol(int id, [FromBody] CambiarRolDto request)
     {
+        if (!TryGetUsuarioId(out var adminId))
+        {
+            return Unauthorized("No se pudo identificar al administrador a partir del token.");
+        }
+
         try
         {
-            var actualizado = await _usuarioService.CambiarRolAsync(id, request.NuevoRol);
+            var actualizado = await _usuarioService.CambiarRolAsync(id, request.NuevoRol, adminId);
 
             if (!actualizado)
             {
@@ -82,13 +86,25 @@ public class UsuariosController : ControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _usuarioService.DeleteAsync(id);
-
-        if (!deleted)
+        if (!TryGetUsuarioId(out var adminId))
         {
-            return NotFound();
+            return Unauthorized("No se pudo identificar al administrador a partir del token.");
         }
 
-        return NoContent();
+        try
+        {
+            var deleted = await _usuarioService.DeleteAsync(id, adminId);
+
+            if (!deleted)
+            {
+                return NotFound();
+            }
+
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 }

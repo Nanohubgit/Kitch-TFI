@@ -38,7 +38,6 @@ public class PrevisualizarDescuentoStockRequestDto
     public int PorcionesCocinadas { get; set; }
 }
 
-// Confirma el descuento real del stock tras cocinar. El usuario sale del token, no del body.
 public class ConfirmarDescuentoStockRequestDto
 {
     [Required]

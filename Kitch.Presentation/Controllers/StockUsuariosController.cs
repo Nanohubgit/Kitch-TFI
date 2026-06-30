@@ -17,7 +17,6 @@ public class StockUsuariosController : ApiControllerBase
         _stockUsuarioService = stockUsuarioService;
     }
 
-    // Tu propia alacena. El usuario sale del token; no se pasa id ni email por la URL.
     [HttpGet("mias")]
     public async Task<ActionResult<IEnumerable<StockUsuarioResponseDto>>> GetMias()
     {
