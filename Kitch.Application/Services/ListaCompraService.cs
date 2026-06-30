@@ -113,12 +113,19 @@ public class ListaCompraService : IListaCompraService
 
     public async Task<IEnumerable<ItemListaCompraResponseDto>> GenerarListaFaltantesAsync(int usuarioId)
     {
+        // La planificación (incluida la que hace el asistente de IA) persiste sus
+        // faltantes en ItemListaCompra. Este endpoint debe incluirlos aunque no haya
+        // comidas en la semana actual.
+        var itemsPersistidos = (await _itemRepository.FindAsync(item =>
+                item.UsuarioId == usuarioId && !item.EstaComprado))
+            .ToList();
+
         // 1. Qué tengo que cocinar esta semana
         var comidasDeLaSemana = await ObtenerComidasDeLaSemanaAsync(usuarioId);
 
         if (comidasDeLaSemana.Count == 0)
         {
-            return Enumerable.Empty<ItemListaCompraResponseDto>();
+            return itemsPersistidos.Select(item => item.ToResponseDto());
         }
 
         // 2. Cuánto necesito de cada ingrediente (Requerimiento Total)
@@ -132,14 +139,26 @@ public class ListaCompraService : IListaCompraService
 
         if (cantidadesFaltantes.Count == 0)
         {
-            return Enumerable.Empty<ItemListaCompraResponseDto>();
+            return itemsPersistidos.Select(item => item.ToResponseDto());
         }
 
         // 5. Armo la lista final con el nombre real de cada ingrediente
 
-        var listaDeCompra = await ArmarListaDeCompraAsync(usuarioId, cantidadesFaltantes);
-        var listaDeCompraDto = listaDeCompra.Select(item => item.ToResponseDto()).ToList();
-        return listaDeCompraDto;
+        var faltantesCalculados = await ArmarListaDeCompraAsync(usuarioId, cantidadesFaltantes);
+
+        // Los faltantes de una receta planificada por la IA ya están persistidos.
+        // Evitamos mostrarlos dos veces al combinar ambas fuentes.
+        var nombresPersistidos = itemsPersistidos
+            .Select(item => item.NombreArticulo.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var faltantesNoPersistidos = faltantesCalculados
+            .Where(item => !nombresPersistidos.Contains(item.NombreArticulo.Trim()));
+
+        return itemsPersistidos
+            .Concat(faltantesNoPersistidos)
+            .Select(item => item.ToResponseDto())
+            .ToList();
     }
 
     private async Task<List<ComidaPlanificada>> ObtenerComidasDeLaSemanaAsync(int usuarioId)

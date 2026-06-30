@@ -18,6 +18,7 @@ public class FavoritosController : ApiControllerBase
     }
 
     // Tus propios favoritos. El usuario sale del token; no se pasa id ni email por la URL.
+    [HttpGet]
     [HttpGet("mias")]
     public async Task<ActionResult<IEnumerable<FavoritoResponseDto>>> GetMias()
     {
