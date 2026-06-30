@@ -175,7 +175,6 @@ public class PreparacionService : IPreparacionService
             throw new InvalidOperationException("La receta no tiene ingredientes cargados.");
         }
 
-        // Si no especifican porciones, se asume la receta completa (factor 1).
         var porcionesBase = receta.Porciones > 0 ? receta.Porciones : 1;
         var factor = porciones > 0 ? (decimal)porciones / porcionesBase : 1m;
 
@@ -194,12 +193,10 @@ public class PreparacionService : IPreparacionService
 
             var nombre = await ObtenerNombreIngredienteAsync(ingrediente.IngredienteId);
 
-            // Cuánto hay disponible (0 si no tiene ese ingrediente cargado en la alacena).
             var disponible = stockPorIngrediente.TryGetValue(ingrediente.IngredienteId, out var stock)
                 ? stock.Cantidad
                 : 0m;
 
-            // Descontamos lo que se pueda sin pasarnos de 0.
             var aDescontar = Math.Min(disponible, cantidadNecesaria);
             if (aDescontar > 0 && stock is not null)
             {
@@ -214,7 +211,6 @@ public class PreparacionService : IPreparacionService
                 });
             }
 
-            // Lo que no alcanzó a cubrir el stock queda reportado como faltante.
             var faltante = Math.Round(cantidadNecesaria - aDescontar, 2);
             if (faltante > 0)
             {

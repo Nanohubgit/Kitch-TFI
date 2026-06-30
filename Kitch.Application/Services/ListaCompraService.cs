@@ -109,11 +109,16 @@ public class ListaCompraService : IListaCompraService
 
     public async Task<IEnumerable<ItemListaCompraResponseDto>> GenerarListaFaltantesAsync(int usuarioId)
     {
+
+        var itemsPersistidos = (await _itemRepository.FindAsync(item =>
+                item.UsuarioId == usuarioId && !item.EstaComprado))
+            .ToList();
+
         var comidasDeLaSemana = await ObtenerComidasDeLaSemanaAsync(usuarioId);
 
         if (comidasDeLaSemana.Count == 0)
         {
-            return Enumerable.Empty<ItemListaCompraResponseDto>();
+            return itemsPersistidos.Select(item => item.ToResponseDto());
         }
 
         var requerimientoTotal = await CalcularRequerimientoTotalAsync(comidasDeLaSemana);
@@ -124,13 +129,23 @@ public class ListaCompraService : IListaCompraService
 
         if (cantidadesFaltantes.Count == 0)
         {
-            return Enumerable.Empty<ItemListaCompraResponseDto>();
+            return itemsPersistidos.Select(item => item.ToResponseDto());
         }
 
 
-        var listaDeCompra = await ArmarListaDeCompraAsync(usuarioId, cantidadesFaltantes);
-        var listaDeCompraDto = listaDeCompra.Select(item => item.ToResponseDto()).ToList();
-        return listaDeCompraDto;
+        var faltantesCalculados = await ArmarListaDeCompraAsync(usuarioId, cantidadesFaltantes);
+
+        var nombresPersistidos = itemsPersistidos
+            .Select(item => item.NombreArticulo.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var faltantesNoPersistidos = faltantesCalculados
+            .Where(item => !nombresPersistidos.Contains(item.NombreArticulo.Trim()));
+
+        return itemsPersistidos
+            .Concat(faltantesNoPersistidos)
+            .Select(item => item.ToResponseDto())
+            .ToList();
     }
 
     private async Task<List<ComidaPlanificada>> ObtenerComidasDeLaSemanaAsync(int usuarioId)

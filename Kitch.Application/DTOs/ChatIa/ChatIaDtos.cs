@@ -58,10 +58,7 @@ public class ChatRespuestaDto
 
     public List<string>? IngredientesAgregadosALista { get; set; }
 
-    // Ingredientes descontados de la alacena al cocinar (acción cocinar_receta).
-    // Cada string es del estilo "Huevo: -3 u".
     public List<string>? StockDescontado { get; set; }
 
-    // Ingredientes que no alcanzaron a cubrirse con el stock al cocinar (acción cocinar_receta).
     public List<string>? StockFaltante { get; set; }
 }

@@ -7,8 +7,6 @@ using Microsoft.Extensions.Configuration;
 
 namespace Kitch.Infrastructure.Services;
 
-// Cliente de IA basado en Groq (API compatible con OpenAI: /openai/v1/chat/completions).
-// Implementa IAsistenteIaClient, así el resto de la app no depende del proveedor concreto.
 public class GroqClient : IAsistenteIaClient
 {
     private const string ChatEndpoint = "openai/v1/chat/completions";
@@ -42,8 +40,6 @@ public class GroqClient : IAsistenteIaClient
         string systemInstruction,
         bool jsonMode = false)
     {
-        // OpenAI/Groq usa los roles "user" y "assistant". Nuestro historial guarda "model"
-        // para el asistente (heredado del formato de Gemini), así que lo traducimos acá.
         var messages = mensajes
             .Select(mensaje => new GroqMessage
             {
@@ -62,7 +58,6 @@ public class GroqClient : IAsistenteIaClient
     {
         var client = _httpClientFactory.CreateClient("GroqClient");
 
-        // El system prompt va como primer mensaje con rol "system".
         var todosLosMensajes = new List<GroqMessage>
         {
             new() { Role = "system", Content = systemInstruction }
@@ -73,15 +68,11 @@ public class GroqClient : IAsistenteIaClient
         {
             Model = _modelo,
             Messages = todosLosMensajes,
-            // En modo JSON le pedimos a Groq que devuelva únicamente JSON válido.
-            // (El system prompt ya le indica el formato exacto que esperamos.)
             ResponseFormat = jsonMode
                 ? new GroqResponseFormat { Type = "json_object" }
                 : null
         };
 
-        // Groq puede responder 503 (sobrecargado) o 429 (límite de uso) de forma transitoria.
-        // Reintentamos unas pocas veces con espera creciente antes de fallar.
         const int maxIntentos = 3;
 
         for (var intento = 1; ; intento++)
@@ -110,8 +101,6 @@ public class GroqClient : IAsistenteIaClient
                 continue;
             }
 
-            // Sin más reintentos (o error no transitorio): lanzamos con el código de estado
-            // para que la capa de aplicación devuelva un mensaje claro al usuario.
             response.EnsureSuccessStatusCode();
         }
     }
