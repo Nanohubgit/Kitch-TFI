@@ -23,16 +23,13 @@ public class RecomendacionService : IRecomendacionService
 
     public async Task<IEnumerable<RecetaCompatibleDto>> RecomendarAsync(int usuarioId, int? maxFaltantes = null)
     {
-        // 1. Qué ingredientes tiene el usuario en su alacena (con stock > 0).
         var stock = await _stockRepository.FindAsync(item => item.UsuarioId == usuarioId && item.Cantidad > 0);
         var idsEnAlacena = stock.Select(item => item.IngredienteId).ToHashSet();
 
-        // 2. Todas las recetas con sus ingredientes.
         var recetas = await _recetaRepository.FindWithIncludesAsync(
             receta => true,
             receta => receta.IngredientesReceta);
 
-        // 3. Nombres de los ingredientes (para mostrar los faltantes con su nombre real).
         var ingredienteIds = recetas
             .SelectMany(receta => receta.IngredientesReceta)
             .Select(ingrediente => ingrediente.IngredienteId)
@@ -45,7 +42,6 @@ public class RecomendacionService : IRecomendacionService
             ingrediente => ingrediente.Id,
             ingrediente => ingrediente.Nombre);
 
-        // 4. Para cada receta, calculamos cuánto cubre la alacena y qué falta.
         var recomendaciones = new List<RecetaCompatibleDto>();
 
         foreach (var receta in recetas)
@@ -63,7 +59,6 @@ public class RecomendacionService : IRecomendacionService
                     : $"Ingrediente #{ingrediente.IngredienteId}")
                 .ToList();
 
-            // Si se pidió un tope de faltantes, descartamos las que se pasen.
             if (maxFaltantes.HasValue && faltantes.Count > maxFaltantes.Value)
             {
                 continue;
@@ -86,7 +81,6 @@ public class RecomendacionService : IRecomendacionService
             });
         }
 
-        // 5. Priorizamos: mayor coincidencia, menos faltantes, y más rápido de preparar.
         return recomendaciones
             .OrderByDescending(receta => receta.PorcentajeCoincidencia)
             .ThenBy(receta => receta.IngredientesFaltantes.Count)

@@ -44,8 +44,6 @@ public class UsuarioService : IUsuarioService
             Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(usuario.Password),
             Activo = true,
-            // El rol nunca lo elige el cliente: se fuerza a Básico. Para ascender se usa
-            // el endpoint admin-only CambiarRolAsync (mitigación de escalada de privilegios).
             Rol = RolUsuario.Basico
         };
 
@@ -73,8 +71,6 @@ public class UsuarioService : IUsuarioService
         existingUsuario.Apellido = usuario.Apellido.Trim();
         existingUsuario.Email = email;
         existingUsuario.Activo = usuario.Activo;
-        // El rol NO se actualiza acá a propósito: cambiarlo es exclusivo del endpoint
-        // admin-only CambiarRolAsync. Así el Update general no es una vía de escalada.
 
         await _repository.UpdateAsync(existingUsuario);
 
@@ -97,8 +93,6 @@ public class UsuarioService : IUsuarioService
             throw new InvalidOperationException("El email ya se encuentra registrado.");
         }
 
-        // El usuario solo puede tocar sus datos personales. Activo y Rol quedan
-        // fuera a propósito: son competencia exclusiva del Admin.
         existingUsuario.Nombre = perfil.Nombre.Trim();
         existingUsuario.Apellido = perfil.Apellido.Trim();
         existingUsuario.Email = email;
@@ -112,7 +106,6 @@ public class UsuarioService : IUsuarioService
     {
         var rol = nuevoRol?.Trim() ?? string.Empty;
 
-        // Validamos contra la lista blanca de roles: nunca confiamos en un string arbitrario.
         if (!RolUsuario.EsValido(rol))
         {
             throw new InvalidOperationException($"El rol '{nuevoRol}' no es un rol válido.");
@@ -125,13 +118,11 @@ public class UsuarioService : IUsuarioService
             return false;
         }
 
-        // El admin no puede degradarse a sí mismo: evita quedar afuera por accidente.
         if (usuarioId == adminEjecutorId && rol != RolUsuario.Admin)
         {
             throw new InvalidOperationException("No podés cambiar tu propio rol de administrador.");
         }
 
-        // Si se está degradando a un admin, exigimos que quede al menos otro admin activo.
         if (usuario.Rol == RolUsuario.Admin && rol != RolUsuario.Admin &&
             !await ExisteOtroAdminActivoAsync(usuarioId))
         {
@@ -154,13 +145,11 @@ public class UsuarioService : IUsuarioService
             return false;
         }
 
-        // Un admin no puede borrarse a sí mismo: evita el auto-lockout.
         if (id == adminEjecutorId)
         {
             throw new InvalidOperationException("No podés eliminar tu propia cuenta de administrador.");
         }
 
-        // No se permite borrar al último admin activo: el sistema siempre debe tener administrador.
         if (usuario.Rol == RolUsuario.Admin && !await ExisteOtroAdminActivoAsync(id))
         {
             throw new InvalidOperationException(
@@ -172,7 +161,6 @@ public class UsuarioService : IUsuarioService
         return true;
     }
 
-    // Hay otro admin activo además del indicado por excluirUsuarioId.
     private async Task<bool> ExisteOtroAdminActivoAsync(int excluirUsuarioId) =>
         await _repository.AnyAsync(u =>
             u.Id != excluirUsuarioId && u.Rol == RolUsuario.Admin && u.Activo);

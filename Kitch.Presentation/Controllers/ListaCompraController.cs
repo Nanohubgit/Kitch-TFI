@@ -17,7 +17,6 @@ public class ListaCompraController : ApiControllerBase
         _listaCompraService = listaCompraService;
     }
 
-    // Tu propia lista de compras. El usuario sale del token; no se pasa id ni email por la URL.
     [HttpGet("mias")]
     public async Task<ActionResult<IEnumerable<ItemListaCompraResponseDto>>> GetMias()
     {

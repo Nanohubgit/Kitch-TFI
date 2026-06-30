@@ -17,13 +17,9 @@ public class ChatIaController : ApiControllerBase
         _chatIaService = chatIaService;
     }
 
-    // Endpoint ÚNICO del asistente. Según lo que el usuario pida en lenguaje natural, el
-    // agente conversa, genera una receta, la guarda (favoritos), sugiere sustitutos o
-    // recomienda recetas, y ejecuta los efectos correspondientes. Todo en la misma conversación.
     [HttpPost]
     public async Task<ActionResult<ChatRespuestaDto>> Chat([FromBody] ChatRequestDto request)
     {
-        // El usuario sale del token JWT, no del body: nadie puede chatear haciéndose pasar por otro.
         if (!TryGetUsuarioId(out var usuarioId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");

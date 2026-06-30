@@ -95,11 +95,8 @@ public class RecetaIaService : IRecetaIaService
             throw new InvalidOperationException("No se recibió la receta a guardar.");
         }
 
-        // Si el usuario no aclaró un nombre (o quedó el placeholder "string"), generamos uno
-        // descriptivo a partir de los ingredientes para no guardar recetas con título basura.
         var titulo = GenerarTituloPorDefecto(receta.Titulo, receta.Ingredientes);
 
-        // Reglas de negocio: toda receta necesita al menos un ingrediente y un paso.
         var ingredientesValidos = receta.Ingredientes
             .Where(ingrediente => !string.IsNullOrWhiteSpace(ingrediente.Nombre))
             .ToList();
@@ -117,7 +114,6 @@ public class RecetaIaService : IRecetaIaService
             throw new InvalidOperationException("La receta debe tener al menos un paso de preparación.");
         }
 
-        // Resolvemos cada ingrediente contra el catálogo: si no existe, lo creamos.
         var ingredientesReceta = new List<IngredienteReceta>();
         var nombresProcesados = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -125,7 +121,6 @@ public class RecetaIaService : IRecetaIaService
         {
             var nombre = ingrediente.Nombre.Trim();
 
-            // Evitamos duplicar el mismo ingrediente dentro de la receta.
             if (!nombresProcesados.Add(nombre))
             {
                 continue;
@@ -165,7 +160,6 @@ public class RecetaIaService : IRecetaIaService
 
         var recetaCreada = await _recetaRepository.AddAsync(nuevaReceta);
 
-        // La guardamos como favorita del usuario que la generó.
         await _favoritoRepository.AddAsync(new RecetaFavorita
         {
             UsuarioId = usuarioId,
@@ -204,8 +198,6 @@ public class RecetaIaService : IRecetaIaService
 
     private async Task<int> ObtenerOCrearIngredienteAsync(string nombre)
     {
-        // SQL Server compara strings sin distinguir mayúsculas por defecto, así que
-        // esta búsqueda evita duplicar "Harina" / "harina" en el catálogo.
         var existente = await _ingredienteRepository.FirstOrDefaultAsync(
             ingrediente => ingrediente.Nombre == nombre);
 
@@ -223,8 +215,6 @@ public class RecetaIaService : IRecetaIaService
         return creado.Id;
     }
 
-    // Devuelve el título de la receta o, si vino vacío o como placeholder ("string"),
-    // arma uno descriptivo a partir de los primeros ingredientes.
     public static string GenerarTituloPorDefecto(string? titulo, IEnumerable<IngredienteGeneradoDto> ingredientes)
     {
         var limpio = titulo?.Trim();
@@ -259,7 +249,6 @@ public class RecetaIaService : IRecetaIaService
             return null;
         }
 
-        // Por las dudas que el modelo envuelva el JSON en ```json ... ```, lo limpiamos.
         var limpio = json.Trim();
         if (limpio.StartsWith("```"))
         {

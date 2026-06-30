@@ -48,8 +48,6 @@ public class SustitucionService : ISustitucionService
         var sustitutos = await _sustitutoRepository.FindAsync(
             sustituto => sustituto.IngredienteOriginalId == ingredienteId);
 
-        // Si todavía no hay sustitutos cargados para este ingrediente, los genera la IA y los persiste.
-        // Las próximas consultas ya los leen de la base (funciona como caché).
         if (sustitutos.Count == 0)
         {
             await GenerarYPersistirSustitutosAsync(ingredienteOriginal);
@@ -73,7 +71,6 @@ public class SustitucionService : ISustitucionService
             ingrediente => ingrediente.Id,
             ingrediente => ingrediente.Nombre);
 
-        // Lo que el usuario ya tiene en su alacena (con stock > 0) para priorizar.
         var stockUsuario = await _stockRepository.FindAsync(
             stock => stock.UsuarioId == usuarioId && stock.Cantidad > 0);
         var disponiblesEnAlacena = stockUsuario
@@ -91,7 +88,6 @@ public class SustitucionService : ISustitucionService
                 Notas = sustituto.Notas,
                 DisponibleEnAlacena = disponiblesEnAlacena.Contains(sustituto.IngredienteSustitutoId)
             })
-            // Primero los que el usuario ya tiene; dentro de cada grupo, alfabético.
             .OrderByDescending(sugerido => sugerido.DisponibleEnAlacena)
             .ThenBy(sugerido => sugerido.Nombre)
             .ToList();
@@ -116,13 +112,11 @@ public class SustitucionService : ISustitucionService
                 continue;
             }
 
-            // No tiene sentido que un ingrediente sea sustituto de sí mismo.
             if (string.Equals(nombre, ingredienteOriginal.Nombre, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            // El sustituto tiene que existir en el catálogo: lo buscamos o lo creamos.
             var ingredienteSustituto = await _ingredienteRepository.FirstOrDefaultAsync(
                 ingrediente => ingrediente.Nombre == nombre);
 
@@ -132,7 +126,6 @@ public class SustitucionService : ISustitucionService
                 Categoria = "Varios"
             });
 
-            // Evitamos duplicar la misma relación original -> sustituto.
             var yaExiste = await _sustitutoRepository.AnyAsync(sustituto =>
                 sustituto.IngredienteOriginalId == ingredienteOriginal.Id &&
                 sustituto.IngredienteSustitutoId == ingredienteSustituto.Id);

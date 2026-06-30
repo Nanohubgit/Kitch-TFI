@@ -15,9 +15,6 @@ namespace Kitch.Application.Services;
 
 public class ChatIaService : IChatIaService
 {
-    // System prompt maestro: define al agente y, sobre todo, lo obliga a responder SIEMPRE
-    // con un único JSON cuyo campo "accion" le dice al servidor qué efecto ejecutar.
-    // De esta forma chatear, generar, guardar, sustituir y recomendar viven en un solo flujo.
     private const string InstruccionAgente =
         "Sos 'Kitch-AI', el asistente de cocina exclusivo de la plataforma Kitch. Estás hablando con __NOMBRE_USUARIO__. " +
         "Únicamente respondés temas de cocina: recetas, ingredientes, técnicas culinarias y planificación de comidas. " +
@@ -70,9 +67,6 @@ public class ChatIaService : IChatIaService
 
     private const string NombrePorDefecto = "Chef";
 
-    // Memoria liviana en proceso: guardamos la ÚLTIMA receta que el agente le generó a cada
-    // usuario. Así, cuando pide "guardala" en otro mensaje, no necesitamos que el cliente
-    // reenvíe la receta (clave para probar desde Swagger). Se reinicia si se reinicia la API.
     private static readonly ConcurrentDictionary<int, RecetaGeneradaDto> UltimaRecetaPorUsuario = new();
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -129,21 +123,14 @@ public class ChatIaService : IChatIaService
             };
         }
 
-        // 1. Armamos el system prompt con el nombre del usuario.
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
         var nombreUsuario = string.IsNullOrWhiteSpace(usuario?.Nombre) ? NombrePorDefecto : usuario!.Nombre;
 
-        // Usamos siempre el prompt del agente: es el único que define las acciones (generar,
-        // guardar, sustituir, recomendar). El de appsettings era solo para chatear y lo dejamos de lado.
         var systemInstruction = InstruccionAgente.Replace("__NOMBRE_USUARIO__", nombreUsuario);
 
-        // 2. Construimos la conversación: contexto + historial + mensaje nuevo.
         var contexto = await ConstruirContextoAsync(usuarioId, request.RecetaActual);
         var mensajes = ConstruirConversacion(contexto, request);
 
-        // 3. Le pedimos al modelo el sobre JSON con la acción a ejecutar.
-        //    Si la API de IA falla (típico: 429 por límite de uso de la cuota), devolvemos
-        //    un mensaje claro en vez de un 500 "error desconocido".
         string json;
         try
         {
@@ -187,7 +174,6 @@ public class ChatIaService : IChatIaService
             };
         }
 
-        // 4. Ejecutamos el efecto según la acción que decidió el agente.
         return (sobre.Accion ?? string.Empty).Trim().ToLowerInvariant() switch
         {
             ChatAccion.GenerarReceta => await ResolverGenerarRecetaAsync(usuarioId, sobre),
@@ -219,23 +205,16 @@ public class ChatIaService : IChatIaService
             };
         }
 
-        // Si el agente no puso un título válido, generamos uno descriptivo (nunca "string").
         receta.Titulo = RecetaIaService.GenerarTituloPorDefecto(receta.Titulo, receta.Ingredientes);
 
-        // Recordamos esta receta para este usuario: si luego dice "guardala", la usamos
-        // aunque el cliente no la reenvíe.
         UltimaRecetaPorUsuario[usuarioId] = receta;
 
-        // Damos de alta en el catálogo los ingredientes usados, pero "best-effort":
-        // generar es un borrador, no debe romperse si el alta de catálogo falla. El catálogo
-        // se completa igual cuando el usuario guarda la receta (ahí sí se persiste todo).
         try
         {
             await _recetaIaService.AsegurarIngredientesEnCatalogoAsync(receta);
         }
         catch
         {
-            // Ignoramos el error a propósito: el borrador igual se devuelve.
         }
 
         return new ChatRespuestaDto
@@ -253,10 +232,6 @@ public class ChatIaService : IChatIaService
         SobreAgente sobre,
         RecetaGeneradaDto? recetaActual)
     {
-        // Elegimos la mejor fuente de la receta, en orden de confianza:
-        // 1) la que repitió la IA en el sobre, 2) la que el cliente mandó en pantalla,
-        // 3) la última que le generamos a este usuario (memoria del servidor).
-        // Descartamos las que vengan vacías o con el placeholder "string".
         var receta = ElegirRecetaParaGuardar(usuarioId, sobre.Receta, recetaActual);
 
         if (receta is null)
@@ -272,7 +247,6 @@ public class ChatIaService : IChatIaService
         {
             var guardada = await _recetaIaService.GuardarRecetaAsync(usuarioId, receta);
 
-            // Ya quedó guardada: limpiamos la memoria para no re-guardarla por error.
             UltimaRecetaPorUsuario.TryRemove(usuarioId, out _);
             return new ChatRespuestaDto
             {
@@ -311,8 +285,6 @@ public class ChatIaService : IChatIaService
         return UltimaRecetaPorUsuario.TryGetValue(usuarioId, out var recordada) ? recordada : null;
     }
 
-    // Una receta sirve para guardar si tiene ingredientes y un título de verdad
-    // (no vacío ni el placeholder "string" que mete Swagger por defecto).
     private static bool EsRecetaValida(RecetaGeneradaDto? receta)
     {
         if (receta is null || receta.Ingredientes.Count == 0)
@@ -337,7 +309,6 @@ public class ChatIaService : IChatIaService
             };
         }
 
-        // El ingrediente original tiene que existir en el catálogo para poder asociarle sustitutos.
         var ingrediente = await _ingredienteRepository.FirstOrDefaultAsync(i => i.Nombre == nombre);
         ingrediente ??= await _ingredienteRepository.AddAsync(new Ingrediente
         {
@@ -345,8 +316,6 @@ public class ChatIaService : IChatIaService
             Categoria = "Varios"
         });
 
-        // El servicio de sustitución genera (vía IA) y persiste los sustitutos si no existían,
-        // y los devuelve priorizando los que el usuario ya tiene en la alacena.
         var sustitutos = (await _sustitucionService.BuscarSustitutosAsync(usuarioId, ingrediente.Id)).ToList();
 
         return new ChatRespuestaDto
@@ -380,7 +349,6 @@ public class ChatIaService : IChatIaService
     {
         var titulo = sobre.TituloEliminar?.Trim();
 
-        // Si no pidió borrar todo y tampoco dio un título, le preguntamos.
         if (!sobre.EliminarTodas && string.IsNullOrWhiteSpace(titulo))
         {
             return new ChatRespuestaDto
@@ -390,13 +358,10 @@ public class ChatIaService : IChatIaService
             };
         }
 
-        // Solo tocamos recetas que el usuario tenga guardadas en favoritos: así nadie
-        // puede eliminar recetas de otros usuarios desde el chat.
         var favoritos = await _favoritoRepository.FindWithIncludesAsync(
             favorito => favorito.UsuarioId == usuarioId,
             favorito => favorito.Receta);
 
-        // Borrado en masa: todas las recetas guardadas del usuario.
         var recetas = favoritos
             .Select(favorito => favorito.Receta)
             .Where(receta => receta is not null)
@@ -404,8 +369,6 @@ public class ChatIaService : IChatIaService
             .Select(grupo => grupo.First()!)
             .ToList();
 
-        // Borrado puntual: filtramos por coincidencia flexible del título (sin comillas, sin
-        // distinguir mayúsculas, y aceptando coincidencias parciales en cualquier dirección).
         if (!sobre.EliminarTodas)
         {
             recetas = recetas
@@ -425,7 +388,6 @@ public class ChatIaService : IChatIaService
             };
         }
 
-        // Borrar la receta arrastra en cascada sus ingredientes, pasos, favoritos y planificación.
         foreach (var receta in recetas)
         {
             await _recetaRepository.DeleteAsync(receta);
@@ -445,7 +407,6 @@ public class ChatIaService : IChatIaService
 
     private async Task<ChatRespuestaDto> ResolverPlanificarRecetaAsync(int usuarioId, SobreAgente sobre)
     {
-        // 1. Resolvemos qué receta planificar y nos aseguramos de tener su id real (guardada).
         var (recetaId, tituloReceta, errorReceta) = await ResolverRecetaParaPlanificarAsync(usuarioId, sobre);
         if (recetaId is null)
         {
@@ -456,10 +417,8 @@ public class ChatIaService : IChatIaService
             };
         }
 
-        // 2. Fecha: si la IA mandó una (YYYY-MM-DD), la usamos; si no, hoy.
         var fecha = ParsearFecha(sobre.FechaPlanificar);
 
-        // 3. Turno: el que indicó la IA o "Almuerzo" por defecto.
         var turno = string.IsNullOrWhiteSpace(sobre.TurnoPlanificar) ? "Almuerzo" : sobre.TurnoPlanificar!.Trim();
 
         try
@@ -472,7 +431,6 @@ public class ChatIaService : IChatIaService
                 Turno = turno
             });
 
-            // Armamos el aviso: qué se planificó y qué se sumó a la lista de compras.
             var agregados = resultado.IngredientesAgregadosALista;
             var aviso = agregados.Count > 0
                 ? $" Te faltaban algunos ingredientes, así que los agregué a tu lista de compras: {string.Join(", ", agregados)}."
@@ -490,7 +448,6 @@ public class ChatIaService : IChatIaService
         }
         catch (InvalidOperationException ex)
         {
-            // Choca con otra comida en esa fecha/turno.
             return new ChatRespuestaDto
             {
                 Accion = ChatAccion.Conversar,
@@ -499,15 +456,12 @@ public class ChatIaService : IChatIaService
         }
     }
 
-    // Devuelve el id de la receta a planificar (debe estar guardada para tener id).
-    // Busca primero entre los favoritos por título; si no, guarda la última receta recordada.
     private async Task<(int? recetaId, string? titulo, string? error)> ResolverRecetaParaPlanificarAsync(
         int usuarioId,
         SobreAgente sobre)
     {
         var titulo = sobre.TituloPlanificar?.Trim();
 
-        // a) Si dio un título, lo buscamos entre sus recetas guardadas.
         if (!string.IsNullOrWhiteSpace(titulo))
         {
             var favoritos = await _favoritoRepository.FindWithIncludesAsync(
@@ -524,8 +478,6 @@ public class ChatIaService : IChatIaService
             }
         }
 
-        // b) Si no la encontró guardada, usamos la última receta generada (memoria) y la guardamos
-        //    para obtener un id real con el que planificar.
         if (UltimaRecetaPorUsuario.TryGetValue(usuarioId, out var recordada) && EsRecetaValida(recordada))
         {
             try
@@ -650,8 +602,6 @@ public class ChatIaService : IChatIaService
         return DateTime.Today;
     }
 
-    // Coincidencia tolerante para que funcione sin comillas: ignora mayúsculas/espacios
-    // y acepta que el término sea parte del título o viceversa (ej. "tortilla" ~ "Tortilla de papas").
     private static bool CoincideTitulo(string tituloReceta, string busqueda)
     {
         var a = tituloReceta.Trim();
@@ -666,7 +616,6 @@ public class ChatIaService : IChatIaService
     {
         var mensajes = new List<MensajeIa>();
 
-        // Primer turno "user" con el contexto de la alacena/receta actual.
         mensajes.Add(new MensajeIa("user", contexto));
 
         if (request.Historial is not null)
@@ -715,8 +664,6 @@ public class ChatIaService : IChatIaService
             }
         }
 
-        // Preferimos la receta que mandó el cliente; si no es válida (vacía o "string"),
-        // usamos la última que le generamos a este usuario (memoria del servidor).
         var recetaContexto = EsRecetaValida(recetaActual)
             ? recetaActual
             : (UltimaRecetaPorUsuario.TryGetValue(usuarioId, out var recordada) ? recordada : null);
@@ -738,7 +685,6 @@ public class ChatIaService : IChatIaService
             return null;
         }
 
-        // Por las dudas que el modelo envuelva el JSON en ```json ... ```, lo limpiamos.
         var limpio = json.Trim();
         if (limpio.StartsWith("```"))
         {
@@ -760,7 +706,6 @@ public class ChatIaService : IChatIaService
         }
     }
 
-    // Estructura del JSON que devuelve el agente. El servidor la interpreta y ejecuta los efectos.
     private sealed class SobreAgente
     {
         [JsonPropertyName("accion")]

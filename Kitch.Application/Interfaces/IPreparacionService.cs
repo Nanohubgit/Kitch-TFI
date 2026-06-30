@@ -6,7 +6,6 @@ public interface IPreparacionService
 {
     Task<PrevisualizarPorcionesResponseDto> PrevisualizarRecalculoPorcionesAsync(PrevisualizarPorcionesRequestDto request);
     Task<PrevisualizarDescuentoStockResponseDto> PrevisualizarDescuentoStockAsync(PrevisualizarDescuentoStockRequestDto request);
-    // usuarioId es necesario para ubicar el stock del usuario que cocina la receta.
     Task DescontarIngredientesAsync(int usuarioId, int recetaId, int porciones);
 
     // Descuento PARCIAL: resta lo que haya en la alacena (clamp en 0) y devuelve qué se

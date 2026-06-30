@@ -8,6 +8,5 @@ public class ContratarSuscripcionRequest
     public decimal Monto { get; set; }
     public MetodoPago MetodoPago { get; set; } = MetodoPago.TarjetaCredito;
 
-    // Sin pasarela real: permite forzar el flujo alternativo de pago rechazado para la demo.
     public bool SimularRechazo { get; set; }
 }

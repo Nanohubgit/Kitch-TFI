@@ -127,15 +127,12 @@ public class PreparacionService : IPreparacionService
             throw new InvalidOperationException("La receta no tiene ingredientes cargados.");
         }
 
-        // La receta declara una cantidad de ingredientes para "receta.Porciones" porciones base.
-        // Escalamos a las porciones que el usuario realmente va a cocinar.
         var porcionesBase = receta.Porciones > 0 ? receta.Porciones : 1;
         var factor = (decimal)porciones / porcionesBase;
 
         var stockUsuario = await _stockRepository.FindAsync(stock => stock.UsuarioId == usuarioId);
         var stockPorIngrediente = stockUsuario.ToDictionary(stock => stock.IngredienteId);
 
-        // Primero validamos que alcance para TODOS los ingredientes, así no descontamos a medias.
         var descuentos = new List<(StockUsuario Stock, decimal Cantidad)>();
 
         foreach (var ingrediente in ingredientesReceta)
