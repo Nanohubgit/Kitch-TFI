@@ -15,8 +15,6 @@ public static class DependencyInjection
 
         services.AddScoped<IAuthService, AuthService>();
 
-        services.AddScoped<ISustitutoService, SustitutoService>();
-
         services.AddScoped<IAsistenteIaClient, GroqClient>();
 
         services.AddHttpClient("GroqClient", (serviceProvider, client) =>

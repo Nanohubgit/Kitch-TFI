@@ -4,7 +4,7 @@ using Kitch.Application.Mappings;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
-namespace Kitch.Infrastructure.Services;
+namespace Kitch.Application.Services;
 
 public class SustitutoService : ISustitutoService
 {
