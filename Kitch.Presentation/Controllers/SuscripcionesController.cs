@@ -1,8 +1,7 @@
 using Kitch.Application.DTOs.Suscripciones;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Entities;
+using Kitch.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Kitch.Presentation.Controllers;
@@ -19,23 +18,47 @@ public class SuscripcionesController : ApiControllerBase
         _suscripcionService = suscripcionService;
     }
 
+    /// <summary>
+    /// Contrata la suscripción Profesional: cobra vía pasarela y, si aprueba, actualiza el rol.
+    /// 200 OK | 400 Bad Request | 401 Unauthorized | 403 Forbidden
+    /// </summary>
     [HttpPost("contratar")]
-    public async Task<ActionResult<ContratarSuscripcionResult>> Contratar([FromBody] ContratarSuscripcionRequest request)
+    [Authorize(Roles = RolUsuario.Basico)]
+    public async Task<ActionResult<ContratarSuscripcionResult>> Contratar(
+        [FromBody] ContratarSuscripcionRequest request)
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
         }
 
-        var result = await _suscripcionService.ContratarAsync(usuarioId, request);
-
-        if (!result.Aprobado)
+        try
         {
-            return StatusCode(StatusCodes.Status402PaymentRequired, result);
-        }
+            var result = await _suscripcionService.ContratarAsync(usuarioId, request);
 
-        return Ok(result);
+            if (!result.Aprobado)
+            {
+                return BadRequest(result);
+            }
+
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex) when (EsUsuarioYaProfesional(ex))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
+
+    private static bool EsUsuarioYaProfesional(InvalidOperationException ex) =>
+        ex.Message.Contains("ya posee el rol Profesional", StringComparison.OrdinalIgnoreCase);
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<SuscripcionResponseDto>>> GetAll()

@@ -1,30 +1,36 @@
 using Kitch.Application.DTOs.Suscripciones;
 using Kitch.Application.Interfaces;
 using Kitch.Application.Mappings;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
 namespace Kitch.Application.Services;
 
+/// <summary>
+/// Orquesta el upgrade Básico → Profesional: valida estado, cobra vía pasarela
+/// y, si el pago es exitoso, registra contrato/pago y actualiza el rol.
+/// </summary>
 public class SuscripcionService : ISuscripcionService
 {
-    private const string RolProfesional = "Profesional";
-
     private readonly IRepository<Suscripcion> _repository;
     private readonly IRepository<ContratoSub> _contratoRepository;
     private readonly IRepository<Pago> _pagoRepository;
     private readonly IRepository<Usuario> _usuarioRepository;
+    private readonly IPaymentGatewayService _paymentGateway;
 
     public SuscripcionService(
         IRepository<Suscripcion> repository,
         IRepository<ContratoSub> contratoRepository,
         IRepository<Pago> pagoRepository,
-        IRepository<Usuario> usuarioRepository)
+        IRepository<Usuario> usuarioRepository,
+        IPaymentGatewayService paymentGateway)
     {
         _repository = repository;
         _contratoRepository = contratoRepository;
         _pagoRepository = pagoRepository;
         _usuarioRepository = usuarioRepository;
+        _paymentGateway = paymentGateway;
     }
 
     public async Task<IEnumerable<SuscripcionResponseDto>> GetAllAsync()
@@ -114,7 +120,7 @@ public class SuscripcionService : ISuscripcionService
         }
     }
 
- public async Task<ContratarSuscripcionResult> ContratarAsync(int usuarioId, ContratarSuscripcionRequest request)
+    public async Task<ContratarSuscripcionResult> ContratarAsync(int usuarioId, ContratarSuscripcionRequest request)
     {
         if (request is null)
         {
@@ -129,6 +135,11 @@ public class SuscripcionService : ISuscripcionService
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
             ?? throw new InvalidOperationException("El usuario no existe.");
 
+        if (usuario.Rol == RolUsuario.Profesional)
+        {
+            throw new InvalidOperationException("El usuario ya posee el rol Profesional.");
+        }
+
         var tieneContratoActivo = await _contratoRepository.AnyAsync(contrato =>
             contrato.UsuarioId == usuarioId && contrato.Estado == EstadoContratoSub.Activo);
 
@@ -138,7 +149,18 @@ public class SuscripcionService : ISuscripcionService
         }
 
         var ahora = DateTime.UtcNow;
-        var aprobado = !request.SimularRechazo;
+
+        // Cobro agnóstico al proveedor (Stripe, MercadoPago, etc. se resuelven en Infrastructure).
+        var cobro = await _paymentGateway.ProcesarPagoAsync(new PaymentGatewayRequest
+        {
+            UsuarioId = usuarioId,
+            Monto = request.Monto,
+            MetodoPago = request.MetodoPago,
+            EmailUsuario = usuario.Email,
+            Descripcion = $"Suscripción {request.Tipo} - Alacena Virtual"
+        });
+
+        var aprobado = cobro.Aprobado;
 
         var suscripcion = await _repository.AddAsync(new Suscripcion
         {
@@ -172,7 +194,7 @@ public class SuscripcionService : ISuscripcionService
 
         if (aprobado)
         {
-            usuario.Rol = RolProfesional;
+            usuario.Rol = RolUsuario.Profesional;
             await _usuarioRepository.UpdateAsync(usuario);
         }
 
@@ -181,7 +203,9 @@ public class SuscripcionService : ISuscripcionService
             Aprobado = aprobado,
             Mensaje = aprobado
                 ? "Pago aprobado. ¡Bienvenido al nivel Profesional!"
-                : "No se pudo procesar el pago. Verificá los datos de tu tarjeta o intentá con otro medio de pago.",
+                : (string.IsNullOrWhiteSpace(cobro.Mensaje)
+                    ? "No se pudo procesar el pago. Verificá los datos de tu tarjeta o intentá con otro medio de pago."
+                    : cobro.Mensaje),
             RolUsuario = usuario.Rol,
             ContratoId = contrato.Id,
             PagoId = pago.Id,

@@ -15,6 +15,16 @@ public static class DependencyInjection
 
         services.AddScoped<IAuthService, AuthService>();
 
+        // Pasarelas concretas (dummy hoy; mañana SDKs reales).
+        services.AddScoped<StripePaymentService>();
+        services.AddScoped<MercadoPagoPaymentService>();
+        services.AddScoped<IPaymentGatewayFactory, PaymentGatewayFactory>();
+
+        // Application solo conoce IPaymentGatewayService: el factory elige
+        // Stripe o MercadoPago según appsettings "PaymentGateway".
+        services.AddScoped<IPaymentGatewayService>(sp =>
+            sp.GetRequiredService<IPaymentGatewayFactory>().Create());
+
         services.AddScoped<IAsistenteIaClient, GroqClient>();
 
         services.AddHttpClient("GroqClient", (serviceProvider, client) =>

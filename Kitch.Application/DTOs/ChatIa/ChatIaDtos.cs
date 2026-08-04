@@ -34,6 +34,7 @@ public static class ChatAccion
     public const string EliminarReceta = "eliminar_receta";
     public const string PlanificarReceta = "planificar_receta";
     public const string CocinarReceta = "cocinar_receta";
+    public const string ConsultarRecetasGuardadas = "consultar_recetas_guardadas";
 }
 
 public class ChatRespuestaDto
@@ -53,6 +54,8 @@ public class ChatRespuestaDto
     public List<RecetaCompatibleDto>? Recomendaciones { get; set; }
 
     public int? RecetasEliminadas { get; set; }
+
+    public int? CantidadRecetasGuardadas { get; set; }
 
     public ComidaPlanificadaResponseDto? ComidaPlanificada { get; set; }
 

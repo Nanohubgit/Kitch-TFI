@@ -21,7 +21,7 @@ public class ChatIaService : IChatIaService
         "Si te preguntan algo ajeno a la cocina, rechazalo con amabilidad (accion 'conversar'). " +
         "Conocés la alacena del usuario (te la pasamos como contexto) y la usás para recomendar y avisar qué le falta.\n\n" +
         "RESPONDÉS SIEMPRE con un ÚNICO objeto JSON válido, sin texto extra ni markdown, con esta forma EXACTA:\n" +
-        "{\"accion\": \"conversar\"|\"generar_receta\"|\"guardar_receta\"|\"sustituir\"|\"recomendar\"|\"eliminar_receta\"|\"planificar_receta\"|\"cocinar_receta\", " +
+        "{\"accion\": \"conversar\"|\"generar_receta\"|\"guardar_receta\"|\"sustituir\"|\"recomendar\"|\"eliminar_receta\"|\"planificar_receta\"|\"cocinar_receta\"|\"consultar_recetas_guardadas\", " +
         "\"mensaje\": string, " +
         "\"receta\": {\"titulo\": string, \"descripcion\": string, \"tiempoPreparacionMinutos\": number, " +
         "\"porciones\": number, \"dificultad\": \"Facil\"|\"Medio\"|\"Dificil\", \"caloriasEstimadas\": number, " +
@@ -63,6 +63,9 @@ public class ChatIaService : IChatIaService
         "(o dejalo null si se refiere a la última receta de la conversación). En 'porcionesCocinar' poné cuántas " +
         "porciones cocinó si lo aclara (ej. 'hice 2 porciones'); si no lo aclara, dejalo null (se asume la receta completa). " +
         "En 'mensaje' confirmás. El sistema descuenta del stock lo que haya y avisa si faltó algo.\n" +
+        "- 'consultar_recetas_guardadas': el usuario pregunta cuántas recetas guardadas/favoritas tiene " +
+        "(ej. 'cuántas recetas tengo', 'tengo favoritas?', 'decime mis recetas guardadas'). " +
+        "No inventes cantidades: esta acción obliga al sistema a leer la base real. En 'mensaje' respondé en tono breve.\n" +
         "Nunca inventes que guardaste, borraste, planificaste o cocinaste algo si la acción no fue la correspondiente.";
 
     private const string NombrePorDefecto = "Chef";
@@ -183,6 +186,7 @@ public class ChatIaService : IChatIaService
             ChatAccion.EliminarReceta => await ResolverEliminarRecetaAsync(usuarioId, sobre),
             ChatAccion.PlanificarReceta => await ResolverPlanificarRecetaAsync(usuarioId, sobre),
             ChatAccion.CocinarReceta => await ResolverCocinarRecetaAsync(usuarioId, sobre),
+            ChatAccion.ConsultarRecetasGuardadas => await ResolverConsultarRecetasGuardadasAsync(usuarioId, sobre),
             _ => new ChatRespuestaDto
             {
                 Accion = ChatAccion.Conversar,
@@ -454,6 +458,31 @@ public class ChatIaService : IChatIaService
                 Mensaje = ex.Message
             };
         }
+    }
+
+    private async Task<ChatRespuestaDto> ResolverConsultarRecetasGuardadasAsync(int usuarioId, SobreAgente sobre)
+    {
+        var favoritos = await _favoritoRepository.FindWithIncludesAsync(
+            favorito => favorito.UsuarioId == usuarioId,
+            favorito => favorito.Receta);
+
+        var cantidad = favoritos
+            .Select(favorito => favorito.RecetaId)
+            .Distinct()
+            .Count();
+
+        var mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
+            ? (cantidad == 0
+                ? "No tenés recetas guardadas por ahora."
+                : $"Tenés {cantidad} receta(s) guardada(s) en favoritos.")
+            : sobre.Mensaje;
+
+        return new ChatRespuestaDto
+        {
+            Accion = ChatAccion.ConsultarRecetasGuardadas,
+            Mensaje = mensaje,
+            CantidadRecetasGuardadas = cantidad
+        };
     }
 
     private async Task<(int? recetaId, string? titulo, string? error)> ResolverRecetaParaPlanificarAsync(
