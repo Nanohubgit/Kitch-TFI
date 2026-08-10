@@ -20,7 +20,9 @@ public static class DtoMappings
         Id = usuario.Id,
         Nombre = usuario.Nombre,
         Apellido = usuario.Apellido,
+        NombreUsuario = usuario.NombreUsuario,
         Email = usuario.Email,
+        PreferenciaDietetica = usuario.PreferenciaDietetica,
         Activo = usuario.Activo,
         Rol = usuario.Rol
     };
