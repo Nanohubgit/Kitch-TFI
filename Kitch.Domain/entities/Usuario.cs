@@ -39,5 +39,16 @@ namespace Kitch.Domain.Entities
         /// Tokens expirados se rechazan aunque el hash coincida, limitando la ventana de ataque.
         /// </summary>
         public DateTime? PasswordResetTokenExpiresAt { get; set; }
+
+        /// <summary>
+        /// Código OTP de 2FA. Se almacena como hash SHA-256 (hex), nunca el código en texto plano.
+        /// Null = no hay desafío 2FA pendiente.
+        /// </summary>
+        public string? TwoFactorCode { get; set; }
+
+        /// <summary>
+        /// UTC: vencimiento del código 2FA (típicamente 5 minutos). Null = sin desafío pendiente.
+        /// </summary>
+        public DateTime? TwoFactorCodeExpiresAt { get; set; }
     }
 }

@@ -14,9 +14,10 @@ public interface IAuthService
     Task<AuthResponse> RegisterAsync(RegisterRequest request);
 
     /// <summary>
-    /// Valida credenciales y devuelve un JWT de sesión.
+    /// Valida primer factor (usuario/mail + contraseña). No emite JWT:
+    /// genera código 2FA, lo envía por email y devuelve <see cref="Login2FaResponseDto"/>.
     /// </summary>
-    Task<AuthResponse> LoginAsync(LoginRequest request);
+    Task<Login2FaResponseDto> LoginAsync(LoginRequest request);
 
     /// <summary>
     /// Indica si el email ya está registrado.

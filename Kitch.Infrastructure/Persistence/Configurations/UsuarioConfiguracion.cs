@@ -48,6 +48,12 @@ namespace Kitch.Infrastructure.Persistence.Configurations
             // UTC en aplicación; columna opcional hasta que haya un forgot activo.
             entity.Property(x => x.PasswordResetTokenExpiresAt);
 
+            // Código 2FA: se persiste el hash SHA-256 (hex, 64 chars), no el dígito en claro.
+            entity.Property(x => x.TwoFactorCode)
+                .HasMaxLength(64);
+
+            entity.Property(x => x.TwoFactorCodeExpiresAt);
+
             entity.Property(x => x.Activo)
                 .IsRequired();
 
