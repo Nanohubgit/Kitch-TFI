@@ -17,6 +17,7 @@ public class AuthService : IAuthService
 {
     private const int PasswordResetTokenBytes = 32;
     private const int PasswordResetExpirationMinutes = 30;
+    private const int TwoFactorCodeExpirationMinutes = 5;
 
     private readonly KitchDbContext _context;
     private readonly IConfiguration _configuration;
@@ -98,26 +99,28 @@ public class AuthService : IAuthService
         return await _context.Usuarios.AnyAsync(u => u.NombreUsuario == normalized);
     }
 
-    public async Task<AuthResponse> LoginAsync(LoginRequest request)
+    public async Task<Login2FaResponseDto> LoginAsync(LoginRequest request)
     {
         if (request is null)
         {
-            throw new UnauthorizedAccessException("Email o contraseña inválidos.");
+            throw new UnauthorizedAccessException("Usuario/email o contraseña inválidos.");
         }
 
-        var email = request.Email?.Trim() ?? string.Empty;
+        var usuarioOMail = request.UsuarioOMail?.Trim() ?? string.Empty;
         var password = request.Password ?? string.Empty;
 
-        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        if (string.IsNullOrWhiteSpace(usuarioOMail) || string.IsNullOrWhiteSpace(password))
         {
-            throw new UnauthorizedAccessException("Email o contraseña inválidos.");
+            throw new UnauthorizedAccessException("Usuario/email o contraseña inválidos.");
         }
 
-        var usuario = await _context.Usuarios.FirstOrDefaultAsync(usuario => usuario.Email == email);
+        // Login flexible: identificador puede ser Email o NombreUsuario.
+        var usuario = await _context.Usuarios.FirstOrDefaultAsync(u =>
+            u.Email == usuarioOMail || u.NombreUsuario == usuarioOMail);
 
         if (usuario is null || !BCrypt.Net.BCrypt.Verify(password, usuario.PasswordHash))
         {
-            throw new UnauthorizedAccessException("Email o contraseña inválidos.");
+            throw new UnauthorizedAccessException("Usuario/email o contraseña inválidos.");
         }
 
         if (!usuario.Activo)
@@ -125,7 +128,59 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("El usuario se encuentra inactivo.");
         }
 
-        return CreateAuthResponse(usuario);
+        // Primer factor OK. No se emite JWT hasta verificar el código 2FA (Fase 3).
+        // Código numérico 000000–999999 con CSPRNG (no Random.Next).
+        var codigoPlano = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+
+        // Guardamos SHA-256 del código (misma idea que el token de reset), no el dígito en claro.
+        usuario.TwoFactorCode = HashTokenSha256(codigoPlano);
+        usuario.TwoFactorCodeExpiresAt = DateTime.UtcNow.AddMinutes(TwoFactorCodeExpirationMinutes);
+
+        await _context.SaveChangesAsync();
+
+        var body =
+            "Tu código de verificación para ingresar a Alacena Virtual / Kitch es:\n\n" +
+            $"{codigoPlano}\n\n" +
+            $"Válido por {TwoFactorCodeExpirationMinutes} minutos. Si no intentaste iniciar sesión, ignorá este correo.";
+
+        await _emailService.SendEmailAsync(
+            to: usuario.Email,
+            subject: "Código de verificación 2FA — Alacena Virtual",
+            body: body);
+
+        return new Login2FaResponseDto
+        {
+            RequiresTwoFactor = true,
+            EmailEnmascarado = EnmascararEmail(usuario.Email),
+            Mensaje = "Credenciales correctas. Ingresá el código de 6 dígitos enviado a tu correo."
+        };
+    }
+
+    /// <summary>
+    /// Enmascara un email para la UI: a***z@dominio.com (sin filtrar el dominio completo de más).
+    /// </summary>
+    private static string EnmascararEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+        {
+            return "***";
+        }
+
+        var parts = email.Split('@', 2);
+        var local = parts[0];
+        var domain = parts[1];
+
+        if (local.Length <= 1)
+        {
+            return $"*@{domain}";
+        }
+
+        if (local.Length == 2)
+        {
+            return $"{local[0]}*@{domain}";
+        }
+
+        return $"{local[0]}***{local[^1]}@{domain}";
     }
 
     public async Task<bool> EmailExisteAsync(string email)
