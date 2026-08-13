@@ -151,9 +151,150 @@ public class AuthService : IAuthService
         return new Login2FaResponseDto
         {
             RequiresTwoFactor = true,
+            Email = usuario.Email,
             EmailEnmascarado = EnmascararEmail(usuario.Email),
             Mensaje = "Credenciales correctas. Ingresá el código de 6 dígitos enviado a tu correo."
         };
+    }
+
+    public async Task<Verify2FaResponseDto> Verify2FaAsync(Verify2FaRequestDto request)
+    {
+        if (request is null)
+        {
+            throw new InvalidOperationException("Email y código de verificación son obligatorios.");
+        }
+
+        var email = request.Email?.Trim() ?? string.Empty;
+        var codigo = request.Codigo?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(codigo))
+        {
+            throw new InvalidOperationException("Email y código de verificación son obligatorios.");
+        }
+
+        if (codigo.Length != 6 || !codigo.All(char.IsDigit))
+        {
+            throw new InvalidOperationException("El código debe tener exactamente 6 dígitos.");
+        }
+
+        var usuario = await _context.Usuarios
+            .FirstOrDefaultAsync(u => u.Email == email && u.Activo);
+
+        var codigoHash = HashTokenSha256(codigo);
+
+        // Mensaje único: no filtrar si falló email, código o expiración.
+        if (usuario is null ||
+            string.IsNullOrEmpty(usuario.TwoFactorCode) ||
+            usuario.TwoFactorCodeExpiresAt is null ||
+            usuario.TwoFactorCodeExpiresAt <= DateTime.UtcNow ||
+            !FixedTimeEquals(usuario.TwoFactorCode, codigoHash))
+        {
+            throw new InvalidOperationException("Código inválido o expirado. Solicitá un nuevo código iniciando sesión otra vez.");
+        }
+
+        // Un solo uso: limpiar OTP antes de emitir sesión.
+        usuario.TwoFactorCode = null;
+        usuario.TwoFactorCodeExpiresAt = null;
+        await _context.SaveChangesAsync();
+
+        var expiresAt = DateTime.UtcNow.AddMinutes(GetJwtExpiresInMinutes());
+        var token = GenerateJwtToken(usuario, expiresAt);
+
+        return new Verify2FaResponseDto
+        {
+            Token = token,
+            Mensaje = "Login exitoso",
+            ExpiresAt = expiresAt,
+            Email = usuario.Email,
+            NombreUsuario = usuario.NombreUsuario,
+            Rol = usuario.Rol
+        };
+    }
+
+    public async Task<PerfilUsuarioResponseDto?> GetPerfilAsync(int usuarioId)
+    {
+        var usuario = await _context.Usuarios
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == usuarioId);
+
+        if (usuario is null)
+        {
+            return null;
+        }
+
+        return await MapPerfilAsync(usuario);
+    }
+
+    public async Task<PerfilUsuarioResponseDto> EditarPerfilAsync(int usuarioId, EditarPerfilRequestDto request)
+    {
+        if (request is null)
+        {
+            throw new InvalidOperationException("Los datos del perfil son obligatorios.");
+        }
+
+        var nombreUsuario = request.NombreUsuario?.Trim() ?? string.Empty;
+        var preferencia = string.IsNullOrWhiteSpace(request.PreferenciaDietetica)
+            ? "Ninguna"
+            : request.PreferenciaDietetica.Trim();
+
+        if (string.IsNullOrWhiteSpace(nombreUsuario))
+        {
+            throw new InvalidOperationException("El nombre de usuario es obligatorio.");
+        }
+
+        var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.Id == usuarioId);
+        if (usuario is null)
+        {
+            throw new InvalidOperationException("Usuario no encontrado.");
+        }
+
+        if (!string.Equals(usuario.NombreUsuario, nombreUsuario, StringComparison.Ordinal) &&
+            await NombreUsuarioExisteAsync(nombreUsuario))
+        {
+            throw new InvalidOperationException("El nombre de usuario ya está en uso.");
+        }
+
+        usuario.NombreUsuario = nombreUsuario;
+        usuario.PreferenciaDietetica = preferencia;
+        await _context.SaveChangesAsync();
+
+        return await MapPerfilAsync(usuario);
+    }
+
+    private async Task<PerfilUsuarioResponseDto> MapPerfilAsync(Usuario usuario)
+    {
+        var ahora = DateTime.UtcNow;
+
+        // Suscripción propia activa con FechaFin vigente (o sin fin = premium abierto).
+        var suscripcionActivaHasta = await _context.Suscripciones
+            .AsNoTracking()
+            .Where(s => s.UsuarioId == usuario.Id && s.Activa)
+            .Where(s => s.FechaFin == null || s.FechaFin > ahora)
+            .OrderByDescending(s => s.FechaFin)
+            .Select(s => s.FechaFin)
+            .FirstOrDefaultAsync();
+
+        return new PerfilUsuarioResponseDto
+        {
+            Id = usuario.Id,
+            Email = usuario.Email,
+            NombreUsuario = usuario.NombreUsuario,
+            Nombre = usuario.Nombre,
+            Apellido = usuario.Apellido,
+            Rol = usuario.Rol,
+            SuscripcionActivaHasta = suscripcionActivaHasta,
+            PreferenciaDietetica = usuario.PreferenciaDietetica
+        };
+    }
+
+    /// <summary>
+    /// Comparación en tiempo constante para hashes hex (evita timing attacks triviales).
+    /// </summary>
+    private static bool FixedTimeEquals(string storedHash, string providedHash)
+    {
+        var a = Encoding.UTF8.GetBytes(storedHash);
+        var b = Encoding.UTF8.GetBytes(providedHash);
+        return a.Length == b.Length && CryptographicOperations.FixedTimeEquals(a, b);
     }
 
     /// <summary>

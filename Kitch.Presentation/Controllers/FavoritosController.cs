@@ -1,4 +1,5 @@
 using Kitch.Application.DTOs.Favoritos;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,7 +23,7 @@ public class FavoritosController : ApiControllerBase
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
         }
 
         var favoritos = await _favoritoService.GetByUsuarioIdAsync(usuarioId);
@@ -34,28 +35,39 @@ public class FavoritosController : ApiControllerBase
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
         }
 
         var favorito = await _favoritoService.GetByIdAsync(id, usuarioId);
-
         if (favorito is null)
         {
-            return NotFound();
+            return NotFound(new { message = "Favorito no encontrado." });
         }
 
         return Ok(favorito);
     }
 
     [HttpPost("toggle")]
-    public async Task<ActionResult<object>> ToggleFavorito([FromQuery] int recetaId)
+    public async Task<IActionResult> ToggleFavorito([FromQuery] int recetaId)
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
         }
-        var esFavorito = await _favoritoService.ToggleFavoritoAsync(usuarioId, recetaId);
-        return Ok(new { esFavorito });
+
+        try
+        {
+            var esFavorito = await _favoritoService.ToggleFavoritoAsync(usuarioId, recetaId);
+            return Ok(new { esFavorito, message = esFavorito ? "Agregado a favoritos." : "Quitado de favoritos." });
+        }
+        catch (ForbiddenException ex)
+        {
+            return ForbiddenMessage(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequestMessage(ex.Message);
+        }
     }
 
     [HttpPost]
@@ -63,7 +75,7 @@ public class FavoritosController : ApiControllerBase
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
         }
 
         favorito.UsuarioId = usuarioId;
@@ -73,9 +85,13 @@ public class FavoritosController : ApiControllerBase
             var createdFavorito = await _favoritoService.AddFavoritoAsync(favorito);
             return Created(string.Empty, createdFavorito);
         }
+        catch (ForbiddenException ex)
+        {
+            return ForbiddenMessage(ex.Message);
+        }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(ex.Message);
+            return BadRequestMessage(ex.Message);
         }
     }
 
@@ -84,14 +100,13 @@ public class FavoritosController : ApiControllerBase
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
         }
 
         var deleted = await _favoritoService.DeleteAsync(id, usuarioId);
-
         if (!deleted)
         {
-            return NotFound();
+            return NotFound(new { message = "Favorito no encontrado." });
         }
 
         return NoContent();

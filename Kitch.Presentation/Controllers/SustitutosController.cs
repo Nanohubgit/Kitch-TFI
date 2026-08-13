@@ -32,7 +32,7 @@ public class SustitutosController : ApiControllerBase
             return Unauthorized("No se pudo identificar al usuario a partir del token.");
         }
 
-        var sustitutos = await _sustitutoService.GetByIngredienteIdAsync(ingredienteId);
+        var sustitutos = await _sustitutoService.GetByIngredienteIdAsync(ingredienteId, usuarioId);
         return Ok(sustitutos);
     }
 

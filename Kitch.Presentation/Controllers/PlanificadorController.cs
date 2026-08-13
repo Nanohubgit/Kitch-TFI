@@ -1,4 +1,5 @@
 using Kitch.Application.DTOs.Planificador;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -22,7 +23,7 @@ public class PlanificadorController : ApiControllerBase
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
         }
 
         var comidas = await _planificadorService.GetByUsuarioIdAsync(usuarioId);
@@ -35,7 +36,7 @@ public class PlanificadorController : ApiControllerBase
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
         }
 
         var comidas = await _planificadorService.GetByFechaAsync(usuarioId, fecha);
@@ -47,14 +48,13 @@ public class PlanificadorController : ApiControllerBase
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
         }
 
         var comida = await _planificadorService.GetByIdAsync(id, usuarioId);
-
         if (comida is null)
         {
-            return NotFound();
+            return NotFound(new { message = "Comida planificada no encontrada." });
         }
 
         return Ok(comida);
@@ -65,7 +65,7 @@ public class PlanificadorController : ApiControllerBase
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
         }
 
         comida.UsuarioId = usuarioId;
@@ -75,13 +75,17 @@ public class PlanificadorController : ApiControllerBase
             var createdComida = await _planificadorService.CreateAsync(comida);
             return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
         }
+        catch (ForbiddenException ex)
+        {
+            return ForbiddenMessage(ex.Message);
+        }
         catch (KeyNotFoundException ex)
         {
-            return NotFound(ex.Message);
+            return NotFound(new { message = ex.Message });
         }
         catch (InvalidOperationException ex)
         {
-            return Conflict(ex.Message);
+            return Conflict(new { message = ex.Message });
         }
     }
 
@@ -90,27 +94,30 @@ public class PlanificadorController : ApiControllerBase
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
         }
 
         try
         {
             var updated = await _planificadorService.UpdateAsync(id, comida, usuarioId);
-
             if (!updated)
             {
-                return NotFound();
+                return NotFound(new { message = "Comida planificada no encontrada." });
             }
 
             return NoContent();
         }
+        catch (ForbiddenException ex)
+        {
+            return ForbiddenMessage(ex.Message);
+        }
         catch (KeyNotFoundException ex)
         {
-            return NotFound(ex.Message);
+            return NotFound(new { message = ex.Message });
         }
         catch (InvalidOperationException ex)
         {
-            return Conflict(ex.Message);
+            return Conflict(new { message = ex.Message });
         }
     }
 
@@ -119,14 +126,13 @@ public class PlanificadorController : ApiControllerBase
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
         }
 
         var deleted = await _planificadorService.DeleteAsync(id, usuarioId);
-
         if (!deleted)
         {
-            return NotFound();
+            return NotFound(new { message = "Comida planificada no encontrada." });
         }
 
         return NoContent();

@@ -212,4 +212,96 @@ public class SuscripcionService : ISuscripcionService
             EstadoPago = pago.EstadoPago
         };
     }
+
+    public Task<CheckoutSuscripcionResponseDto> IniciarCheckoutAsync(
+        int usuarioId,
+        CheckoutSuscripcionRequestDto request)
+    {
+        if (request is null || request.Monto <= 0)
+        {
+            throw new ArgumentException("El monto debe ser mayor a cero.");
+        }
+
+        // Cascarón Frontend-Ready: el front abre esta URL / PreferenceId en su flujo de pago.
+        // Luego se reemplaza con Stripe Checkout Session o Preference de MercadoPago reales.
+        var preferenceId = $"pref_{usuarioId}_{Guid.NewGuid():N}"[..32];
+        var pasarela = string.IsNullOrWhiteSpace(request.Pasarela) ? "MercadoPago" : request.Pasarela.Trim();
+
+        return Task.FromResult(new CheckoutSuscripcionResponseDto
+        {
+            PreferenceId = preferenceId,
+            CheckoutUrl = $"https://checkout.simulated.local/{pasarela.ToLowerInvariant()}?preference_id={preferenceId}&monto={request.Monto}",
+            Mensaje = "Checkout simulado listo. El front puede abrir CheckoutUrl o PreferenceId en su modal de pago."
+        });
+    }
+
+    public async Task<WebhookPagoResponseDto> ProcesarWebhookAsync(WebhookPagoRequestDto request)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.PreferenceId))
+        {
+            throw new ArgumentException("PreferenceId es obligatorio.");
+        }
+
+        if (request.UsuarioId <= 0)
+        {
+            throw new ArgumentException("UsuarioId es obligatorio.");
+        }
+
+        var estado = request.Estado?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (estado is not ("approved" or "aprobado"))
+        {
+            return new WebhookPagoResponseDto
+            {
+                Procesado = false,
+                Mensaje = "Pago no aprobado. El rol del usuario no se modificó.",
+                RolUsuario = null
+            };
+        }
+
+        var usuario = await _usuarioRepository.GetByIdAsync(request.UsuarioId)
+            ?? throw new InvalidOperationException("El usuario no existe.");
+
+        if (usuario.Rol == RolUsuario.Profesional)
+        {
+            return new WebhookPagoResponseDto
+            {
+                Procesado = true,
+                Mensaje = "El usuario ya era Profesional.",
+                RolUsuario = usuario.Rol
+            };
+        }
+
+        var ahora = DateTime.UtcNow;
+        var monto = request.Monto > 0 ? request.Monto : 9.99m;
+
+        var suscripcion = await _repository.AddAsync(new Suscripcion
+        {
+            UsuarioId = usuario.Id,
+            Tipo = "Profesional",
+            FechaInicio = ahora,
+            FechaFin = ahora.AddMonths(1),
+            Activa = true
+        });
+
+        await _contratoRepository.AddAsync(new ContratoSub
+        {
+            UsuarioId = usuario.Id,
+            SuscripcionId = suscripcion.Id,
+            FechaContratacion = ahora,
+            FechaInicio = ahora,
+            FechaFin = ahora.AddMonths(1),
+            Monto = monto,
+            Estado = EstadoContratoSub.Activo
+        });
+
+        usuario.Rol = RolUsuario.Profesional;
+        await _usuarioRepository.UpdateAsync(usuario);
+
+        return new WebhookPagoResponseDto
+        {
+            Procesado = true,
+            Mensaje = "Webhook simulado OK. Usuario ascendido a Profesional.",
+            RolUsuario = usuario.Rol
+        };
+    }
 }

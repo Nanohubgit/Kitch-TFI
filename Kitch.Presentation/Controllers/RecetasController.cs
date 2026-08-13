@@ -1,4 +1,5 @@
 using Kitch.Application.DTOs.Recetas;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
@@ -10,7 +11,7 @@ namespace Kitch.Presentation.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class RecetasController : ControllerBase
+public class RecetasController : ApiControllerBase
 {
     private readonly IRecetaService _recetaService;
 
@@ -22,48 +23,74 @@ public class RecetasController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<RecetaResponseDto>>> GetAll()
     {
-        var recetas = await _recetaService.GetAllAsync();
+        var recetas = await _recetaService.GetAllAsync(GetRolOrNull());
         return Ok(recetas);
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<RecetaResponseDto>> GetById(int id)
     {
-        var receta = await _recetaService.GetByIdAsync(id);
-
-        if (receta is null)
+        try
         {
-            return NotFound();
-        }
+            var receta = await _recetaService.GetByIdAsync(id, GetRolOrNull());
+            if (receta is null)
+            {
+                return NotFound(new { message = "Receta no encontrada." });
+            }
 
-        return Ok(receta);
+            return Ok(receta);
+        }
+        catch (ForbiddenException ex)
+        {
+            return ForbiddenMessage(ex.Message);
+        }
     }
 
     [HttpGet("dificultad/{dificultad}")]
     public async Task<ActionResult<IEnumerable<RecetaResponseDto>>> GetByDificultad(DificultadReceta dificultad)
     {
-        var recetas = await _recetaService.GetByDificultadAsync(dificultad);
-        return Ok(recetas);
+        try
+        {
+            var recetas = await _recetaService.GetByDificultadAsync(dificultad, GetRolOrNull());
+            return Ok(recetas);
+        }
+        catch (ForbiddenException ex)
+        {
+            return ForbiddenMessage(ex.Message);
+        }
     }
 
     [HttpPost]
     public async Task<ActionResult<RecetaResponseDto>> Create([FromBody] RecetaCreateDto receta)
     {
-        var createdReceta = await _recetaService.CreateAsync(receta);
-        return Created(string.Empty, createdReceta);
+        try
+        {
+            var createdReceta = await _recetaService.CreateAsync(receta);
+            return Created(string.Empty, createdReceta);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequestMessage(ex.Message);
+        }
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] RecetaUpdateDto receta)
     {
-        var updated = await _recetaService.UpdateAsync(id, receta);
-
-        if (!updated)
+        try
         {
-            return NotFound();
-        }
+            var updated = await _recetaService.UpdateAsync(id, receta);
+            if (!updated)
+            {
+                return NotFound(new { message = "Receta no encontrada." });
+            }
 
-        return NoContent();
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequestMessage(ex.Message);
+        }
     }
 
     [HttpDelete("{id:int}")]
@@ -71,10 +98,9 @@ public class RecetasController : ControllerBase
     public async Task<IActionResult> Delete(int id)
     {
         var deleted = await _recetaService.DeleteAsync(id);
-
         if (!deleted)
         {
-            return NotFound();
+            return NotFound(new { message = "Receta no encontrada." });
         }
 
         return NoContent();

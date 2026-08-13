@@ -19,8 +19,57 @@ public class SuscripcionesController : ApiControllerBase
     }
 
     /// <summary>
+    /// Cascarón Frontend-Ready: inicia checkout y devuelve CheckoutUrl / PreferenceId para el modal de pago.
+    /// </summary>
+    [HttpPost("checkout")]
+    [Authorize(Roles = RolUsuario.Basico)]
+    public async Task<ActionResult<CheckoutSuscripcionResponseDto>> Checkout(
+        [FromBody] CheckoutSuscripcionRequestDto request)
+    {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
+        }
+
+        try
+        {
+            var result = await _suscripcionService.IniciarCheckoutAsync(usuarioId, request);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequestMessage(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequestMessage(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Cascarón público: simula confirmación de la pasarela y asciende a Profesional.
+    /// </summary>
+    [HttpPost("webhook")]
+    [AllowAnonymous]
+    public async Task<ActionResult<WebhookPagoResponseDto>> Webhook([FromBody] WebhookPagoRequestDto request)
+    {
+        try
+        {
+            var result = await _suscripcionService.ProcesarWebhookAsync(request);
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequestMessage(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequestMessage(ex.Message);
+        }
+    }
+
+    /// <summary>
     /// Contrata la suscripción Profesional: cobra vía pasarela y, si aprueba, actualiza el rol.
-    /// 200 OK | 400 Bad Request | 401 Unauthorized | 403 Forbidden
     /// </summary>
     [HttpPost("contratar")]
     [Authorize(Roles = RolUsuario.Basico)]
@@ -29,7 +78,7 @@ public class SuscripcionesController : ApiControllerBase
     {
         if (!TryGetUsuarioId(out var usuarioId))
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
         }
 
         try
@@ -45,15 +94,15 @@ public class SuscripcionesController : ApiControllerBase
         }
         catch (ArgumentException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            return BadRequestMessage(ex.Message);
         }
         catch (InvalidOperationException ex) when (EsUsuarioYaProfesional(ex))
         {
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = ex.Message });
+            return ForbiddenMessage(ex.Message);
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            return BadRequestMessage(ex.Message);
         }
     }
 
@@ -71,10 +120,9 @@ public class SuscripcionesController : ApiControllerBase
     public async Task<ActionResult<SuscripcionResponseDto>> GetById(int id)
     {
         var suscripcion = await _suscripcionService.GetByIdAsync(id);
-
         if (suscripcion is null)
         {
-            return NotFound();
+            return NotFound(new { message = "Suscripción no encontrada." });
         }
 
         return Ok(suscripcion);
@@ -83,31 +131,43 @@ public class SuscripcionesController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<SuscripcionResponseDto>> Create([FromBody] SuscripcionCreateDto suscripcion)
     {
-        var createdSuscripcion = await _suscripcionService.CreateAsync(suscripcion);
-        return Created(string.Empty, createdSuscripcion);
+        try
+        {
+            var createdSuscripcion = await _suscripcionService.CreateAsync(suscripcion);
+            return Created(string.Empty, createdSuscripcion);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequestMessage(ex.Message);
+        }
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] SuscripcionUpdateDto suscripcion)
     {
-        var updated = await _suscripcionService.UpdateAsync(id, suscripcion);
-
-        if (!updated)
+        try
         {
-            return NotFound();
-        }
+            var updated = await _suscripcionService.UpdateAsync(id, suscripcion);
+            if (!updated)
+            {
+                return NotFound(new { message = "Suscripción no encontrada." });
+            }
 
-        return NoContent();
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequestMessage(ex.Message);
+        }
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
         var deleted = await _suscripcionService.DeleteAsync(id);
-
         if (!deleted)
         {
-            return NotFound();
+            return NotFound(new { message = "Suscripción no encontrada." });
         }
 
         return NoContent();

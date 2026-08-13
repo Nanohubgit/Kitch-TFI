@@ -13,7 +13,12 @@ public class Login2FaResponseDto
     public bool RequiresTwoFactor { get; set; } = true;
 
     /// <summary>
-    /// Email enmascarado donde se envió el código (ej: a***@mail.com).
+    /// Email real de la cuenta (el front lo reenvía en verify-2fa).
+    /// </summary>
+    public string Email { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Email enmascarado para mostrar en UI (ej: a***@mail.com).
     /// </summary>
     public string EmailEnmascarado { get; set; } = string.Empty;
 

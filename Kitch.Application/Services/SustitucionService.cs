@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Kitch.Application.DTOs.Sustituciones;
 using Kitch.Application.Interfaces;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -23,17 +24,20 @@ public class SustitucionService : ISustitucionService
     private readonly IRepository<SustitutoIngrediente> _sustitutoRepository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
     private readonly IRepository<StockUsuario> _stockRepository;
+    private readonly IRepository<Usuario> _usuarioRepository;
     private readonly IAsistenteIaClient _asistenteIa;
 
     public SustitucionService(
         IRepository<SustitutoIngrediente> sustitutoRepository,
         IRepository<Ingrediente> ingredienteRepository,
         IRepository<StockUsuario> stockRepository,
+        IRepository<Usuario> usuarioRepository,
         IAsistenteIaClient asistenteIa)
     {
         _sustitutoRepository = sustitutoRepository;
         _ingredienteRepository = ingredienteRepository;
         _stockRepository = stockRepository;
+        _usuarioRepository = usuarioRepository;
         _asistenteIa = asistenteIa;
     }
 
@@ -77,7 +81,7 @@ public class SustitucionService : ISustitucionService
             .Select(stock => stock.IngredienteId)
             .ToHashSet();
 
-        return sustitutos
+        var sugeridos = sustitutos
             .Select(sustituto => new SustitutoSugerido
             {
                 IngredienteId = sustituto.IngredienteSustitutoId,
@@ -91,6 +95,14 @@ public class SustitucionService : ISustitucionService
             .OrderByDescending(sugerido => sugerido.DisponibleEnAlacena)
             .ThenBy(sugerido => sugerido.Nombre)
             .ToList();
+
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        if (usuario is not null && !RolUsuario.TieneAccesoPremium(usuario.Rol))
+        {
+            return sugeridos.Take(LimitesPlan.MaxSustitutosBasico).ToList();
+        }
+
+        return sugeridos;
     }
 
     private async Task GenerarYPersistirSustitutosAsync(Ingrediente ingredienteOriginal)

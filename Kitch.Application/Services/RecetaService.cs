@@ -1,6 +1,8 @@
 using Kitch.Application.DTOs.Recetas;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Application.Mappings;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -15,16 +17,27 @@ public class RecetaService : IRecetaService
         _repository = repository;
     }
 
-    public async Task<IEnumerable<RecetaResponseDto>> GetAllAsync()
+    public async Task<IEnumerable<RecetaResponseDto>> GetAllAsync(string? rolUsuario = null)
     {
         var recetas = await _repository.GetAllAsync();
-        return recetas.Select(receta => receta.ToResponseDto());
+        return FiltrarPorPlan(recetas, rolUsuario).Select(receta => receta.ToResponseDto());
     }
 
-    public async Task<RecetaResponseDto?> GetByIdAsync(int id)
+    public async Task<RecetaResponseDto?> GetByIdAsync(int id, string? rolUsuario = null)
     {
         var receta = await _repository.GetByIdAsync(id);
-        return receta?.ToResponseDto();
+        if (receta is null)
+        {
+            return null;
+        }
+
+        if (!PuedeVerDificultad(rolUsuario, receta.Dificultad))
+        {
+            throw new ForbiddenException(
+                "Las recetas de dificultad Avanzada (Difícil) requieren plan Profesional.");
+        }
+
+        return receta.ToResponseDto();
     }
 
     public async Task<RecetaResponseDto> CreateAsync(RecetaCreateDto receta)
@@ -59,14 +72,42 @@ public class RecetaService : IRecetaService
         }
 
         await _repository.DeleteAsync(receta);
-
         return true;
     }
 
-    public async Task<IEnumerable<RecetaResponseDto>> GetByDificultadAsync(DificultadReceta dificultad)
+    public async Task<IEnumerable<RecetaResponseDto>> GetByDificultadAsync(
+        DificultadReceta dificultad,
+        string? rolUsuario = null)
     {
+        if (!PuedeVerDificultad(rolUsuario, dificultad))
+        {
+            throw new ForbiddenException(
+                "Las recetas de dificultad Avanzada (Difícil) requieren plan Profesional.");
+        }
+
         var recetas = await _repository.FindAsync(receta => receta.Dificultad == dificultad);
         return recetas.Select(receta => receta.ToResponseDto());
+    }
+
+    private static IEnumerable<Receta> FiltrarPorPlan(IEnumerable<Receta> recetas, string? rolUsuario)
+    {
+        if (RolUsuario.TieneAccesoPremium(rolUsuario))
+        {
+            return recetas;
+        }
+
+        // Básico: Fácil e Intermedia (Medio). Sin Difícil/Avanzada.
+        return recetas.Where(r => r.Dificultad is DificultadReceta.Facil or DificultadReceta.Medio);
+    }
+
+    private static bool PuedeVerDificultad(string? rolUsuario, DificultadReceta dificultad)
+    {
+        if (RolUsuario.TieneAccesoPremium(rolUsuario))
+        {
+            return true;
+        }
+
+        return dificultad is DificultadReceta.Facil or DificultadReceta.Medio;
     }
 
     private static void ValidateReceta(RecetaCreateDto receta)

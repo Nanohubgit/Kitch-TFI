@@ -1,6 +1,8 @@
 using Kitch.Application.DTOs.Favoritos;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Application.Mappings;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -9,10 +11,14 @@ namespace Kitch.Application.Services;
 public class FavoritoService : IFavoritoService
 {
     private readonly IRepository<RecetaFavorita> _repository;
+    private readonly IRepository<Usuario> _usuarioRepository;
 
-    public FavoritoService(IRepository<RecetaFavorita> repository)
+    public FavoritoService(
+        IRepository<RecetaFavorita> repository,
+        IRepository<Usuario> usuarioRepository)
     {
         _repository = repository;
+        _usuarioRepository = usuarioRepository;
     }
 
     public async Task<IEnumerable<FavoritoResponseDto>> GetByUsuarioIdAsync(int usuarioId)
@@ -39,8 +45,10 @@ public class FavoritoService : IFavoritoService
     {
         if (await ExisteFavoritoAsync(favorito.UsuarioId, favorito.RecetaId))
         {
-            throw new InvalidOperationException("La receta ya esta marcada como favorita para este usuario.");
+            throw new InvalidOperationException("La receta ya está marcada como favorita para este usuario.");
         }
+
+        await AsegurarCupoFavoritosAsync(favorito.UsuarioId);
 
         var entity = new RecetaFavorita
         {
@@ -60,17 +68,16 @@ public class FavoritoService : IFavoritoService
         if (favoritoExistente is not null)
         {
             await _repository.DeleteAsync(favoritoExistente);
-
             return false;
         }
 
-        var nuevoFavorito = new RecetaFavorita
+        await AsegurarCupoFavoritosAsync(usuarioId);
+
+        await _repository.AddAsync(new RecetaFavorita
         {
             UsuarioId = usuarioId,
             RecetaId = recetaId
-        };
-
-        await _repository.AddAsync(nuevoFavorito);
+        });
 
         return true;
     }
@@ -85,7 +92,6 @@ public class FavoritoService : IFavoritoService
         }
 
         await _repository.DeleteAsync(favorito);
-
         return true;
     }
 
@@ -93,5 +99,23 @@ public class FavoritoService : IFavoritoService
     {
         return await _repository.AnyAsync(favorito =>
             favorito.UsuarioId == usuarioId && favorito.RecetaId == recetaId);
+    }
+
+    private async Task AsegurarCupoFavoritosAsync(int usuarioId)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
+            ?? throw new InvalidOperationException("El usuario no existe.");
+
+        if (RolUsuario.TieneAccesoPremium(usuario.Rol))
+        {
+            return;
+        }
+
+        var favoritos = await _repository.FindAsync(f => f.UsuarioId == usuarioId);
+        if (favoritos.Count >= LimitesPlan.MaxFavoritosBasico)
+        {
+            throw new ForbiddenException(
+                $"El plan Básico permite hasta {LimitesPlan.MaxFavoritosBasico} favoritos. Actualizá a Profesional para agregar más.");
+        }
     }
 }
