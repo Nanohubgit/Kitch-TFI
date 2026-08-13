@@ -14,6 +14,7 @@ public static class DependencyInjection
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IEmailService, SmtpEmailService>();
 
         // Pasarelas concretas (dummy hoy; mañana SDKs reales).
         services.AddScoped<StripePaymentService>();

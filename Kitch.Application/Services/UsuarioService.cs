@@ -37,11 +37,21 @@ public class UsuarioService : IUsuarioService
             throw new InvalidOperationException("El email ya se encuentra registrado.");
         }
 
+        var nombreUsuario = usuario.NombreUsuario.Trim();
+        if (await _repository.AnyAsync(existing => existing.NombreUsuario == nombreUsuario))
+        {
+            throw new InvalidOperationException("El nombre de usuario ya está en uso.");
+        }
+
         var entity = new Usuario
         {
             Nombre = usuario.Nombre.Trim(),
             Apellido = usuario.Apellido.Trim(),
+            NombreUsuario = nombreUsuario,
             Email = email,
+            PreferenciaDietetica = string.IsNullOrWhiteSpace(usuario.PreferenciaDietetica)
+                ? "Ninguna"
+                : usuario.PreferenciaDietetica.Trim(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(usuario.Password),
             Activo = true,
             Rol = RolUsuario.Basico
