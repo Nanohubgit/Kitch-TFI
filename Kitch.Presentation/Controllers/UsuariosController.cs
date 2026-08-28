@@ -42,7 +42,7 @@ public class UsuariosController : ApiControllerBase
     public async Task<ActionResult<UsuarioResponseDto>> Create([FromBody] UsuarioCreateDto usuario)
     {
         var createdUsuario = await _usuarioService.CreateAsync(usuario);
-        return Created(string.Empty, createdUsuario);
+        return CreatedAtAction(nameof(GetById), new { id = createdUsuario.Id }, createdUsuario);
     }
 
     [HttpPut("{id:int}")]
@@ -61,50 +61,28 @@ public class UsuariosController : ApiControllerBase
     [HttpPut("{id:int}/cambiar-rol")]
     public async Task<IActionResult> CambiarRol(int id, [FromBody] CambiarRolDto request)
     {
-        if (!TryGetUsuarioId(out var adminId))
+        var adminId = GetUsuarioIdOrThrow("No se pudo identificar al administrador a partir del token.");
+        var actualizado = await _usuarioService.CambiarRolAsync(id, request.NuevoRol, adminId);
+
+        if (!actualizado)
         {
-            return Unauthorized("No se pudo identificar al administrador a partir del token.");
+            return NotFound();
         }
 
-        try
-        {
-            var actualizado = await _usuarioService.CambiarRolAsync(id, request.NuevoRol, adminId);
-
-            if (!actualizado)
-            {
-                return NotFound();
-            }
-
-            return NoContent();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        return NoContent();
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        if (!TryGetUsuarioId(out var adminId))
+        var adminId = GetUsuarioIdOrThrow("No se pudo identificar al administrador a partir del token.");
+        var deleted = await _usuarioService.DeleteAsync(id, adminId);
+
+        if (!deleted)
         {
-            return Unauthorized("No se pudo identificar al administrador a partir del token.");
+            return NotFound();
         }
 
-        try
-        {
-            var deleted = await _usuarioService.DeleteAsync(id, adminId);
-
-            if (!deleted)
-            {
-                return NotFound();
-            }
-
-            return NoContent();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        return NoContent();
     }
 }

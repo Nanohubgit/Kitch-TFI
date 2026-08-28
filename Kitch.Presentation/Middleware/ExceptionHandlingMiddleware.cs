@@ -1,5 +1,5 @@
 using System.Net;
-using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Kitch.Presentation.Middleware;
 
@@ -30,11 +30,28 @@ public class ExceptionHandlingMiddleware
 
     private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
-        var (statusCode, message) = exception switch
+        var (statusCode, title, detail) = exception switch
         {
-            ArgumentException => (HttpStatusCode.BadRequest, exception.Message),
-            InvalidOperationException => (HttpStatusCode.Conflict, exception.Message),
-            _ => (HttpStatusCode.InternalServerError, "Ocurrió un error inesperado. Intentá nuevamente más tarde.")
+            ArgumentException => (
+                HttpStatusCode.BadRequest,
+                "Bad Request",
+                exception.Message),
+            UnauthorizedAccessException => (
+                HttpStatusCode.Unauthorized,
+                "Unauthorized",
+                exception.Message),
+            KeyNotFoundException => (
+                HttpStatusCode.NotFound,
+                "Not Found",
+                exception.Message),
+            InvalidOperationException => (
+                HttpStatusCode.BadRequest,
+                "Bad Request",
+                exception.Message),
+            _ => (
+                HttpStatusCode.InternalServerError,
+                "Internal Server Error",
+                "Ocurrió un error inesperado. Intentá nuevamente más tarde.")
         };
 
         if (statusCode == HttpStatusCode.InternalServerError)
@@ -46,15 +63,17 @@ public class ExceptionHandlingMiddleware
             _logger.LogWarning(exception, "Solicitud inválida en {Path}: {Message}", context.Request.Path, exception.Message);
         }
 
-        context.Response.ContentType = "application/json";
+        var problem = new ProblemDetails
+        {
+            Status = (int)statusCode,
+            Title = title,
+            Detail = detail,
+            Instance = context.Request.Path
+        };
+
+        context.Response.ContentType = "application/problem+json";
         context.Response.StatusCode = (int)statusCode;
 
-        var payload = JsonSerializer.Serialize(new
-        {
-            statusCode = (int)statusCode,
-            error = message
-        });
-
-        await context.Response.WriteAsync(payload);
+        await context.Response.WriteAsJsonAsync(problem);
     }
 }

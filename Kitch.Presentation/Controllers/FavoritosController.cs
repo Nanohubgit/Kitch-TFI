@@ -20,11 +20,7 @@ public class FavoritosController : ApiControllerBase
     [HttpGet("mias")]
     public async Task<ActionResult<IEnumerable<FavoritoResponseDto>>> GetMias()
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var favoritos = await _favoritoService.GetByUsuarioIdAsync(usuarioId);
         return Ok(favoritos);
     }
@@ -32,11 +28,7 @@ public class FavoritosController : ApiControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<FavoritoResponseDto>> GetById(int id)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var favorito = await _favoritoService.GetByIdAsync(id, usuarioId);
 
         if (favorito is null)
@@ -50,10 +42,7 @@ public class FavoritosController : ApiControllerBase
     [HttpPost("toggle")]
     public async Task<ActionResult<object>> ToggleFavorito([FromQuery] int recetaId)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
+        var usuarioId = GetUsuarioIdOrThrow();
         var esFavorito = await _favoritoService.ToggleFavoritoAsync(usuarioId, recetaId);
         return Ok(new { esFavorito });
     }
@@ -61,32 +50,17 @@ public class FavoritosController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<FavoritoResponseDto>> AddFavorito([FromBody] FavoritoCreateDto favorito)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         favorito.UsuarioId = usuarioId;
 
-        try
-        {
-            var createdFavorito = await _favoritoService.AddFavoritoAsync(favorito);
-            return Created(string.Empty, createdFavorito);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        var createdFavorito = await _favoritoService.AddFavoritoAsync(favorito);
+        return CreatedAtAction(nameof(GetById), new { id = createdFavorito.Id }, createdFavorito);
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var deleted = await _favoritoService.DeleteAsync(id, usuarioId);
 
         if (!deleted)

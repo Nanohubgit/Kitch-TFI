@@ -27,11 +27,7 @@ public class SustitutosController : ApiControllerBase
     [HttpGet("ingrediente/{ingredienteId:int}")]
     public async Task<ActionResult<IEnumerable<SustitutoResponseDto>>> GetByIngredienteId(int ingredienteId)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        GetUsuarioIdOrThrow();
         var sustitutos = await _sustitutoService.GetByIngredienteIdAsync(ingredienteId);
         return Ok(sustitutos);
     }
@@ -52,35 +48,21 @@ public class SustitutosController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<SustitutoResponseDto>> Create([FromBody] SustitutoCreateDto sustituto)
     {
-        try
-        {
-            var createdSustituto = await _sustitutoService.CreateAsync(sustituto);
-            return Created(string.Empty, createdSustituto);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        var createdSustituto = await _sustitutoService.CreateAsync(sustituto);
+        return CreatedAtAction(nameof(GetById), new { id = createdSustituto.Id }, createdSustituto);
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] SustitutoUpdateDto sustituto)
     {
-        try
-        {
-            var updated = await _sustitutoService.UpdateAsync(id, sustituto);
+        var updated = await _sustitutoService.UpdateAsync(id, sustituto);
 
-            if (!updated)
-            {
-                return NotFound();
-            }
-
-            return NoContent();
-        }
-        catch (InvalidOperationException ex)
+        if (!updated)
         {
-            return BadRequest(ex.Message);
+            return NotFound();
         }
+
+        return NoContent();
     }
 
     [HttpDelete("{id:int}")]

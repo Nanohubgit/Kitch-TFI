@@ -69,6 +69,7 @@ public class RecetaUpdateDto : RecetaCreateDto
 
 public class RecetaResponseDto
 {
+    public int Id { get; set; }
     public string Titulo { get; set; } = string.Empty;
     public int CaloriasEstimadas { get; set; }
     public string Descripcion { get; set; } = string.Empty;

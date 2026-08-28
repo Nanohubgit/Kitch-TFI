@@ -20,11 +20,7 @@ public class RecomendacionController : ApiControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<RecetaCompatibleDto>>> Recomendar([FromQuery] int? maxFaltantes)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var recetas = await _recomendacionService.RecomendarAsync(usuarioId, maxFaltantes);
         return Ok(recetas);
     }

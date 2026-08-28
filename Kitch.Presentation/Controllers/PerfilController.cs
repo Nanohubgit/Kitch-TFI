@@ -20,11 +20,7 @@ public class PerfilController : ApiControllerBase
     [HttpGet("me")]
     public async Task<ActionResult<UsuarioResponseDto>> GetMe()
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var usuario = await _usuarioService.GetByIdAsync(usuarioId);
 
         if (usuario is null)
@@ -38,25 +34,14 @@ public class PerfilController : ApiControllerBase
     [HttpPut("me")]
     public async Task<IActionResult> UpdateMe([FromBody] ActualizarPerfilDto perfil)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
+        var usuarioId = GetUsuarioIdOrThrow();
+        var actualizado = await _usuarioService.ActualizarPerfilAsync(usuarioId, perfil);
+
+        if (!actualizado)
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return NotFound();
         }
 
-        try
-        {
-            var actualizado = await _usuarioService.ActualizarPerfilAsync(usuarioId, perfil);
-
-            if (!actualizado)
-            {
-                return NotFound();
-            }
-
-            return NoContent();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        return NoContent();
     }
 }

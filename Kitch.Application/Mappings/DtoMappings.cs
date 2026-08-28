@@ -29,6 +29,7 @@ public static class DtoMappings
 
     public static RecetaResponseDto ToResponseDto(this Receta receta) => new()
     {
+        Id = receta.Id,
         Titulo = receta.Titulo,
         CaloriasEstimadas = receta.CaloriasEstimadas,
         Descripcion = receta.Descripcion,
@@ -79,6 +80,7 @@ public static class DtoMappings
 
     public static ItemListaCompraResponseDto ToResponseDto(this ItemListaCompra item) => new()
     {
+        Id = item.Id,
         NombreArticulo = item.NombreArticulo,
         CantidadFaltante = item.CantidadFaltante,
         EstaComprado = item.EstaComprado
@@ -86,6 +88,7 @@ public static class DtoMappings
 
     public static SuscripcionResponseDto ToResponseDto(this Suscripcion suscripcion) => new()
     {
+        Id = suscripcion.Id,
         FechaInicio = suscripcion.FechaInicio,
         FechaFin = suscripcion.FechaFin,
         Activa = suscripcion.Activa,
@@ -94,6 +97,7 @@ public static class DtoMappings
 
     public static ContratoSubResponseDto ToResponseDto(this ContratoSub contrato) => new()
     {
+        Id = contrato.Id,
         FechaContratacion = contrato.FechaContratacion,
         FechaInicio = contrato.FechaInicio,
         FechaFin = contrato.FechaFin,
@@ -106,6 +110,7 @@ public static class DtoMappings
 
     public static PagoResponseDto ToResponseDto(this Pago pago) => new()
     {
+        Id = pago.Id,
         FechaPago = pago.FechaPago,
         Monto = pago.Monto,
         EstadoPago = pago.EstadoPago,

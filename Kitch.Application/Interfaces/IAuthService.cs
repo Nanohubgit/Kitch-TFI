@@ -20,6 +20,11 @@ public interface IAuthService
     Task<Login2FaResponseDto> LoginAsync(LoginRequest request);
 
     /// <summary>
+    /// Valida el código 2FA y recién ahí emite el JWT de sesión.
+    /// </summary>
+    Task<AuthResponse> VerifyTwoFactorAsync(Verify2FaRequestDto request);
+
+    /// <summary>
     /// Indica si el email ya está registrado.
     /// </summary>
     Task<bool> EmailExisteAsync(string email);

@@ -27,11 +27,7 @@ public class PagosController : ApiControllerBase
     [HttpGet("mios")]
     public async Task<ActionResult<IEnumerable<PagoResponseDto>>> GetMios()
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var pagos = await _pagoService.GetByUsuarioIdAsync(usuarioId);
         return Ok(pagos);
     }
@@ -53,7 +49,7 @@ public class PagosController : ApiControllerBase
     public async Task<ActionResult<PagoResponseDto>> Create([FromBody] PagoCreateDto pago)
     {
         var createdPago = await _pagoService.CreateAsync(pago);
-        return Created(string.Empty, createdPago);
+        return CreatedAtAction(nameof(GetById), new { id = createdPago.Id }, createdPago);
     }
 
     [HttpPut("{id:int}")]

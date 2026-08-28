@@ -20,29 +20,28 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request)
     {
-        try
-        {
-            var response = await _authService.RegisterAsync(request);
-            return Ok(response);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        var response = await _authService.RegisterAsync(request);
+        return Ok(response);
     }
 
+    /// <summary>
+    /// Primer factor. Nunca emite JWT: envía el código 2FA al correo.
+    /// </summary>
     [HttpPost("login")]
     public async Task<ActionResult<Login2FaResponseDto>> Login([FromBody] LoginRequest request)
     {
-        try
-        {
-            var response = await _authService.LoginAsync(request);
-            return Ok(response);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            return Unauthorized(ex.Message);
-        }
+        var response = await _authService.LoginAsync(request);
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Segundo factor. Aquí y solo aquí se emite el JWT de sesión.
+    /// </summary>
+    [HttpPost("verify-2fa")]
+    public async Task<ActionResult<AuthResponse>> VerifyTwoFactor([FromBody] Verify2FaRequestDto request)
+    {
+        var response = await _authService.VerifyTwoFactorAsync(request);
+        return Ok(response);
     }
 
     [HttpGet("email-existe")]
@@ -75,14 +74,7 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequestDto request)
     {
-        try
-        {
-            await _authService.ResetPasswordAsync(request);
-            return Ok(new { message = "La contraseña se actualizó correctamente." });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
+        await _authService.ResetPasswordAsync(request);
+        return Ok(new { message = "La contraseña se actualizó correctamente." });
     }
 }

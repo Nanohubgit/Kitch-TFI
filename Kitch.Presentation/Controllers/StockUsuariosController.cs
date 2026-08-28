@@ -20,11 +20,7 @@ public class StockUsuariosController : ApiControllerBase
     [HttpGet("mias")]
     public async Task<ActionResult<IEnumerable<StockUsuarioResponseDto>>> GetMias()
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var stock = await _stockUsuarioService.GetByUsuarioIdAsync(usuarioId);
         return Ok(stock);
     }
@@ -32,11 +28,7 @@ public class StockUsuariosController : ApiControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<StockUsuarioResponseDto>> GetById(int id)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var stock = await _stockUsuarioService.GetByIdAsync(id, usuarioId);
 
         if (stock is null)
@@ -50,32 +42,17 @@ public class StockUsuariosController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<StockUsuarioResponseDto>> Create([FromBody] StockUsuarioCreateDto stock)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         stock.UsuarioId = usuarioId;
 
-        try
-        {
-            var createdStock = await _stockUsuarioService.CreateAsync(stock);
-            return CreatedAtAction(nameof(GetById), new { id = createdStock.Id }, createdStock);
-        }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
-        {
-            return BadRequest(ex.Message);
-        }
+        var createdStock = await _stockUsuarioService.CreateAsync(stock);
+        return CreatedAtAction(nameof(GetById), new { id = createdStock.Id }, createdStock);
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] StockUsuarioUpdateDto stock)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var updated = await _stockUsuarioService.UpdateAsync(id, stock, usuarioId);
 
         if (!updated)
@@ -89,11 +66,7 @@ public class StockUsuariosController : ApiControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var deleted = await _stockUsuarioService.DeleteAsync(id, usuarioId);
 
         if (!deleted)

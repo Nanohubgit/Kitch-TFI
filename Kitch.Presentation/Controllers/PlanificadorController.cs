@@ -20,11 +20,7 @@ public class PlanificadorController : ApiControllerBase
     [HttpGet("mias")]
     public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetMias()
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var comidas = await _planificadorService.GetByUsuarioIdAsync(usuarioId);
         return Ok(comidas);
     }
@@ -33,11 +29,7 @@ public class PlanificadorController : ApiControllerBase
     public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetMiasPorFecha(
         [FromQuery] DateTime fecha)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var comidas = await _planificadorService.GetByFechaAsync(usuarioId, fecha);
         return Ok(comidas);
     }
@@ -45,11 +37,7 @@ public class PlanificadorController : ApiControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ComidaPlanificadaResponseDto>> GetById(int id)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var comida = await _planificadorService.GetByIdAsync(id, usuarioId);
 
         if (comida is null)
@@ -63,11 +51,7 @@ public class PlanificadorController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<ComidaPlanificadaResponseDto>> Create([FromBody] ComidaPlanificadaCreateDto comida)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         comida.UsuarioId = usuarioId;
 
         try
@@ -75,23 +59,19 @@ public class PlanificadorController : ApiControllerBase
             var createdComida = await _planificadorService.CreateAsync(comida);
             return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
         }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(ex.Message);
-        }
         catch (InvalidOperationException ex)
         {
-            return Conflict(ex.Message);
+            return Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Conflict",
+                detail: ex.Message);
         }
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] ComidaPlanificadaUpdateDto comida)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
+        var usuarioId = GetUsuarioIdOrThrow();
 
         try
         {
@@ -104,24 +84,19 @@ public class PlanificadorController : ApiControllerBase
 
             return NoContent();
         }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(ex.Message);
-        }
         catch (InvalidOperationException ex)
         {
-            return Conflict(ex.Message);
+            return Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Conflict",
+                detail: ex.Message);
         }
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var deleted = await _planificadorService.DeleteAsync(id, usuarioId);
 
         if (!deleted)

@@ -20,19 +20,8 @@ public class ChatIaController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<ChatRespuestaDto>> Chat([FromBody] ChatRequestDto request)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
-        try
-        {
-            var respuesta = await _chatIaService.ProcesarMensajeAsync(usuarioId, request);
-            return Ok(respuesta);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        var usuarioId = GetUsuarioIdOrThrow();
+        var respuesta = await _chatIaService.ProcesarMensajeAsync(usuarioId, request);
+        return Ok(respuesta);
     }
 }

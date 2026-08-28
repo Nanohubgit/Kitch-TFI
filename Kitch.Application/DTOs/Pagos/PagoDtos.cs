@@ -29,6 +29,7 @@ public class PagoUpdateDto
 
 public class PagoResponseDto
 {
+    public int Id { get; set; }
     public DateTime FechaPago { get; set; }
     public decimal Monto { get; set; }
     public EstadoPago EstadoPago { get; set; }

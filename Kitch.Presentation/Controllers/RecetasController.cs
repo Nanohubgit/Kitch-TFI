@@ -50,7 +50,7 @@ public class RecetasController : ControllerBase
     public async Task<ActionResult<RecetaResponseDto>> Create([FromBody] RecetaCreateDto receta)
     {
         var createdReceta = await _recetaService.CreateAsync(receta);
-        return Created(string.Empty, createdReceta);
+        return CreatedAtAction(nameof(GetById), new { id = createdReceta.Id }, createdReceta);
     }
 
     [HttpPut("{id:int}")]

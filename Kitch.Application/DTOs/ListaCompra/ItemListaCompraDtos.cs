@@ -27,6 +27,7 @@ public class ItemListaCompraUpdateDto
 
 public class ItemListaCompraResponseDto
 {
+    public int Id { get; set; }
     public string NombreArticulo { get; set; } = string.Empty;
     public float CantidadFaltante { get; set; }
     public bool EstaComprado { get; set; }

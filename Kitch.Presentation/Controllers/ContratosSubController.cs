@@ -1,6 +1,5 @@
 using Kitch.Application.DTOs.ContratosSub;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -28,11 +27,7 @@ public class ContratosSubController : ApiControllerBase
     [HttpGet("mios")]
     public async Task<ActionResult<IEnumerable<ContratoSubResponseDto>>> GetMios()
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var contratos = await _contratoSubService.GetByUsuarioIdAsync(usuarioId);
         return Ok(contratos);
     }
@@ -54,7 +49,7 @@ public class ContratosSubController : ApiControllerBase
     public async Task<ActionResult<ContratoSubResponseDto>> Create([FromBody] ContratoSubCreateDto contratoSub)
     {
         var createdContratoSub = await _contratoSubService.CreateAsync(contratoSub);
-        return Created(string.Empty, createdContratoSub);
+        return CreatedAtAction(nameof(GetById), new { id = createdContratoSub.Id }, createdContratoSub);
     }
 
     [HttpPut("{id:int}")]

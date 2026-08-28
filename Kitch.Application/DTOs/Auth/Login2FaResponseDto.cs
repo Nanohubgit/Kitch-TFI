@@ -3,7 +3,7 @@ namespace Kitch.Application.DTOs.Auth;
 /// <summary>
 /// Respuesta del login en el paso 1 del 2FA.
 /// Confirma que la password fue correcta y que se envió un código por email.
-/// No incluye JWT: la sesión se emite solo tras verificar el código (Fase 3).
+/// No incluye JWT: la sesión se emite solo tras POST /api/auth/verify-2fa.
 /// </summary>
 public class Login2FaResponseDto
 {

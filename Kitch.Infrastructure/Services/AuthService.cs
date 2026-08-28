@@ -114,9 +114,7 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("Usuario/email o contraseña inválidos.");
         }
 
-        // Login flexible: identificador puede ser Email o NombreUsuario.
-        var usuario = await _context.Usuarios.FirstOrDefaultAsync(u =>
-            u.Email == usuarioOMail || u.NombreUsuario == usuarioOMail);
+        var usuario = await FindUsuarioPorIdentificadorAsync(usuarioOMail);
 
         if (usuario is null || !BCrypt.Net.BCrypt.Verify(password, usuario.PasswordHash))
         {
@@ -128,7 +126,7 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("El usuario se encuentra inactivo.");
         }
 
-        // Primer factor OK. No se emite JWT hasta verificar el código 2FA (Fase 3).
+        // Primer factor OK. No se emite JWT hasta POST /api/auth/verify-2fa.
         // Código numérico 000000–999999 con CSPRNG (no Random.Next).
         var codigoPlano = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
 
@@ -154,6 +152,69 @@ public class AuthService : IAuthService
             EmailEnmascarado = EnmascararEmail(usuario.Email),
             Mensaje = "Credenciales correctas. Ingresá el código de 6 dígitos enviado a tu correo."
         };
+    }
+
+    public async Task<AuthResponse> VerifyTwoFactorAsync(Verify2FaRequestDto request)
+    {
+        if (request is null)
+        {
+            throw new UnauthorizedAccessException("Código de verificación inválido o expirado.");
+        }
+
+        var usuarioOMail = request.UsuarioOMail?.Trim() ?? string.Empty;
+        var codigo = request.Codigo?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(usuarioOMail) || string.IsNullOrWhiteSpace(codigo))
+        {
+            throw new UnauthorizedAccessException("Código de verificación inválido o expirado.");
+        }
+
+        var usuario = await FindUsuarioPorIdentificadorAsync(usuarioOMail);
+
+        if (usuario is null || !usuario.Activo)
+        {
+            throw new UnauthorizedAccessException("Código de verificación inválido o expirado.");
+        }
+
+        if (string.IsNullOrWhiteSpace(usuario.TwoFactorCode) ||
+            usuario.TwoFactorCodeExpiresAt is null ||
+            usuario.TwoFactorCodeExpiresAt <= DateTime.UtcNow)
+        {
+            throw new UnauthorizedAccessException("Código de verificación inválido o expirado.");
+        }
+
+        var codigoHash = HashTokenSha256(codigo);
+        if (!HashesCoinciden(usuario.TwoFactorCode, codigoHash))
+        {
+            throw new UnauthorizedAccessException("Código de verificación inválido o expirado.");
+        }
+
+        usuario.TwoFactorCode = null;
+        usuario.TwoFactorCodeExpiresAt = null;
+        await _context.SaveChangesAsync();
+
+        return CreateAuthResponse(usuario);
+    }
+
+    private Task<Usuario?> FindUsuarioPorIdentificadorAsync(string usuarioOMail)
+    {
+        return _context.Usuarios.FirstOrDefaultAsync(u =>
+            u.Email == usuarioOMail || u.NombreUsuario == usuarioOMail);
+    }
+
+    private static bool HashesCoinciden(string hashAlmacenado, string hashRecibido)
+    {
+        try
+        {
+            var esperado = Convert.FromHexString(hashAlmacenado);
+            var recibido = Convert.FromHexString(hashRecibido);
+            return esperado.Length == recibido.Length &&
+                CryptographicOperations.FixedTimeEquals(esperado, recibido);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

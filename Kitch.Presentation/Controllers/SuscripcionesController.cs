@@ -27,38 +27,16 @@ public class SuscripcionesController : ApiControllerBase
     public async Task<ActionResult<ContratarSuscripcionResult>> Contratar(
         [FromBody] ContratarSuscripcionRequest request)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
+        var usuarioId = GetUsuarioIdOrThrow();
+        var result = await _suscripcionService.ContratarAsync(usuarioId, request);
+
+        if (!result.Aprobado)
         {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
+            return BadRequest(result);
         }
 
-        try
-        {
-            var result = await _suscripcionService.ContratarAsync(usuarioId, request);
-
-            if (!result.Aprobado)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (InvalidOperationException ex) when (EsUsuarioYaProfesional(ex))
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+        return Ok(result);
     }
-
-    private static bool EsUsuarioYaProfesional(InvalidOperationException ex) =>
-        ex.Message.Contains("ya posee el rol Profesional", StringComparison.OrdinalIgnoreCase);
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<SuscripcionResponseDto>>> GetAll()
@@ -84,7 +62,7 @@ public class SuscripcionesController : ApiControllerBase
     public async Task<ActionResult<SuscripcionResponseDto>> Create([FromBody] SuscripcionCreateDto suscripcion)
     {
         var createdSuscripcion = await _suscripcionService.CreateAsync(suscripcion);
-        return Created(string.Empty, createdSuscripcion);
+        return CreatedAtAction(nameof(GetById), new { id = createdSuscripcion.Id }, createdSuscripcion);
     }
 
     [HttpPut("{id:int}")]
