@@ -101,7 +101,7 @@ public class FavoritoService : IFavoritoService
             favorito.UsuarioId == usuarioId && favorito.RecetaId == recetaId);
     }
 
-    private async Task AsegurarCupoFavoritosAsync(int usuarioId)
+    public async Task AsegurarCupoFavoritosAsync(int usuarioId)
     {
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
             ?? throw new InvalidOperationException("El usuario no existe.");
@@ -111,11 +111,11 @@ public class FavoritoService : IFavoritoService
             return;
         }
 
-        var favoritos = await _repository.FindAsync(f => f.UsuarioId == usuarioId);
-        if (favoritos.Count >= LimitesPlan.MaxFavoritosBasico)
+        var cantidad = await _repository.CountAsync(favorito => favorito.UsuarioId == usuarioId);
+        if (cantidad >= LimitesPlan.MaxFavoritosBasico)
         {
             throw new ForbiddenException(
-                $"El plan Básico permite hasta {LimitesPlan.MaxFavoritosBasico} favoritos. Actualizá a Profesional para agregar más.");
+                $"Límite alcanzado. El plan Básico permite hasta {LimitesPlan.MaxFavoritosBasico} favoritos. Mejorá tu plan a Profesional para guardar más favoritos.");
         }
     }
 }

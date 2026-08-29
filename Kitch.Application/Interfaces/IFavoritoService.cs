@@ -10,4 +10,5 @@ public interface IFavoritoService
     Task<bool> ToggleFavoritoAsync(int usuarioId, int recetaId);
     Task<bool> DeleteAsync(int id, int usuarioId);
     Task<bool> ExisteFavoritoAsync(int usuarioId, int recetaId);
+    Task AsegurarCupoFavoritosAsync(int usuarioId);
 }

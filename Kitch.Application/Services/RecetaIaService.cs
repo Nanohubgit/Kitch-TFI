@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Kitch.Application.DTOs.Favoritos;
 using Kitch.Application.DTOs.RecetaIa;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
@@ -29,7 +30,7 @@ public class RecetaIaService : IRecetaIaService
     private readonly IRepository<StockUsuario> _stockRepository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
     private readonly IRepository<Receta> _recetaRepository;
-    private readonly IRepository<RecetaFavorita> _favoritoRepository;
+    private readonly IFavoritoService _favoritoService;
     private readonly IIngredienteNormalizerService _normalizer;
 
     public RecetaIaService(
@@ -37,14 +38,14 @@ public class RecetaIaService : IRecetaIaService
         IRepository<StockUsuario> stockRepository,
         IRepository<Ingrediente> ingredienteRepository,
         IRepository<Receta> recetaRepository,
-        IRepository<RecetaFavorita> favoritoRepository,
+        IFavoritoService favoritoService,
         IIngredienteNormalizerService normalizer)
     {
         _asistenteIa = asistenteIa;
         _stockRepository = stockRepository;
         _ingredienteRepository = ingredienteRepository;
         _recetaRepository = recetaRepository;
-        _favoritoRepository = favoritoRepository;
+        _favoritoService = favoritoService;
         _normalizer = normalizer;
     }
 
@@ -97,6 +98,8 @@ public class RecetaIaService : IRecetaIaService
         {
             throw new InvalidOperationException("No se recibió la receta a guardar.");
         }
+
+        await _favoritoService.AsegurarCupoFavoritosAsync(usuarioId);
 
         var titulo = GenerarTituloPorDefecto(receta.Titulo, receta.Ingredientes);
 
@@ -163,7 +166,7 @@ public class RecetaIaService : IRecetaIaService
 
         var recetaCreada = await _recetaRepository.AddAsync(nuevaReceta);
 
-        await _favoritoRepository.AddAsync(new RecetaFavorita
+        await _favoritoService.AddFavoritoAsync(new FavoritoCreateDto
         {
             UsuarioId = usuarioId,
             RecetaId = recetaCreada.Id
