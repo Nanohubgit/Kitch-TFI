@@ -3,6 +3,7 @@ using Kitch.Application.Interfaces;
 using Kitch.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace Kitch.Presentation.Controllers;
 
@@ -19,23 +20,37 @@ public class SuscripcionesController : ApiControllerBase
     }
 
     /// <summary>
-    /// Contrata la suscripción Profesional: cobra vía pasarela y, si aprueba, actualiza el rol.
-    /// 200 OK | 400 Bad Request | 401 Unauthorized | 403 Forbidden
+    /// Inicia Checkout Pro. Devuelve InitPoint. El rol NO se cambia acá.
     /// </summary>
     [HttpPost("contratar")]
     [Authorize(Roles = RolUsuario.Basico)]
-    public async Task<ActionResult<ContratarSuscripcionResult>> Contratar(
-        [FromBody] ContratarSuscripcionRequest request)
+    public async Task<ActionResult<IniciarPagoResponseDto>> Contratar(
+        [FromBody] ContratarSuscripcionRequest? request)
     {
         var usuarioId = GetUsuarioIdOrThrow();
         var result = await _suscripcionService.ContratarAsync(usuarioId, request);
+        return Ok(result);
+    }
 
-        if (!result.Aprobado)
+    /// <summary>
+    /// Webhook público de Mercado Pago. Único camino que promueve a Profesional.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("webhook")]
+    public async Task<IActionResult> Webhook(
+        [FromQuery] string? type,
+        [FromQuery] string? topic,
+        [FromQuery] string? id,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] PasarelaWebhookRequest? body)
+    {
+        var paymentId = ExtraerPaymentId(type, topic, id, body);
+        if (string.IsNullOrWhiteSpace(paymentId))
         {
-            return BadRequest(result);
+            return Ok();
         }
 
-        return Ok(result);
+        await _suscripcionService.ProcesarNotificacionPagoAsync(paymentId);
+        return Ok();
     }
 
     [HttpGet]
@@ -89,5 +104,28 @@ public class SuscripcionesController : ApiControllerBase
         }
 
         return NoContent();
+    }
+
+    private static string? ExtraerPaymentId(
+        string? type,
+        string? topic,
+        string? id,
+        PasarelaWebhookRequest? body)
+    {
+        var tipo = body?.Type ?? type ?? topic ?? body?.Topic;
+        var esPago = string.IsNullOrWhiteSpace(tipo) ||
+            tipo.Equals("payment", StringComparison.OrdinalIgnoreCase);
+
+        if (!esPago)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(body?.Data?.Id))
+        {
+            return body.Data.Id.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(id) ? null : id.Trim();
     }
 }

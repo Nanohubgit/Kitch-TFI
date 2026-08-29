@@ -63,7 +63,7 @@ builder.Services.AddDbContext<KitchDbContext>(options =>
     options.UseSqlServer(connectionString));
 
 builder.Services.AddApplication();
-builder.Services.AddInfrastructure();
+builder.Services.AddInfrastructure(builder.Configuration);
 
 var jwtKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrWhiteSpace(jwtKey))

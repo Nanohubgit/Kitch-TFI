@@ -120,18 +120,8 @@ public class SuscripcionService : ISuscripcionService
         }
     }
 
-    public async Task<ContratarSuscripcionResult> ContratarAsync(int usuarioId, ContratarSuscripcionRequest request)
+    public async Task<IniciarPagoResponseDto> ContratarAsync(int usuarioId, ContratarSuscripcionRequest? request)
     {
-        if (request is null)
-        {
-            throw new ArgumentException("Los datos de la contratación son obligatorios.", nameof(request));
-        }
-
-        if (request.Monto <= 0)
-        {
-            throw new ArgumentException("El monto debe ser mayor a cero.", nameof(request));
-        }
-
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
             ?? throw new InvalidOperationException("El usuario no existe.");
 
@@ -148,27 +138,62 @@ public class SuscripcionService : ISuscripcionService
             throw new InvalidOperationException("El usuario ya tiene una suscripción activa.");
         }
 
-        var ahora = DateTime.UtcNow;
+        var tipo = string.IsNullOrWhiteSpace(request?.Tipo)
+            ? PrecioSuscripcion.TipoProfesional
+            : request.Tipo.Trim();
 
-        // Cobro agnóstico al proveedor (Stripe, MercadoPago, etc. se resuelven en Infrastructure).
-        var cobro = await _paymentGateway.ProcesarPagoAsync(new PaymentGatewayRequest
+        var checkout = await _paymentGateway.CrearPreferenciaAsync(new PaymentGatewayRequest
         {
             UsuarioId = usuarioId,
-            Monto = request.Monto,
-            MetodoPago = request.MetodoPago,
+            Monto = PrecioSuscripcion.ProfesionalArs,
+            MetodoPago = request?.MetodoPago ?? MetodoPago.TarjetaCredito,
             EmailUsuario = usuario.Email,
-            Descripcion = $"Suscripción {request.Tipo} - Alacena Virtual"
+            Descripcion = $"Suscripción {tipo} - Alacena Virtual"
         });
 
-        var aprobado = cobro.Aprobado;
+        return new IniciarPagoResponseDto
+        {
+            InitPoint = checkout.InitPoint,
+            PreferenceId = checkout.PreferenceId,
+            Monto = PrecioSuscripcion.ProfesionalArs,
+            Moneda = PrecioSuscripcion.MonedaArs,
+            Mensaje = "Redirigí al usuario a InitPoint para completar el pago. El rol se actualiza solo cuando Mercado Pago confirma por webhook."
+        };
+    }
+
+    public async Task ProcesarNotificacionPagoAsync(string paymentId)
+    {
+        var cobro = await _paymentGateway.ConsultarPagoAsync(paymentId);
+        if (cobro is null || !cobro.Aprobado)
+        {
+            return;
+        }
+
+        if (!int.TryParse(cobro.ExternalReference, out var usuarioId))
+        {
+            throw new InvalidOperationException("La notificación no incluye un UsuarioId válido en ExternalReference.");
+        }
+
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
+            ?? throw new InvalidOperationException($"No existe el usuario {usuarioId} indicado por la pasarela.");
+
+        if (usuario.Rol == RolUsuario.Profesional &&
+            await _contratoRepository.AnyAsync(contrato =>
+                contrato.UsuarioId == usuarioId && contrato.Estado == EstadoContratoSub.Activo))
+        {
+            return;
+        }
+
+        var ahora = DateTime.UtcNow;
+        var monto = cobro.Monto > 0 ? cobro.Monto : PrecioSuscripcion.ProfesionalArs;
 
         var suscripcion = await _repository.AddAsync(new Suscripcion
         {
             UsuarioId = usuarioId,
-            Tipo = request.Tipo,
+            Tipo = PrecioSuscripcion.TipoProfesional,
             FechaInicio = ahora,
             FechaFin = ahora.AddMonths(1),
-            Activa = aprobado
+            Activa = true
         });
 
         var contrato = await _contratoRepository.AddAsync(new ContratoSub
@@ -178,38 +203,21 @@ public class SuscripcionService : ISuscripcionService
             FechaContratacion = ahora,
             FechaInicio = ahora,
             FechaFin = ahora.AddMonths(1),
-            Monto = request.Monto,
-            Estado = aprobado ? EstadoContratoSub.Activo : EstadoContratoSub.Cancelado
+            Monto = monto,
+            Estado = EstadoContratoSub.Activo
         });
 
-        var pago = await _pagoRepository.AddAsync(new Pago
+        await _pagoRepository.AddAsync(new Pago
         {
             UsuarioId = usuarioId,
             ContratoSubId = contrato.Id,
             FechaPago = ahora,
-            Monto = request.Monto,
-            MetodoPago = request.MetodoPago,
-            EstadoPago = aprobado ? EstadoPago.Aprobado : EstadoPago.Rechazado
+            Monto = monto,
+            MetodoPago = MetodoPago.TarjetaCredito,
+            EstadoPago = EstadoPago.Aprobado
         });
 
-        if (aprobado)
-        {
-            usuario.Rol = RolUsuario.Profesional;
-            await _usuarioRepository.UpdateAsync(usuario);
-        }
-
-        return new ContratarSuscripcionResult
-        {
-            Aprobado = aprobado,
-            Mensaje = aprobado
-                ? "Pago aprobado. ¡Bienvenido al nivel Profesional!"
-                : (string.IsNullOrWhiteSpace(cobro.Mensaje)
-                    ? "No se pudo procesar el pago. Verificá los datos de tu tarjeta o intentá con otro medio de pago."
-                    : cobro.Mensaje),
-            RolUsuario = usuario.Rol,
-            ContratoId = contrato.Id,
-            PagoId = pago.Id,
-            EstadoPago = pago.EstadoPago
-        };
+        usuario.Rol = RolUsuario.Profesional;
+        await _usuarioRepository.UpdateAsync(usuario);
     }
 }
