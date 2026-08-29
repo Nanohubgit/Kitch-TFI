@@ -27,8 +27,12 @@ public class SustitutosController : ApiControllerBase
     [HttpGet("ingrediente/{ingredienteId:int}")]
     public async Task<ActionResult<IEnumerable<SustitutoResponseDto>>> GetByIngredienteId(int ingredienteId)
     {
-        GetUsuarioIdOrThrow();
-        var sustitutos = await _sustitutoService.GetByIngredienteIdAsync(ingredienteId);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var sustitutos = await _sustitutoService.GetByIngredienteIdAsync(ingredienteId, usuarioId);
         return Ok(sustitutos);
     }
 

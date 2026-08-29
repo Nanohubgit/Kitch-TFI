@@ -3,7 +3,7 @@ using Kitch.Application.DTOs.Auth;
 namespace Kitch.Application.Interfaces;
 
 /// <summary>
-/// Contrato de autenticación y recuperación de acceso de la aplicación.
+/// Contrato de autenticación, 2FA, recuperación de acceso y perfil.
 /// Los controladores dependen de esta abstracción (DIP), no de AuthService concreto.
 /// </summary>
 public interface IAuthService
@@ -20,9 +20,19 @@ public interface IAuthService
     Task<Login2FaResponseDto> LoginAsync(LoginRequest request);
 
     /// <summary>
-    /// Valida el código 2FA y recién ahí emite el JWT de sesión.
+    /// Valida el código 2FA, limpia el OTP y emite el JWT definitivo.
     /// </summary>
-    Task<AuthResponse> VerifyTwoFactorAsync(Verify2FaRequestDto request);
+    Task<Verify2FaResponseDto> Verify2FaAsync(Verify2FaRequestDto request);
+
+    /// <summary>
+    /// Perfil del usuario autenticado (panel / navbar del front).
+    /// </summary>
+    Task<PerfilUsuarioResponseDto?> GetPerfilAsync(int usuarioId);
+
+    /// <summary>
+    /// Actualiza NombreUsuario y PreferenciaDietetica del usuario autenticado.
+    /// </summary>
+    Task<PerfilUsuarioResponseDto> EditarPerfilAsync(int usuarioId, EditarPerfilRequestDto request);
 
     /// <summary>
     /// Indica si el email ya está registrado.

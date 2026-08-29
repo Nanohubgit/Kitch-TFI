@@ -1,6 +1,7 @@
 using Kitch.Application.DTOs.Sustitutos;
 using Kitch.Application.Interfaces;
 using Kitch.Application.Mappings;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -10,13 +11,16 @@ public class SustitutoService : ISustitutoService
 {
     private readonly IRepository<SustitutoIngrediente> _repository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
+    private readonly IRepository<Usuario> _usuarioRepository;
 
     public SustitutoService(
         IRepository<SustitutoIngrediente> repository,
-        IRepository<Ingrediente> ingredienteRepository)
+        IRepository<Ingrediente> ingredienteRepository,
+        IRepository<Usuario> usuarioRepository)
     {
         _repository = repository;
         _ingredienteRepository = ingredienteRepository;
+        _usuarioRepository = usuarioRepository;
     }
 
     public async Task<IEnumerable<SustitutoResponseDto>> GetAllAsync()
@@ -29,14 +33,22 @@ public class SustitutoService : ISustitutoService
         return sustitutos.Select(sustituto => sustituto.ToResponseDto());
     }
 
-    public async Task<IEnumerable<SustitutoResponseDto>> GetByIngredienteIdAsync(int ingredienteId)
+    public async Task<IEnumerable<SustitutoResponseDto>> GetByIngredienteIdAsync(int ingredienteId, int usuarioId)
     {
         var sustitutos = await _repository.FindWithIncludesAsync(
             sustituto => sustituto.IngredienteOriginalId == ingredienteId,
             sustituto => sustituto.IngredienteOriginal,
             sustituto => sustituto.IngredienteSustituto);
 
-        return sustitutos.Select(sustituto => sustituto.ToResponseDto());
+        var dtos = sustitutos.Select(sustituto => sustituto.ToResponseDto()).ToList();
+
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        if (usuario is not null && !RolUsuario.TieneAccesoPremium(usuario.Rol))
+        {
+            return dtos.Take(LimitesPlan.MaxSustitutosBasico).ToList();
+        }
+
+        return dtos;
     }
 
     public async Task<SustitutoResponseDto?> GetByIdAsync(int id)

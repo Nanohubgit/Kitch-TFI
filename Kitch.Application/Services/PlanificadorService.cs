@@ -1,6 +1,8 @@
 using Kitch.Application.DTOs.Planificador;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Application.Mappings;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -14,6 +16,7 @@ public class PlanificadorService : IPlanificadorService
     private readonly IRepository<StockUsuario> _stockRepository;
     private readonly IRepository<ItemListaCompra> _listaCompraRepository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
+    private readonly IRepository<Usuario> _usuarioRepository;
 
     public PlanificadorService(
         IRepository<ComidaPlanificada> repository,
@@ -21,7 +24,8 @@ public class PlanificadorService : IPlanificadorService
         IRepository<IngredienteReceta> ingredienteRecetaRepository,
         IRepository<StockUsuario> stockRepository,
         IRepository<ItemListaCompra> listaCompraRepository,
-        IRepository<Ingrediente> ingredienteRepository)
+        IRepository<Ingrediente> ingredienteRepository,
+        IRepository<Usuario> usuarioRepository)
     {
         _repository = repository;
         _recetaRepository = recetaRepository;
@@ -29,6 +33,7 @@ public class PlanificadorService : IPlanificadorService
         _stockRepository = stockRepository;
         _listaCompraRepository = listaCompraRepository;
         _ingredienteRepository = ingredienteRepository;
+        _usuarioRepository = usuarioRepository;
     }
 
     public async Task<IEnumerable<ComidaPlanificadaResponseDto>> GetByUsuarioIdAsync(int usuarioId)
@@ -71,6 +76,7 @@ public class PlanificadorService : IPlanificadorService
     public async Task<PlanificacionResultadoDto> PlanificarAsync(ComidaPlanificadaCreateDto comida)
     {
         await ValidarRecetaExisteAsync(comida.RecetaId);
+        await ValidarHorizontePlanificacionAsync(comida.UsuarioId, comida.FechaAsignada);
 
         if (await ExisteConflictoAsync(comida.UsuarioId, comida.FechaAsignada, comida.Turno))
         {
@@ -178,6 +184,7 @@ public class PlanificadorService : IPlanificadorService
         }
 
         await ValidarRecetaExisteAsync(comida.RecetaId);
+        await ValidarHorizontePlanificacionAsync(usuarioId, comida.FechaAsignada);
 
         if (await _repository.AnyAsync(existing =>
                 existing.Id != id &&
@@ -210,6 +217,30 @@ public class PlanificadorService : IPlanificadorService
         await _repository.DeleteAsync(comida);
 
         return true;
+    }
+
+    private async Task ValidarHorizontePlanificacionAsync(int usuarioId, DateTime fechaAsignada)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
+            ?? throw new InvalidOperationException("El usuario no existe.");
+
+        var diasMax = RolUsuario.TieneAccesoPremium(usuario.Rol)
+            ? LimitesPlan.DiasPlanificacionProfesional
+            : LimitesPlan.DiasPlanificacionBasico;
+
+        var hoy = DateTime.UtcNow.Date;
+        var limite = hoy.AddDays(diasMax);
+
+        if (fechaAsignada.Date < hoy)
+        {
+            throw new InvalidOperationException("No podés planificar comidas en fechas pasadas.");
+        }
+
+        if (fechaAsignada.Date > limite)
+        {
+            throw new ForbiddenException(
+                $"Tu plan permite agendar hasta {diasMax} días adelante. Actualizá a Profesional para planificar a 30 días.");
+        }
     }
 
     private async Task ValidarRecetaExisteAsync(int recetaId)

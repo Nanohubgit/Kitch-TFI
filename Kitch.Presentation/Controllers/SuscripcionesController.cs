@@ -64,10 +64,9 @@ public class SuscripcionesController : ApiControllerBase
     public async Task<ActionResult<SuscripcionResponseDto>> GetById(int id)
     {
         var suscripcion = await _suscripcionService.GetByIdAsync(id);
-
         if (suscripcion is null)
         {
-            return NotFound();
+            return NotFound(new { message = "Suscripción no encontrada." });
         }
 
         return Ok(suscripcion);
@@ -76,31 +75,43 @@ public class SuscripcionesController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<SuscripcionResponseDto>> Create([FromBody] SuscripcionCreateDto suscripcion)
     {
-        var createdSuscripcion = await _suscripcionService.CreateAsync(suscripcion);
-        return CreatedAtAction(nameof(GetById), new { id = createdSuscripcion.Id }, createdSuscripcion);
+        try
+        {
+            var createdSuscripcion = await _suscripcionService.CreateAsync(suscripcion);
+            return CreatedAtAction(nameof(GetById), new { id = createdSuscripcion.Id }, createdSuscripcion);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequestMessage(ex.Message);
+        }
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] SuscripcionUpdateDto suscripcion)
     {
-        var updated = await _suscripcionService.UpdateAsync(id, suscripcion);
-
-        if (!updated)
+        try
         {
-            return NotFound();
-        }
+            var updated = await _suscripcionService.UpdateAsync(id, suscripcion);
+            if (!updated)
+            {
+                return NotFound(new { message = "Suscripción no encontrada." });
+            }
 
-        return NoContent();
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequestMessage(ex.Message);
+        }
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
         var deleted = await _suscripcionService.DeleteAsync(id);
-
         if (!deleted)
         {
-            return NotFound();
+            return NotFound(new { message = "Suscripción no encontrada." });
         }
 
         return NoContent();
