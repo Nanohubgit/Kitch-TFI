@@ -30,19 +30,22 @@ public class RecetaIaService : IRecetaIaService
     private readonly IRepository<Ingrediente> _ingredienteRepository;
     private readonly IRepository<Receta> _recetaRepository;
     private readonly IRepository<RecetaFavorita> _favoritoRepository;
+    private readonly IIngredienteNormalizerService _normalizer;
 
     public RecetaIaService(
         IAsistenteIaClient asistenteIa,
         IRepository<StockUsuario> stockRepository,
         IRepository<Ingrediente> ingredienteRepository,
         IRepository<Receta> recetaRepository,
-        IRepository<RecetaFavorita> favoritoRepository)
+        IRepository<RecetaFavorita> favoritoRepository,
+        IIngredienteNormalizerService normalizer)
     {
         _asistenteIa = asistenteIa;
         _stockRepository = stockRepository;
         _ingredienteRepository = ingredienteRepository;
         _recetaRepository = recetaRepository;
         _favoritoRepository = favoritoRepository;
+        _normalizer = normalizer;
     }
 
     public async Task<RecetaGeneradaDto> GenerarRecetaAsync(int usuarioId, string? preferencias)
@@ -119,7 +122,7 @@ public class RecetaIaService : IRecetaIaService
 
         foreach (var ingrediente in ingredientesValidos)
         {
-            var nombre = ingrediente.Nombre.Trim();
+            var nombre = _normalizer.Normalizar(ingrediente.Nombre);
 
             if (!nombresProcesados.Add(nombre))
             {
@@ -186,8 +189,13 @@ public class RecetaIaService : IRecetaIaService
 
         foreach (var ingrediente in receta.Ingredientes)
         {
-            var nombre = ingrediente.Nombre?.Trim();
-            if (string.IsNullOrWhiteSpace(nombre) || !nombresProcesados.Add(nombre))
+            if (string.IsNullOrWhiteSpace(ingrediente.Nombre))
+            {
+                continue;
+            }
+
+            var nombre = _normalizer.Normalizar(ingrediente.Nombre);
+            if (!nombresProcesados.Add(nombre))
             {
                 continue;
             }
@@ -198,8 +206,9 @@ public class RecetaIaService : IRecetaIaService
 
     private async Task<int> ObtenerOCrearIngredienteAsync(string nombre)
     {
+        var nombreNormalizado = _normalizer.Normalizar(nombre);
         var existente = await _ingredienteRepository.FirstOrDefaultAsync(
-            ingrediente => ingrediente.Nombre == nombre);
+            ingrediente => ingrediente.Nombre == nombreNormalizado);
 
         if (existente is not null)
         {
@@ -208,7 +217,7 @@ public class RecetaIaService : IRecetaIaService
 
         var creado = await _ingredienteRepository.AddAsync(new Ingrediente
         {
-            Nombre = nombre,
+            Nombre = nombreNormalizado,
             Categoria = "Varios"
         });
 

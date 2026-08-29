@@ -9,10 +9,14 @@ namespace Kitch.Application.Services;
 public class IngredienteService : IIngredienteService
 {
     private readonly IRepository<Ingrediente> _repository;
+    private readonly IIngredienteNormalizerService _normalizer;
 
-    public IngredienteService(IRepository<Ingrediente> repository)
+    public IngredienteService(
+        IRepository<Ingrediente> repository,
+        IIngredienteNormalizerService normalizer)
     {
         _repository = repository;
+        _normalizer = normalizer;
     }
 
     public async Task<IEnumerable<IngredienteResponseDto>> GetAllAsync()
@@ -29,7 +33,7 @@ public class IngredienteService : IIngredienteService
 
     public async Task<IngredienteResponseDto> CreateAsync(IngredienteCreateDto ingrediente)
     {
-        var nombre = ingrediente.Nombre.Trim();
+        var nombre = _normalizer.Normalizar(ingrediente.Nombre);
 
         if (await _repository.AnyAsync(existing => existing.Nombre == nombre))
         {
@@ -55,7 +59,7 @@ public class IngredienteService : IIngredienteService
             return false;
         }
 
-        var nombre = ingrediente.Nombre.Trim();
+        var nombre = _normalizer.Normalizar(ingrediente.Nombre);
 
         if (await _repository.AnyAsync(existing => existing.Id != id && existing.Nombre == nombre))
         {

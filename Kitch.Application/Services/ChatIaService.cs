@@ -88,6 +88,7 @@ public class ChatIaService : IChatIaService
     private readonly IRepository<RecetaFavorita> _favoritoRepository;
     private readonly IPlanificadorService _planificadorService;
     private readonly IPreparacionService _preparacionService;
+    private readonly IIngredienteNormalizerService _normalizer;
 
     public ChatIaService(
         IAsistenteIaClient asistenteIa,
@@ -100,7 +101,8 @@ public class ChatIaService : IChatIaService
         IRepository<Receta> recetaRepository,
         IRepository<RecetaFavorita> favoritoRepository,
         IPlanificadorService planificadorService,
-        IPreparacionService preparacionService)
+        IPreparacionService preparacionService,
+        IIngredienteNormalizerService normalizer)
     {
         _asistenteIa = asistenteIa;
         _usuarioRepository = usuarioRepository;
@@ -113,6 +115,7 @@ public class ChatIaService : IChatIaService
         _favoritoRepository = favoritoRepository;
         _planificadorService = planificadorService;
         _preparacionService = preparacionService;
+        _normalizer = normalizer;
     }
 
     public async Task<ChatRespuestaDto> ProcesarMensajeAsync(int usuarioId, ChatRequestDto request)
@@ -303,8 +306,7 @@ public class ChatIaService : IChatIaService
 
     private async Task<ChatRespuestaDto> ResolverSustituirAsync(int usuarioId, SobreAgente sobre)
     {
-        var nombre = sobre.IngredienteSustituir?.Trim();
-        if (string.IsNullOrWhiteSpace(nombre))
+        if (string.IsNullOrWhiteSpace(sobre.IngredienteSustituir))
         {
             return new ChatRespuestaDto
             {
@@ -313,6 +315,7 @@ public class ChatIaService : IChatIaService
             };
         }
 
+        var nombre = _normalizer.Normalizar(sobre.IngredienteSustituir);
         var ingrediente = await _ingredienteRepository.FirstOrDefaultAsync(i => i.Nombre == nombre);
         ingrediente ??= await _ingredienteRepository.AddAsync(new Ingrediente
         {
