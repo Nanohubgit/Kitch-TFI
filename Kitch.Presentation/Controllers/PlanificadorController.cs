@@ -1,4 +1,5 @@
 using Kitch.Application.DTOs.Planificador;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,7 +21,11 @@ public class PlanificadorController : ApiControllerBase
     [HttpGet("mias")]
     public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetMias()
     {
-        var usuarioId = GetUsuarioIdOrThrow();
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
+        }
+
         var comidas = await _planificadorService.GetByUsuarioIdAsync(usuarioId);
         return Ok(comidas);
     }
@@ -29,7 +34,11 @@ public class PlanificadorController : ApiControllerBase
     public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetMiasPorFecha(
         [FromQuery] DateTime fecha)
     {
-        var usuarioId = GetUsuarioIdOrThrow();
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
+        }
+
         var comidas = await _planificadorService.GetByFechaAsync(usuarioId, fecha);
         return Ok(comidas);
     }
@@ -37,12 +46,15 @@ public class PlanificadorController : ApiControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ComidaPlanificadaResponseDto>> GetById(int id)
     {
-        var usuarioId = GetUsuarioIdOrThrow();
-        var comida = await _planificadorService.GetByIdAsync(id, usuarioId);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
+        }
 
+        var comida = await _planificadorService.GetByIdAsync(id, usuarioId);
         if (comida is null)
         {
-            return NotFound();
+            return NotFound(new { message = "Comida planificada no encontrada." });
         }
 
         return Ok(comida);
@@ -51,7 +63,11 @@ public class PlanificadorController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<ComidaPlanificadaResponseDto>> Create([FromBody] ComidaPlanificadaCreateDto comida)
     {
-        var usuarioId = GetUsuarioIdOrThrow();
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
+        }
+
         comida.UsuarioId = usuarioId;
 
         try
@@ -59,49 +75,64 @@ public class PlanificadorController : ApiControllerBase
             var createdComida = await _planificadorService.CreateAsync(comida);
             return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
         }
+        catch (ForbiddenException ex)
+        {
+            return ForbiddenMessage(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
         catch (InvalidOperationException ex)
         {
-            return Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "Conflict",
-                detail: ex.Message);
+            return Conflict(new { message = ex.Message });
         }
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] ComidaPlanificadaUpdateDto comida)
     {
-        var usuarioId = GetUsuarioIdOrThrow();
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
+        }
 
         try
         {
             var updated = await _planificadorService.UpdateAsync(id, comida, usuarioId);
-
             if (!updated)
             {
-                return NotFound();
+                return NotFound(new { message = "Comida planificada no encontrada." });
             }
 
             return NoContent();
         }
+        catch (ForbiddenException ex)
+        {
+            return ForbiddenMessage(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
         catch (InvalidOperationException ex)
         {
-            return Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "Conflict",
-                detail: ex.Message);
+            return Conflict(new { message = ex.Message });
         }
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var usuarioId = GetUsuarioIdOrThrow();
-        var deleted = await _planificadorService.DeleteAsync(id, usuarioId);
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
+        }
 
+        var deleted = await _planificadorService.DeleteAsync(id, usuarioId);
         if (!deleted)
         {
-            return NotFound();
+            return NotFound(new { message = "Comida planificada no encontrada." });
         }
 
         return NoContent();

@@ -10,5 +10,10 @@ public interface ISuscripcionService
     Task<bool> UpdateAsync(int id, SuscripcionUpdateDto suscripcion);
     Task<bool> DeleteAsync(int id);
 
-    Task<ContratarSuscripcionResult> ContratarAsync(int usuarioId, ContratarSuscripcionRequest request);
+    Task<IniciarPagoResponseDto> ContratarAsync(int usuarioId, ContratarSuscripcionRequest? request);
+
+    /// <summary>
+    /// Confirma un pago notificado por la pasarela. Único lugar que puede promover a Profesional.
+    /// </summary>
+    Task ProcesarNotificacionPagoAsync(string paymentId);
 }
