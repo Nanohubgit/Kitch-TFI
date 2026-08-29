@@ -10,13 +10,16 @@ public class StockUsuarioService : IStockUsuarioService
 {
     private readonly IRepository<StockUsuario> _repository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
+    private readonly IIngredienteNormalizerService _normalizer;
 
     public StockUsuarioService(
         IRepository<StockUsuario> repository,
-        IRepository<Ingrediente> ingredienteRepository)
+        IRepository<Ingrediente> ingredienteRepository,
+        IIngredienteNormalizerService normalizer)
     {
         _repository = repository;
         _ingredienteRepository = ingredienteRepository;
+        _normalizer = normalizer;
     }
 
     public async Task<IEnumerable<StockUsuarioResponseDto>> GetByUsuarioIdAsync(int usuarioId)
@@ -82,7 +85,7 @@ public class StockUsuarioService : IStockUsuarioService
 
         if (!string.IsNullOrWhiteSpace(nombreIngrediente))
         {
-            var nombre = nombreIngrediente.Trim();
+            var nombre = _normalizer.Normalizar(nombreIngrediente);
             var existentePorNombre = await _ingredienteRepository.FirstOrDefaultAsync(
                 ingrediente => ingrediente.Nombre == nombre);
 

@@ -26,19 +26,22 @@ public class SustitucionService : ISustitucionService
     private readonly IRepository<StockUsuario> _stockRepository;
     private readonly IRepository<Usuario> _usuarioRepository;
     private readonly IAsistenteIaClient _asistenteIa;
+    private readonly IIngredienteNormalizerService _normalizer;
 
     public SustitucionService(
         IRepository<SustitutoIngrediente> sustitutoRepository,
         IRepository<Ingrediente> ingredienteRepository,
         IRepository<StockUsuario> stockRepository,
         IRepository<Usuario> usuarioRepository,
-        IAsistenteIaClient asistenteIa)
+        IAsistenteIaClient asistenteIa,
+        IIngredienteNormalizerService normalizer)
     {
         _sustitutoRepository = sustitutoRepository;
         _ingredienteRepository = ingredienteRepository;
         _stockRepository = stockRepository;
         _usuarioRepository = usuarioRepository;
         _asistenteIa = asistenteIa;
+        _normalizer = normalizer;
     }
 
     public async Task<IEnumerable<SustitutoSugerido>> BuscarSustitutosAsync(int usuarioId, int ingredienteId)
@@ -116,15 +119,18 @@ public class SustitucionService : ISustitucionService
             return;
         }
 
+        var nombreOriginal = _normalizer.Normalizar(ingredienteOriginal.Nombre);
+
         foreach (var generado in generados)
         {
-            var nombre = generado.Nombre?.Trim();
-            if (string.IsNullOrWhiteSpace(nombre))
+            if (string.IsNullOrWhiteSpace(generado.Nombre))
             {
                 continue;
             }
 
-            if (string.Equals(nombre, ingredienteOriginal.Nombre, StringComparison.OrdinalIgnoreCase))
+            var nombre = _normalizer.Normalizar(generado.Nombre);
+
+            if (string.Equals(nombre, nombreOriginal, StringComparison.Ordinal))
             {
                 continue;
             }

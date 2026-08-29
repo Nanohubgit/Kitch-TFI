@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<IPreparacionService, PreparacionService>();
         services.AddScoped<ISustitucionService, SustitucionService>();
         services.AddScoped<ISustitutoService, SustitutoService>();
+        services.AddSingleton<IIngredienteNormalizerService, IngredienteNormalizerService>();
         services.AddScoped<IIngredienteService, IngredienteService>();
         services.AddScoped<IChatIaService, ChatIaService>();
         services.AddScoped<IRecetaIaService, RecetaIaService>();
