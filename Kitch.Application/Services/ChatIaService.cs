@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using Kitch.Application.DTOs.ChatIa;
 using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.DTOs.RecetaIa;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
@@ -264,7 +265,7 @@ public class ChatIaService : IChatIaService
                 RecetaGuardada = guardada
             };
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or ForbiddenException)
         {
             return new ChatRespuestaDto
             {
@@ -453,7 +454,7 @@ public class ChatIaService : IChatIaService
                 IngredientesAgregadosALista = agregados
             };
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or ForbiddenException or KeyNotFoundException)
         {
             return new ChatRespuestaDto
             {
@@ -517,7 +518,7 @@ public class ChatIaService : IChatIaService
                 var guardada = await _recetaIaService.GuardarRecetaAsync(usuarioId, recordada);
                 return (guardada.RecetaId, guardada.Titulo, null);
             }
-            catch (InvalidOperationException ex)
+            catch (Exception ex) when (ex is InvalidOperationException or ForbiddenException)
             {
                 return (null, null, $"No pude preparar la receta para planificarla: {ex.Message}");
             }
@@ -609,7 +610,7 @@ public class ChatIaService : IChatIaService
                 var guardada = await _recetaIaService.GuardarRecetaAsync(usuarioId, recordada);
                 return (guardada.RecetaId, guardada.Titulo, null);
             }
-            catch (InvalidOperationException ex)
+            catch (Exception ex) when (ex is InvalidOperationException or ForbiddenException)
             {
                 return (null, null, $"No pude preparar la receta para descontar el stock: {ex.Message}");
             }

@@ -77,6 +77,7 @@ public class PlanificadorService : IPlanificadorService
     {
         await ValidarRecetaExisteAsync(comida.RecetaId);
         await ValidarHorizontePlanificacionAsync(comida.UsuarioId, comida.FechaAsignada);
+        await AsegurarCupoComidasPlanificadasAsync(comida.UsuarioId);
 
         if (await ExisteConflictoAsync(comida.UsuarioId, comida.FechaAsignada, comida.Turno))
         {
@@ -217,6 +218,24 @@ public class PlanificadorService : IPlanificadorService
         await _repository.DeleteAsync(comida);
 
         return true;
+    }
+
+    private async Task AsegurarCupoComidasPlanificadasAsync(int usuarioId)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
+            ?? throw new InvalidOperationException("El usuario no existe.");
+
+        if (RolUsuario.TieneAccesoPremium(usuario.Rol))
+        {
+            return;
+        }
+
+        var cantidad = await _repository.CountAsync(comida => comida.UsuarioId == usuarioId);
+        if (cantidad >= LimitesPlan.MaxComidasPlanificadasBasico)
+        {
+            throw new ForbiddenException(
+                $"Límite alcanzado. El plan Básico permite hasta {LimitesPlan.MaxComidasPlanificadasBasico} recetas planificadas. Mejorá tu plan a Profesional para planificar más.");
+        }
     }
 
     private async Task ValidarHorizontePlanificacionAsync(int usuarioId, DateTime fechaAsignada)

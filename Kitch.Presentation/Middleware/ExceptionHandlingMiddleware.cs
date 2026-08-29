@@ -1,4 +1,5 @@
 using System.Net;
+using Kitch.Application.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Kitch.Presentation.Middleware;
@@ -39,6 +40,10 @@ public class ExceptionHandlingMiddleware
             UnauthorizedAccessException => (
                 HttpStatusCode.Unauthorized,
                 "Unauthorized",
+                exception.Message),
+            ForbiddenException => (
+                HttpStatusCode.Forbidden,
+                "Forbidden",
                 exception.Message),
             KeyNotFoundException => (
                 HttpStatusCode.NotFound,
