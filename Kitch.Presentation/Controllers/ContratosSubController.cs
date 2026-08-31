@@ -20,7 +20,8 @@ public class ContratosSubController : ApiControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<ContratoSubResponseDto>>> GetAll()
     {
-        var contratos = await _contratoSubService.GetAllAsync();
+        var adminId = GetUsuarioIdOrThrow();
+        var contratos = await _contratoSubService.GetAllAsync(adminId);
         return Ok(contratos);
     }
 
@@ -35,7 +36,8 @@ public class ContratosSubController : ApiControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ContratoSubResponseDto>> GetById(int id)
     {
-        var contrato = await _contratoSubService.GetByIdAsync(id);
+        var adminId = GetUsuarioIdOrThrow();
+        var contrato = await _contratoSubService.GetByIdAsync(id, adminId);
 
         if (contrato is null)
         {
@@ -48,14 +50,16 @@ public class ContratosSubController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<ContratoSubResponseDto>> Create([FromBody] ContratoSubCreateDto contratoSub)
     {
-        var createdContratoSub = await _contratoSubService.CreateAsync(contratoSub);
+        var adminId = GetUsuarioIdOrThrow();
+        var createdContratoSub = await _contratoSubService.CreateAsync(contratoSub, adminId);
         return CreatedAtAction(nameof(GetById), new { id = createdContratoSub.Id }, createdContratoSub);
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] ContratoSubUpdateDto contratoSub)
     {
-        var updated = await _contratoSubService.UpdateAsync(id, contratoSub);
+        var adminId = GetUsuarioIdOrThrow();
+        var updated = await _contratoSubService.UpdateAsync(id, contratoSub, adminId);
 
         if (!updated)
         {
@@ -68,7 +72,8 @@ public class ContratosSubController : ApiControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _contratoSubService.DeleteAsync(id);
+        var adminId = GetUsuarioIdOrThrow();
+        var deleted = await _contratoSubService.DeleteAsync(id, adminId);
 
         if (!deleted)
         {

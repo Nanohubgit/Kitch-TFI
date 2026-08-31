@@ -21,6 +21,7 @@ public class ChatIaController : ApiControllerBase
     public async Task<ActionResult<ChatRespuestaDto>> Chat([FromBody] ChatRequestDto request)
     {
         var usuarioId = GetUsuarioIdOrThrow();
+        request ??= new ChatRequestDto();
         var respuesta = await _chatIaService.ProcesarMensajeAsync(usuarioId, request);
         return Ok(respuesta);
     }

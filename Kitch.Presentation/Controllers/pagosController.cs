@@ -20,7 +20,8 @@ public class PagosController : ApiControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<PagoResponseDto>>> GetAll()
     {
-        var pagos = await _pagoService.GetAllAsync();
+        var adminId = GetUsuarioIdOrThrow();
+        var pagos = await _pagoService.GetAllAsync(adminId);
         return Ok(pagos);
     }
 
@@ -35,7 +36,8 @@ public class PagosController : ApiControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<PagoResponseDto>> GetById(int id)
     {
-        var pago = await _pagoService.GetByIdAsync(id);
+        var adminId = GetUsuarioIdOrThrow();
+        var pago = await _pagoService.GetByIdAsync(id, adminId);
 
         if (pago is null)
         {
@@ -48,14 +50,16 @@ public class PagosController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<PagoResponseDto>> Create([FromBody] PagoCreateDto pago)
     {
-        var createdPago = await _pagoService.CreateAsync(pago);
+        var adminId = GetUsuarioIdOrThrow();
+        var createdPago = await _pagoService.CreateAsync(pago, adminId);
         return CreatedAtAction(nameof(GetById), new { id = createdPago.Id }, createdPago);
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] PagoUpdateDto pago)
     {
-        var updated = await _pagoService.UpdateAsync(id, pago);
+        var adminId = GetUsuarioIdOrThrow();
+        var updated = await _pagoService.UpdateAsync(id, pago, adminId);
 
         if (!updated)
         {
@@ -68,7 +72,8 @@ public class PagosController : ApiControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _pagoService.DeleteAsync(id);
+        var adminId = GetUsuarioIdOrThrow();
+        var deleted = await _pagoService.DeleteAsync(id, adminId);
 
         if (!deleted)
         {

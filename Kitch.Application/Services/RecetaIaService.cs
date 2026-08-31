@@ -30,6 +30,7 @@ public class RecetaIaService : IRecetaIaService
     private readonly IRepository<StockUsuario> _stockRepository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
     private readonly IRepository<Receta> _recetaRepository;
+    private readonly IRepository<Usuario> _usuarioRepository;
     private readonly IFavoritoService _favoritoService;
     private readonly IIngredienteNormalizerService _normalizer;
 
@@ -38,6 +39,7 @@ public class RecetaIaService : IRecetaIaService
         IRepository<StockUsuario> stockRepository,
         IRepository<Ingrediente> ingredienteRepository,
         IRepository<Receta> recetaRepository,
+        IRepository<Usuario> usuarioRepository,
         IFavoritoService favoritoService,
         IIngredienteNormalizerService normalizer)
     {
@@ -45,6 +47,7 @@ public class RecetaIaService : IRecetaIaService
         _stockRepository = stockRepository;
         _ingredienteRepository = ingredienteRepository;
         _recetaRepository = recetaRepository;
+        _usuarioRepository = usuarioRepository;
         _favoritoService = favoritoService;
         _normalizer = normalizer;
     }
@@ -73,13 +76,21 @@ public class RecetaIaService : IRecetaIaService
             }
         }
 
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        var restriccion = RestriccionDieteticaPrompt.ParaSystemPrompt(usuario?.PreferenciaDietetica);
+        var systemInstruction = restriccion + " " + InstruccionGeneracion;
+
         if (!string.IsNullOrWhiteSpace(preferencias))
         {
             prompt.AppendLine();
-            prompt.AppendLine($"Preferencias o restricciones del usuario: {preferencias}");
+            prompt.AppendLine($"Preferencias o restricciones adicionales indicadas en este pedido: {preferencias}");
         }
 
-        var json = await _asistenteIa.GenerarRespuestaJsonAsync(prompt.ToString(), InstruccionGeneracion);
+        prompt.AppendLine();
+        prompt.AppendLine($"Preferencia dietética persistida del usuario: {usuario?.PreferenciaDietetica ?? "Ninguna"}.");
+        prompt.AppendLine("Respetá esa restricción en la receta. No incluyas ingredientes prohibidos.");
+
+        var json = await _asistenteIa.GenerarRespuestaJsonAsync(prompt.ToString(), systemInstruction);
 
         var receta = DeserializarReceta(json);
 

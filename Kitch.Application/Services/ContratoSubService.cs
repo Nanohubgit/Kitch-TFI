@@ -1,6 +1,8 @@
 using Kitch.Application.DTOs.ContratosSub;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Application.Mappings;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -9,14 +11,20 @@ namespace Kitch.Application.Services;
 public class ContratoSubService : IContratoSubService
 {
     private readonly IRepository<ContratoSub> _repository;
+    private readonly IRepository<Usuario> _usuarioRepository;
 
-    public ContratoSubService(IRepository<ContratoSub> repository)
+    public ContratoSubService(
+        IRepository<ContratoSub> repository,
+        IRepository<Usuario> usuarioRepository)
     {
         _repository = repository;
+        _usuarioRepository = usuarioRepository;
     }
 
-    public async Task<IEnumerable<ContratoSubResponseDto>> GetAllAsync()
+    public async Task<IEnumerable<ContratoSubResponseDto>> GetAllAsync(int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var contratos = await _repository.GetAllAsync();
         return contratos.Select(contrato => contrato.ToResponseDto());
     }
@@ -27,14 +35,18 @@ public class ContratoSubService : IContratoSubService
         return contratos.Select(contrato => contrato.ToResponseDto());
     }
 
-    public async Task<ContratoSubResponseDto?> GetByIdAsync(int id)
+    public async Task<ContratoSubResponseDto?> GetByIdAsync(int id, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var contrato = await _repository.GetByIdAsync(id);
         return contrato?.ToResponseDto();
     }
 
-    public async Task<ContratoSubResponseDto> CreateAsync(ContratoSubCreateDto contratoSub)
+    public async Task<ContratoSubResponseDto> CreateAsync(ContratoSubCreateDto contratoSub, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         ValidateFechas(contratoSub.FechaInicio, contratoSub.FechaFin);
 
         if (await _repository.AnyAsync(existing =>
@@ -58,8 +70,10 @@ public class ContratoSubService : IContratoSubService
         return created.ToResponseDto();
     }
 
-    public async Task<bool> UpdateAsync(int id, ContratoSubUpdateDto contratoSub)
+    public async Task<bool> UpdateAsync(int id, ContratoSubUpdateDto contratoSub, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var existingContratoSub = await _repository.GetByIdAsync(id);
 
         if (existingContratoSub is null)
@@ -79,8 +93,10 @@ public class ContratoSubService : IContratoSubService
         return true;
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public async Task<bool> DeleteAsync(int id, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var contratoSub = await _repository.GetByIdAsync(id);
 
         if (contratoSub is null)
@@ -91,6 +107,21 @@ public class ContratoSubService : IContratoSubService
         await _repository.DeleteAsync(contratoSub);
 
         return true;
+    }
+
+    private async Task ValidarPermisosAdminAsync(int usuarioId)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        if (usuario is null)
+        {
+            throw new UnauthorizedAccessException();
+        }
+
+        if (usuario.Rol != RolUsuario.Admin)
+        {
+            throw new ForbiddenException(
+                "Acceso denegado. Se requieren permisos de administrador para visualizar esta información.");
+        }
     }
 
     private static void ValidateFechas(DateTime fechaInicio, DateTime fechaFin)

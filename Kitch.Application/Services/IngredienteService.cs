@@ -1,6 +1,8 @@
 using Kitch.Application.DTOs.Ingredientes;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Application.Mappings;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -9,13 +11,16 @@ namespace Kitch.Application.Services;
 public class IngredienteService : IIngredienteService
 {
     private readonly IRepository<Ingrediente> _repository;
+    private readonly IRepository<Usuario> _usuarioRepository;
     private readonly IIngredienteNormalizerService _normalizer;
 
     public IngredienteService(
         IRepository<Ingrediente> repository,
+        IRepository<Usuario> usuarioRepository,
         IIngredienteNormalizerService normalizer)
     {
         _repository = repository;
+        _usuarioRepository = usuarioRepository;
         _normalizer = normalizer;
     }
 
@@ -31,8 +36,10 @@ public class IngredienteService : IIngredienteService
         return ingrediente?.ToResponseDto();
     }
 
-    public async Task<IngredienteResponseDto> CreateAsync(IngredienteCreateDto ingrediente)
+    public async Task<IngredienteResponseDto> CreateAsync(IngredienteCreateDto ingrediente, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var nombre = _normalizer.Normalizar(ingrediente.Nombre);
 
         if (await _repository.AnyAsync(existing => existing.Nombre == nombre))
@@ -50,8 +57,10 @@ public class IngredienteService : IIngredienteService
         return created.ToResponseDto();
     }
 
-    public async Task<bool> UpdateAsync(int id, IngredienteUpdateDto ingrediente)
+    public async Task<bool> UpdateAsync(int id, IngredienteUpdateDto ingrediente, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var existingIngrediente = await _repository.GetByIdAsync(id);
 
         if (existingIngrediente is null)
@@ -74,8 +83,10 @@ public class IngredienteService : IIngredienteService
         return true;
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public async Task<bool> DeleteAsync(int id, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var ingrediente = await _repository.GetByIdAsync(id);
 
         if (ingrediente is null)
@@ -86,5 +97,20 @@ public class IngredienteService : IIngredienteService
         await _repository.DeleteAsync(ingrediente);
 
         return true;
+    }
+
+    private async Task ValidarPermisosAdminAsync(int usuarioId)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        if (usuario is null)
+        {
+            throw new UnauthorizedAccessException();
+        }
+
+        if (usuario.Rol != RolUsuario.Admin)
+        {
+            throw new ForbiddenException(
+                "Acceso denegado. Se requieren permisos de administrador para visualizar esta información.");
+        }
     }
 }
