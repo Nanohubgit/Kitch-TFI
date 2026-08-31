@@ -60,7 +60,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' was not found.");
 
 builder.Services.AddDbContext<KitchDbContext>(options =>
-    options.UseSqlServer(connectionString));
+    options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure()));
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -120,6 +120,7 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
+await app.MigrateDatabaseAsync();
 await app.SeedAdminUserAsync();
 
 app.UseSwagger();

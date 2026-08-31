@@ -5,6 +5,7 @@ namespace Kitch.Application.Interfaces;
 public interface ISuscripcionService
 {
     Task<IEnumerable<SuscripcionResponseDto>> GetAllAsync(int solicitanteId);
+    Task<IEnumerable<SuscripcionResponseDto>> GetByUsuarioIdAsync(int usuarioId);
     Task<SuscripcionResponseDto?> GetByIdAsync(int id, int solicitanteId);
     Task<SuscripcionResponseDto> CreateAsync(SuscripcionCreateDto suscripcion, int solicitanteId);
     Task<bool> UpdateAsync(int id, SuscripcionUpdateDto suscripcion, int solicitanteId);

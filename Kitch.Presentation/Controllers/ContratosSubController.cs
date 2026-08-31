@@ -36,8 +36,8 @@ public class ContratosSubController : ApiControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ContratoSubResponseDto>> GetById(int id)
     {
-        var adminId = GetUsuarioIdOrThrow();
-        var contrato = await _contratoSubService.GetByIdAsync(id, adminId);
+        var solicitanteId = GetUsuarioIdOrThrow();
+        var contrato = await _contratoSubService.GetByIdAsync(id, solicitanteId);
 
         if (contrato is null)
         {
@@ -47,6 +47,7 @@ public class ContratosSubController : ApiControllerBase
         return Ok(contrato);
     }
 
+    /// <summary>Solo administrador. El historial de contratos del usuario es de solo lectura.</summary>
     [HttpPost]
     public async Task<ActionResult<ContratoSubResponseDto>> Create([FromBody] ContratoSubCreateDto contratoSub)
     {
@@ -55,6 +56,7 @@ public class ContratosSubController : ApiControllerBase
         return CreatedAtAction(nameof(GetById), new { id = createdContratoSub.Id }, createdContratoSub);
     }
 
+    /// <summary>Solo administrador. El usuario no puede editar ni borrar su historial.</summary>
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] ContratoSubUpdateDto contratoSub)
     {
@@ -69,6 +71,7 @@ public class ContratosSubController : ApiControllerBase
         return NoContent();
     }
 
+    /// <summary>Solo administrador. El usuario no puede borrar su historial de contratos.</summary>
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {

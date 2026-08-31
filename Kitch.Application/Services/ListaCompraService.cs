@@ -140,12 +140,16 @@ public class ListaCompraService : IListaCompraService
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var faltantesNoPersistidos = faltantesCalculados
-            .Where(item => !nombresPersistidos.Contains(item.NombreArticulo.Trim()));
-
-        return itemsPersistidos
-            .Concat(faltantesNoPersistidos)
-            .Select(item => item.ToResponseDto())
+            .Where(item => !nombresPersistidos.Contains(item.NombreArticulo.Trim()))
             .ToList();
+
+        foreach (var faltante in faltantesNoPersistidos)
+        {
+            var creado = await _itemRepository.AddAsync(faltante);
+            itemsPersistidos.Add(creado);
+        }
+
+        return itemsPersistidos.Select(item => item.ToResponseDto()).ToList();
     }
 
     private async Task<List<ComidaPlanificada>> ObtenerComidasDeLaSemanaAsync(int usuarioId)

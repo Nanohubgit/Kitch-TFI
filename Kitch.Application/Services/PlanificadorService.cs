@@ -5,6 +5,7 @@ using Kitch.Application.Mappings;
 using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
+using System.Linq.Expressions;
 
 namespace Kitch.Application.Services;
 
@@ -38,7 +39,7 @@ public class PlanificadorService : IPlanificadorService
 
     public async Task<IEnumerable<ComidaPlanificadaResponseDto>> GetByUsuarioIdAsync(int usuarioId)
     {
-        var comidas = await _repository.FindAsync(comida => comida.UsuarioId == usuarioId);
+        var comidas = await ObtenerComidasConRecetaAsync(comida => comida.UsuarioId == usuarioId);
         return comidas.Select(comida => comida.ToResponseDto());
     }
 
@@ -47,7 +48,7 @@ public class PlanificadorService : IPlanificadorService
         var fechaInicio = fecha.Date;
         var fechaFin = fechaInicio.AddDays(1);
 
-        var comidas = await _repository.FindAsync(comida =>
+        var comidas = await ObtenerComidasConRecetaAsync(comida =>
             comida.UsuarioId == usuarioId &&
             comida.FechaAsignada >= fechaInicio &&
             comida.FechaAsignada < fechaFin);
@@ -57,14 +58,10 @@ public class PlanificadorService : IPlanificadorService
 
     public async Task<ComidaPlanificadaResponseDto?> GetByIdAsync(int id, int usuarioId)
     {
-        var comida = await _repository.GetByIdAsync(id);
+        var comidas = await ObtenerComidasConRecetaAsync(comida =>
+            comida.Id == id && comida.UsuarioId == usuarioId);
 
-        if (comida is null || comida.UsuarioId != usuarioId)
-        {
-            return null;
-        }
-
-        return comida.ToResponseDto();
+        return comidas.FirstOrDefault()?.ToResponseDto();
     }
 
     public async Task<ComidaPlanificadaResponseDto> CreateAsync(ComidaPlanificadaCreateDto comida)
@@ -75,7 +72,7 @@ public class PlanificadorService : IPlanificadorService
 
     public async Task<PlanificacionResultadoDto> PlanificarAsync(ComidaPlanificadaCreateDto comida)
     {
-        await ValidarRecetaExisteAsync(comida.RecetaId);
+        var receta = await ObtenerRecetaAsync(comida.RecetaId);
         await ValidarHorizontePlanificacionAsync(comida.UsuarioId, comida.FechaAsignada);
         await AsegurarCupoComidasPlanificadasAsync(comida.UsuarioId);
 
@@ -87,12 +84,13 @@ public class PlanificadorService : IPlanificadorService
         var entity = new ComidaPlanificada
         {
             UsuarioId = comida.UsuarioId,
-            RecetaId = comida.RecetaId,
+            RecetaId = receta.Id,
             FechaAsignada = comida.FechaAsignada,
             Turno = comida.Turno.Trim()
         };
 
         var created = await _repository.AddAsync(entity);
+        created.Receta = receta;
 
         var agregados = await AgregarFaltantesAListaCompraAsync(comida.UsuarioId, comida.RecetaId);
 
@@ -184,7 +182,7 @@ public class PlanificadorService : IPlanificadorService
             return false;
         }
 
-        await ValidarRecetaExisteAsync(comida.RecetaId);
+        await ObtenerRecetaAsync(comida.RecetaId);
         await ValidarHorizontePlanificacionAsync(usuarioId, comida.FechaAsignada);
 
         if (await _repository.AnyAsync(existing =>
@@ -262,7 +260,7 @@ public class PlanificadorService : IPlanificadorService
         }
     }
 
-    private async Task ValidarRecetaExisteAsync(int recetaId)
+    private async Task<Receta> ObtenerRecetaAsync(int recetaId)
     {
         var receta = await _recetaRepository.GetByIdAsync(recetaId);
         if (receta is null)
@@ -270,7 +268,13 @@ public class PlanificadorService : IPlanificadorService
             throw new KeyNotFoundException(
                 $"La receta con id {recetaId} no existe. Generá y guardá una receta primero para obtener su id.");
         }
+
+        return receta;
     }
+
+    private Task<IReadOnlyList<ComidaPlanificada>> ObtenerComidasConRecetaAsync(
+        Expression<Func<ComidaPlanificada, bool>> predicate) =>
+        _repository.FindWithIncludesAsync(predicate, comida => comida.Receta);
 
     private async Task<bool> ExisteConflictoAsync(int usuarioId, DateTime fecha, string turno)
     {
