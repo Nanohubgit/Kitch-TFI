@@ -11,10 +11,14 @@ namespace Kitch.Application.Services;
 public class RecetaService : IRecetaService
 {
     private readonly IRepository<Receta> _repository;
+    private readonly IRepository<Usuario> _usuarioRepository;
 
-    public RecetaService(IRepository<Receta> repository)
+    public RecetaService(
+        IRepository<Receta> repository,
+        IRepository<Usuario> usuarioRepository)
     {
         _repository = repository;
+        _usuarioRepository = usuarioRepository;
     }
 
     public async Task<IEnumerable<RecetaResponseDto>> GetAllAsync(string? rolUsuario = null)
@@ -62,8 +66,10 @@ public class RecetaService : IRecetaService
         return true;
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public async Task<bool> DeleteAsync(int id, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var receta = await _repository.GetByIdAsync(id);
 
         if (receta is null)
@@ -87,6 +93,21 @@ public class RecetaService : IRecetaService
 
         var recetas = await _repository.FindAsync(receta => receta.Dificultad == dificultad);
         return recetas.Select(receta => receta.ToResponseDto());
+    }
+
+    private async Task ValidarPermisosAdminAsync(int usuarioId)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        if (usuario is null)
+        {
+            throw new UnauthorizedAccessException();
+        }
+
+        if (usuario.Rol != RolUsuario.Admin)
+        {
+            throw new ForbiddenException(
+                "Acceso denegado. Se requieren permisos de administrador para visualizar esta información.");
+        }
     }
 
     private static IEnumerable<Receta> FiltrarPorPlan(IEnumerable<Receta> recetas, string? rolUsuario)

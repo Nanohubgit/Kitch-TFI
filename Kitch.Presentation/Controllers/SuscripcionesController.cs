@@ -56,14 +56,16 @@ public class SuscripcionesController : ApiControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<SuscripcionResponseDto>>> GetAll()
     {
-        var suscripciones = await _suscripcionService.GetAllAsync();
+        var adminId = GetUsuarioIdOrThrow();
+        var suscripciones = await _suscripcionService.GetAllAsync(adminId);
         return Ok(suscripciones);
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<SuscripcionResponseDto>> GetById(int id)
     {
-        var suscripcion = await _suscripcionService.GetByIdAsync(id);
+        var adminId = GetUsuarioIdOrThrow();
+        var suscripcion = await _suscripcionService.GetByIdAsync(id, adminId);
         if (suscripcion is null)
         {
             return NotFound(new { message = "Suscripción no encontrada." });
@@ -77,7 +79,8 @@ public class SuscripcionesController : ApiControllerBase
     {
         try
         {
-            var createdSuscripcion = await _suscripcionService.CreateAsync(suscripcion);
+            var adminId = GetUsuarioIdOrThrow();
+            var createdSuscripcion = await _suscripcionService.CreateAsync(suscripcion, adminId);
             return CreatedAtAction(nameof(GetById), new { id = createdSuscripcion.Id }, createdSuscripcion);
         }
         catch (InvalidOperationException ex)
@@ -91,7 +94,8 @@ public class SuscripcionesController : ApiControllerBase
     {
         try
         {
-            var updated = await _suscripcionService.UpdateAsync(id, suscripcion);
+            var adminId = GetUsuarioIdOrThrow();
+            var updated = await _suscripcionService.UpdateAsync(id, suscripcion, adminId);
             if (!updated)
             {
                 return NotFound(new { message = "Suscripción no encontrada." });
@@ -108,7 +112,8 @@ public class SuscripcionesController : ApiControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _suscripcionService.DeleteAsync(id);
+        var adminId = GetUsuarioIdOrThrow();
+        var deleted = await _suscripcionService.DeleteAsync(id, adminId);
         if (!deleted)
         {
             return NotFound(new { message = "Suscripción no encontrada." });

@@ -6,7 +6,7 @@ using Kitch.Application.DTOs.Sustituciones;
 
 namespace Kitch.Application.DTOs.ChatIa;
 
-public class ChatTurnoDto
+public class ChatMessageDto
 {
     [JsonPropertyName("rol")]
     public string Rol { get; set; } = "usuario";
@@ -17,9 +17,7 @@ public class ChatTurnoDto
 
 public class ChatRequestDto
 {
-    public string Mensaje { get; set; } = string.Empty;
-
-    public List<ChatTurnoDto>? Historial { get; set; }
+    public List<ChatMessageDto> Mensajes { get; set; } = [];
 
     public RecetaGeneradaDto? RecetaActual { get; set; }
 }

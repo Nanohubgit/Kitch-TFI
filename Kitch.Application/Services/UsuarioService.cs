@@ -1,4 +1,5 @@
 using Kitch.Application.DTOs.Usuarios;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Application.Mappings;
 using Kitch.Domain.Constants;
@@ -16,8 +17,10 @@ public class UsuarioService : IUsuarioService
         _repository = repository;
     }
 
-    public async Task<IEnumerable<UsuarioResponseDto>> GetAllAsync()
+    public async Task<IEnumerable<UsuarioResponseDto>> GetAllAsync(int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var usuarios = await _repository.GetAllAsync();
         return usuarios.Select(usuario => usuario.ToResponseDto());
     }
@@ -28,8 +31,18 @@ public class UsuarioService : IUsuarioService
         return usuario?.ToResponseDto();
     }
 
-    public async Task<UsuarioResponseDto> CreateAsync(UsuarioCreateDto usuario)
+    public async Task<UsuarioResponseDto?> GetByIdAdminAsync(int id, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
+        var usuario = await _repository.GetByIdAsync(id);
+        return usuario?.ToResponseDto();
+    }
+
+    public async Task<UsuarioResponseDto> CreateAsync(UsuarioCreateDto usuario, int solicitanteId)
+    {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var email = usuario.Email.Trim();
 
         if (await _repository.AnyAsync(existing => existing.Email == email))
@@ -61,8 +74,10 @@ public class UsuarioService : IUsuarioService
         return created.ToResponseDto();
     }
 
-    public async Task<bool> UpdateAsync(int id, UsuarioUpdateDto usuario)
+    public async Task<bool> UpdateAsync(int id, UsuarioUpdateDto usuario, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var existingUsuario = await _repository.GetByIdAsync(id);
 
         if (existingUsuario is null)
@@ -114,6 +129,8 @@ public class UsuarioService : IUsuarioService
 
     public async Task<bool> CambiarRolAsync(int usuarioId, string nuevoRol, int adminEjecutorId)
     {
+        await ValidarPermisosAdminAsync(adminEjecutorId);
+
         var rol = nuevoRol?.Trim() ?? string.Empty;
 
         if (!RolUsuario.EsValido(rol))
@@ -148,6 +165,8 @@ public class UsuarioService : IUsuarioService
 
     public async Task<bool> DeleteAsync(int id, int adminEjecutorId)
     {
+        await ValidarPermisosAdminAsync(adminEjecutorId);
+
         var usuario = await _repository.GetByIdAsync(id);
 
         if (usuario is null)
@@ -169,6 +188,21 @@ public class UsuarioService : IUsuarioService
         await _repository.DeleteAsync(usuario);
 
         return true;
+    }
+
+    private async Task ValidarPermisosAdminAsync(int usuarioId)
+    {
+        var usuario = await _repository.GetByIdAsync(usuarioId);
+        if (usuario is null)
+        {
+            throw new UnauthorizedAccessException();
+        }
+
+        if (usuario.Rol != RolUsuario.Admin)
+        {
+            throw new ForbiddenException(
+                "Acceso denegado. Se requieren permisos de administrador para visualizar esta información.");
+        }
     }
 
     private async Task<bool> ExisteOtroAdminActivoAsync(int excluirUsuarioId) =>

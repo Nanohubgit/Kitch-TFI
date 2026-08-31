@@ -17,13 +17,21 @@ namespace Kitch.Application.Services;
 public class ChatIaService : IChatIaService
 {
     private const string InstruccionAgente =
+        "__RESTRICCION_DIETETICA__\n\n" +
         "Sos 'Kitch-AI', el asistente de cocina exclusivo de la plataforma Kitch. Estás hablando con __NOMBRE_USUARIO__. " +
         "Únicamente respondés temas de cocina: recetas, ingredientes, técnicas culinarias y planificación de comidas. " +
         "Si te preguntan algo ajeno a la cocina, rechazalo con amabilidad (accion 'conversar'). " +
-        "Conocés la alacena del usuario (te la pasamos como contexto) y la usás para recomendar y avisar qué le falta.\n\n" +
-        "RESPONDÉS SIEMPRE con un ÚNICO objeto JSON válido, sin texto extra ni markdown, con esta forma EXACTA:\n" +
+        "Conocés la alacena del usuario (te la pasamos como contexto) y la usás para recomendar y avisar qué le falta. " +
+        "Toda receta, sustitución o recomendación DEBE respetar la restricción dietética del bloque anterior.\n\n" +
+        "MEMORIA: tenés el historial completo de esta conversación. Entendé referencias temporales e implícitas " +
+        "('la anterior', 'esa', 'la que te dije recién', 'guarda la de fideos con papa'). " +
+        "Si hay varias recetas en el hilo, identificá CUÁL pidió el usuario y recuperá SUS ingredientes y pasos; no inventes otra.\n\n" +
+        "RESPONDÉS SIEMPRE EXCLUSIVAMENTE con un ÚNICO objeto JSON válido, sin texto extra ni markdown, con esta forma EXACTA:\n" +
         "{\"accion\": \"conversar\"|\"generar_receta\"|\"guardar_receta\"|\"sustituir\"|\"recomendar\"|\"eliminar_receta\"|\"planificar_receta\"|\"cocinar_receta\"|\"consultar_recetas_guardadas\", " +
         "\"mensaje\": string, " +
+        "\"nombre\": string | null, " +
+        "\"ingredientes\": [{\"nombre\": string, \"cantidad\": number, \"unidadMedida\": string}] | null, " +
+        "\"pasos\": [string] | null, " +
         "\"receta\": {\"titulo\": string, \"descripcion\": string, \"tiempoPreparacionMinutos\": number, " +
         "\"porciones\": number, \"dificultad\": \"Facil\"|\"Medio\"|\"Dificil\", \"caloriasEstimadas\": number, " +
         "\"ingredientes\": [{\"nombre\": string, \"cantidad\": number, \"unidadMedida\": string}], \"pasos\": [string]} | null, " +
@@ -36,11 +44,15 @@ public class ChatIaService : IChatIaService
         "tiempo y porciones > 0). Usá preferentemente lo que hay en la alacena. En 'mensaje' presentás la receta. " +
         "SIEMPRE poné en 'titulo' un nombre descriptivo y real del plato (ej. 'Tortilla de papas'); NUNCA uses 'string', " +
         "'receta' ni dejes el título vacío. Si el usuario no aclara el nombre, inventá uno acorde a los ingredientes.\n" +
-        "- 'guardar_receta': el usuario quiere conservar/guardar la última receta o agregarla a favoritos. " +
-        "Interpretá la INTENCIÓN, no palabras exactas: valen frases como 'guardala', 'guarda la receta', " +
-        "'guardámela', 'agregala a favoritos', 'dale, sumala', 'me encantó, la quiero tener', 'sí, está buena, guardala'. " +
-        "VOLVÉS a incluir la receta completa en 'receta' (tomala del contexto de la conversación o de la 'Receta actual'). " +
-        "En 'mensaje' confirmás que la guardaste.\n" +
+        "- 'guardar_receta': tenés memoria de la conversación. Si el usuario pide guardar, analizá el historial " +
+        "para saber a cuál se refiere. 'guarda la anterior que dije' / 'guardala' / 'esa' → la última receta generada. " +
+        "'guarda la de fideos con papa' → ESA receta concreta del historial (ingredientes y pasos de esa, no de otra). " +
+        "Respondé EXCLUSIVAMENTE con este JSON (sin markdown): " +
+        "{\"accion\":\"guardar_receta\",\"nombre\":\"Fideos con papa\"," +
+        "\"ingredientes\":[{\"nombre\":\"fideos\",\"cantidad\":200,\"unidadMedida\":\"g\"},{\"nombre\":\"papa\",\"cantidad\":2,\"unidadMedida\":\"u\"}]," +
+        "\"pasos\":[\"Hervir los fideos.\",\"Cocinar la papa.\"]}. " +
+        "Completá nombre, ingredientes y pasos copiados del historial. NUNCA uses 'conversar' para un pedido de guardado. " +
+        "No inventes una receta nueva al guardar.\n" +
         "- 'sustituir': el usuario pregunta con qué reemplazar un ingrediente. Poné el nombre del ingrediente " +
         "original en 'ingredienteSustituir'. En 'mensaje' explicás brevemente; el sistema completa la lista de sustitutos.\n" +
         "- 'recomendar': el usuario pide ideas/recetas según lo que tiene. 'receta' va en null; el sistema agrega " +
@@ -90,6 +102,7 @@ public class ChatIaService : IChatIaService
     private readonly IPlanificadorService _planificadorService;
     private readonly IPreparacionService _preparacionService;
     private readonly IIngredienteNormalizerService _normalizer;
+    private readonly IFavoritoService _favoritoService;
 
     public ChatIaService(
         IAsistenteIaClient asistenteIa,
@@ -103,7 +116,8 @@ public class ChatIaService : IChatIaService
         IRepository<RecetaFavorita> favoritoRepository,
         IPlanificadorService planificadorService,
         IPreparacionService preparacionService,
-        IIngredienteNormalizerService normalizer)
+        IIngredienteNormalizerService normalizer,
+        IFavoritoService favoritoService)
     {
         _asistenteIa = asistenteIa;
         _usuarioRepository = usuarioRepository;
@@ -117,11 +131,13 @@ public class ChatIaService : IChatIaService
         _planificadorService = planificadorService;
         _preparacionService = preparacionService;
         _normalizer = normalizer;
+        _favoritoService = favoritoService;
     }
 
     public async Task<ChatRespuestaDto> ProcesarMensajeAsync(int usuarioId, ChatRequestDto request)
     {
-        if (request is null || string.IsNullOrWhiteSpace(request.Mensaje))
+        var turnos = ObtenerTurnos(request);
+        if (turnos.Count == 0)
         {
             return new ChatRespuestaDto
             {
@@ -132,11 +148,14 @@ public class ChatIaService : IChatIaService
 
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
         var nombreUsuario = string.IsNullOrWhiteSpace(usuario?.Nombre) ? NombrePorDefecto : usuario!.Nombre;
+        var restriccion = RestriccionDieteticaPrompt.ParaSystemPrompt(usuario?.PreferenciaDietetica);
 
-        var systemInstruction = InstruccionAgente.Replace("__NOMBRE_USUARIO__", nombreUsuario);
+        var systemInstruction = InstruccionAgente
+            .Replace("__RESTRICCION_DIETETICA__", restriccion)
+            .Replace("__NOMBRE_USUARIO__", nombreUsuario);
 
-        var contexto = await ConstruirContextoAsync(usuarioId, request.RecetaActual);
-        var mensajes = ConstruirConversacion(contexto, request);
+        var contexto = await ConstruirContextoAsync(usuarioId, request.RecetaActual, usuario?.PreferenciaDietetica);
+        var mensajes = ConstruirConversacion(contexto, turnos);
 
         string json;
         try
@@ -240,7 +259,7 @@ public class ChatIaService : IChatIaService
         SobreAgente sobre,
         RecetaGeneradaDto? recetaActual)
     {
-        var receta = ElegirRecetaParaGuardar(usuarioId, sobre.Receta, recetaActual);
+        var receta = ElegirRecetaParaGuardar(usuarioId, sobre, recetaActual);
 
         if (receta is null)
         {
@@ -251,8 +270,11 @@ public class ChatIaService : IChatIaService
             };
         }
 
+        receta.Titulo = RecetaIaService.GenerarTituloPorDefecto(receta.Titulo, receta.Ingredientes);
+
         try
         {
+            await _favoritoService.AsegurarCupoFavoritosAsync(usuarioId);
             var guardada = await _recetaIaService.GuardarRecetaAsync(usuarioId, receta);
 
             UltimaRecetaPorUsuario.TryRemove(usuarioId, out _);
@@ -262,10 +284,21 @@ public class ChatIaService : IChatIaService
                 Mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
                     ? guardada.Mensaje
                     : sobre.Mensaje,
+                Receta = receta,
                 RecetaGuardada = guardada
             };
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ForbiddenException)
+        catch (ForbiddenException ex)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = string.IsNullOrWhiteSpace(ex.Message)
+                    ? "Llegaste al límite de recetas guardadas del plan Básico. Pasate a Profesional para guardar más."
+                    : ex.Message
+            };
+        }
+        catch (InvalidOperationException ex)
         {
             return new ChatRespuestaDto
             {
@@ -277,9 +310,11 @@ public class ChatIaService : IChatIaService
 
     private RecetaGeneradaDto? ElegirRecetaParaGuardar(
         int usuarioId,
-        RecetaGeneradaDto? delSobre,
+        SobreAgente sobre,
         RecetaGeneradaDto? recetaActual)
     {
+        var delSobre = ComponerRecetaDesdeSobre(sobre);
+
         if (EsRecetaValida(delSobre))
         {
             return delSobre;
@@ -293,15 +328,58 @@ public class ChatIaService : IChatIaService
         return UltimaRecetaPorUsuario.TryGetValue(usuarioId, out var recordada) ? recordada : null;
     }
 
+    private static RecetaGeneradaDto? ComponerRecetaDesdeSobre(SobreAgente sobre)
+    {
+        var receta = sobre.Receta;
+
+        if (receta is null &&
+            (sobre.Ingredientes is { Count: > 0 } || sobre.Pasos is { Count: > 0 }))
+        {
+            receta = new RecetaGeneradaDto();
+        }
+
+        if (receta is null)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(receta.Titulo) && !string.IsNullOrWhiteSpace(sobre.Nombre))
+        {
+            receta.Titulo = sobre.Nombre.Trim();
+        }
+
+        if ((receta.Ingredientes is null || receta.Ingredientes.Count == 0) &&
+            sobre.Ingredientes is { Count: > 0 })
+        {
+            receta.Ingredientes = sobre.Ingredientes;
+        }
+
+        if ((receta.Pasos is null || receta.Pasos.Count == 0) &&
+            sobre.Pasos is { Count: > 0 })
+        {
+            receta.Pasos = sobre.Pasos;
+        }
+
+        receta.Ingredientes ??= [];
+        receta.Pasos ??= [];
+
+        if (receta.Pasos.Count == 0 && receta.Ingredientes.Count > 0)
+        {
+            receta.Pasos.Add("Preparar según la receta conversada.");
+        }
+
+        return receta;
+    }
+
     private static bool EsRecetaValida(RecetaGeneradaDto? receta)
     {
-        if (receta is null || receta.Ingredientes.Count == 0)
+        if (receta is null || receta.Ingredientes is null || receta.Ingredientes.Count == 0)
         {
             return false;
         }
 
         var titulo = receta.Titulo?.Trim();
-        return !string.IsNullOrWhiteSpace(titulo) &&
+        return string.IsNullOrWhiteSpace(titulo) ||
             !titulo.Equals("string", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -641,33 +719,53 @@ public class ChatIaService : IChatIaService
             b.Contains(a, StringComparison.OrdinalIgnoreCase);
     }
 
-    private List<MensajeIa> ConstruirConversacion(string contexto, ChatRequestDto request)
+    private const int MaxTurnosHistorial = 20;
+
+    private static IReadOnlyList<ChatMessageDto> ObtenerTurnos(ChatRequestDto? request)
     {
-        var mensajes = new List<MensajeIa>();
-
-        mensajes.Add(new MensajeIa("user", contexto));
-
-        if (request.Historial is not null)
+        if (request?.Mensajes is null || request.Mensajes.Count == 0)
         {
-            foreach (var turno in request.Historial)
-            {
-                if (string.IsNullOrWhiteSpace(turno.Texto))
-                {
-                    continue;
-                }
-
-                var rol = string.Equals(turno.Rol, "asistente", StringComparison.OrdinalIgnoreCase)
-                    ? "model"
-                    : "user";
-                mensajes.Add(new MensajeIa(rol, turno.Texto));
-            }
+            return [];
         }
 
-        mensajes.Add(new MensajeIa("user", request.Mensaje));
+        return request.Mensajes
+            .Where(turno => !string.IsNullOrWhiteSpace(turno.Texto))
+            .TakeLast(MaxTurnosHistorial)
+            .ToList();
+    }
+
+    private static List<MensajeIa> ConstruirConversacion(string contexto, IReadOnlyList<ChatMessageDto> turnos)
+    {
+        var mensajes = new List<MensajeIa>
+        {
+            new("user", contexto)
+        };
+
+        foreach (var turno in turnos)
+        {
+            mensajes.Add(new MensajeIa(NormalizarRolGroq(turno.Rol), turno.Texto.Trim()));
+        }
+
         return mensajes;
     }
 
-    private async Task<string> ConstruirContextoAsync(int usuarioId, RecetaGeneradaDto? recetaActual)
+    private static string NormalizarRolGroq(string? rol)
+    {
+        if (string.Equals(rol, "asistente", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(rol, "assistant", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(rol, "model", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(rol, "ia", StringComparison.OrdinalIgnoreCase))
+        {
+            return "assistant";
+        }
+
+        return "user";
+    }
+
+    private async Task<string> ConstruirContextoAsync(
+        int usuarioId,
+        RecetaGeneradaDto? recetaActual,
+        string? preferenciaDietetica)
     {
         var stock = await _stockRepository.FindWithIncludesAsync(
             item => item.UsuarioId == usuarioId && item.Cantidad > 0,
@@ -676,6 +774,7 @@ public class ChatIaService : IChatIaService
         var contexto = new StringBuilder();
         contexto.AppendLine("[CONTEXTO PARA EL ASISTENTE]");
         contexto.AppendLine($"Fecha de hoy: {DateTime.Today:yyyy-MM-dd} ({DateTime.Today:dddd}).");
+        contexto.AppendLine($"Preferencia dietética del usuario: {preferenciaDietetica?.Trim() ?? "Ninguna"}.");
         contexto.AppendLine("Ingredientes que el usuario tiene actualmente en su alacena:");
 
         if (stock.Count == 0)
@@ -700,7 +799,8 @@ public class ChatIaService : IChatIaService
         if (recetaContexto is not null)
         {
             contexto.AppendLine();
-            contexto.AppendLine("Última receta de la conversación (úsala si pide guardarla, modificarla o referirse a 'la receta'):");
+            contexto.AppendLine("Última receta de la conversación (si pide 'la anterior' o 'esta', usá esta. " +
+                "Si nombra otra —ej. 'la de fideos con papa'— buscala en el historial y usá ESA, no esta):");
             contexto.AppendLine(JsonSerializer.Serialize(recetaContexto, JsonOptions));
         }
 
@@ -742,6 +842,15 @@ public class ChatIaService : IChatIaService
 
         [JsonPropertyName("mensaje")]
         public string? Mensaje { get; set; }
+
+        [JsonPropertyName("nombre")]
+        public string? Nombre { get; set; }
+
+        [JsonPropertyName("ingredientes")]
+        public List<IngredienteGeneradoDto>? Ingredientes { get; set; }
+
+        [JsonPropertyName("pasos")]
+        public List<string>? Pasos { get; set; }
 
         [JsonPropertyName("receta")]
         public RecetaGeneradaDto? Receta { get; set; }

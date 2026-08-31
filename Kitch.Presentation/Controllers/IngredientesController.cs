@@ -1,6 +1,5 @@
 using Kitch.Application.DTOs.Ingredientes;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -8,8 +7,8 @@ namespace Kitch.Presentation.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = RolUsuario.Admin)]
-public class IngredientesController : ControllerBase
+[Authorize]
+public class IngredientesController : ApiControllerBase
 {
     private readonly IIngredienteService _ingredienteService;
 
@@ -41,14 +40,16 @@ public class IngredientesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<IngredienteResponseDto>> Create([FromBody] IngredienteCreateDto ingrediente)
     {
-        var createdIngrediente = await _ingredienteService.CreateAsync(ingrediente);
+        var adminId = GetUsuarioIdOrThrow();
+        var createdIngrediente = await _ingredienteService.CreateAsync(ingrediente, adminId);
         return CreatedAtAction(nameof(GetById), new { id = createdIngrediente.Id }, createdIngrediente);
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] IngredienteUpdateDto ingrediente)
     {
-        var updated = await _ingredienteService.UpdateAsync(id, ingrediente);
+        var adminId = GetUsuarioIdOrThrow();
+        var updated = await _ingredienteService.UpdateAsync(id, ingrediente, adminId);
 
         if (!updated)
         {
@@ -61,7 +62,8 @@ public class IngredientesController : ControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _ingredienteService.DeleteAsync(id);
+        var adminId = GetUsuarioIdOrThrow();
+        var deleted = await _ingredienteService.DeleteAsync(id, adminId);
 
         if (!deleted)
         {

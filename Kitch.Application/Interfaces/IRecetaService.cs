@@ -9,6 +9,6 @@ public interface IRecetaService
     Task<RecetaResponseDto?> GetByIdAsync(int id, string? rolUsuario = null);
     Task<RecetaResponseDto> CreateAsync(RecetaCreateDto receta);
     Task<bool> UpdateAsync(int id, RecetaUpdateDto receta);
-    Task<bool> DeleteAsync(int id);
+    Task<bool> DeleteAsync(int id, int solicitanteId);
     Task<IEnumerable<RecetaResponseDto>> GetByDificultadAsync(DificultadReceta dificultad, string? rolUsuario = null);
 }

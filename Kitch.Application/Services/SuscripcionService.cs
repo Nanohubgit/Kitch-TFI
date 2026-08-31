@@ -1,4 +1,5 @@
 using Kitch.Application.DTOs.Suscripciones;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Application.Mappings;
 using Kitch.Domain.Constants;
@@ -33,20 +34,26 @@ public class SuscripcionService : ISuscripcionService
         _paymentGateway = paymentGateway;
     }
 
-    public async Task<IEnumerable<SuscripcionResponseDto>> GetAllAsync()
+    public async Task<IEnumerable<SuscripcionResponseDto>> GetAllAsync(int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var suscripciones = await _repository.GetAllAsync();
         return suscripciones.Select(suscripcion => suscripcion.ToResponseDto());
     }
 
-    public async Task<SuscripcionResponseDto?> GetByIdAsync(int id)
+    public async Task<SuscripcionResponseDto?> GetByIdAsync(int id, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var suscripcion = await _repository.GetByIdAsync(id);
         return suscripcion?.ToResponseDto();
     }
 
-    public async Task<SuscripcionResponseDto> CreateAsync(SuscripcionCreateDto suscripcion)
+    public async Task<SuscripcionResponseDto> CreateAsync(SuscripcionCreateDto suscripcion, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         if (suscripcion.Activa && await _repository.AnyAsync(existing =>
                 existing.UsuarioId == suscripcion.UsuarioId && existing.Activa))
         {
@@ -68,8 +75,10 @@ public class SuscripcionService : ISuscripcionService
         return created.ToResponseDto();
     }
 
-    public async Task<bool> UpdateAsync(int id, SuscripcionUpdateDto suscripcion)
+    public async Task<bool> UpdateAsync(int id, SuscripcionUpdateDto suscripcion, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var existingSuscripcion = await _repository.GetByIdAsync(id);
 
         if (existingSuscripcion is null)
@@ -98,8 +107,10 @@ public class SuscripcionService : ISuscripcionService
         return true;
     }
 
-    public async Task<bool> DeleteAsync(int id)
+    public async Task<bool> DeleteAsync(int id, int solicitanteId)
     {
+        await ValidarPermisosAdminAsync(solicitanteId);
+
         var suscripcion = await _repository.GetByIdAsync(id);
 
         if (suscripcion is null)
@@ -110,6 +121,21 @@ public class SuscripcionService : ISuscripcionService
         await _repository.DeleteAsync(suscripcion);
 
         return true;
+    }
+
+    private async Task ValidarPermisosAdminAsync(int usuarioId)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        if (usuario is null)
+        {
+            throw new UnauthorizedAccessException();
+        }
+
+        if (usuario.Rol != RolUsuario.Admin)
+        {
+            throw new ForbiddenException(
+                "Acceso denegado. Se requieren permisos de administrador para visualizar esta información.");
+        }
     }
 
     private static void ValidateFechas(DateTime fechaInicio, DateTime? fechaFin)

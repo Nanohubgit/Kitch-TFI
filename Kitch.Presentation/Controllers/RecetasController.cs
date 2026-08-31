@@ -1,7 +1,6 @@
 using Kitch.Application.DTOs.Recetas;
 using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -94,10 +93,10 @@ public class RecetasController : ApiControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = RolUsuario.Admin)]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _recetaService.DeleteAsync(id);
+        var adminId = GetUsuarioIdOrThrow();
+        var deleted = await _recetaService.DeleteAsync(id, adminId);
         if (!deleted)
         {
             return NotFound(new { message = "Receta no encontrada." });
