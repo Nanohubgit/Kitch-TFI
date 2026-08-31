@@ -39,6 +39,7 @@ public class ContratoSubUpdateDto
 public class ContratoSubResponseDto
 {
     public int Id { get; set; }
+    public int SuscripcionId { get; set; }
     public DateTime FechaContratacion { get; set; }
     public DateTime FechaInicio { get; set; }
     public DateTime? FechaFin { get; set; }

@@ -13,6 +13,8 @@ public class PrevisualizarPorcionesRequestDto
 
 public class IngredienteAjustadoDto
 {
+    public int IngredienteId { get; set; }
+    public string Nombre { get; set; } = string.Empty;
     public decimal CantidadOriginal { get; set; }
     public decimal CantidadAjustada { get; set; }
     public string UnidadMedida { get; set; } = string.Empty;
@@ -49,6 +51,8 @@ public class ConfirmarDescuentoStockRequestDto
 
 public class IngredienteDescuentoDto
 {
+    public int IngredienteId { get; set; }
+    public string Nombre { get; set; } = string.Empty;
     public decimal CantidadDisponible { get; set; }
     public decimal CantidadNecesaria { get; set; }
     public decimal CantidadPosterior { get; set; }

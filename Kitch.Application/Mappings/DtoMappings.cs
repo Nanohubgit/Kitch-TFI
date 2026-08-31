@@ -39,6 +39,9 @@ public static class DtoMappings
         Ingredientes = receta.IngredientesReceta
             .Select(ingrediente => new IngredienteRecetaResponseDto
             {
+                Id = ingrediente.Id,
+                IngredienteId = ingrediente.IngredienteId,
+                Nombre = ingrediente.Ingrediente?.Nombre ?? string.Empty,
                 Cantidad = ingrediente.Cantidad,
                 UnidadMedida = ingrediente.UnidadMedida
             })
@@ -47,6 +50,7 @@ public static class DtoMappings
             .OrderBy(preparacion => preparacion.NumeroPaso)
             .Select(preparacion => new PreparacionRecetaResponseDto
             {
+                Id = preparacion.Id,
                 NumeroPaso = preparacion.NumeroPaso,
                 DescripcionPaso = preparacion.DescripcionPaso
             })
@@ -74,6 +78,8 @@ public static class DtoMappings
     public static ComidaPlanificadaResponseDto ToResponseDto(this ComidaPlanificada comida) => new()
     {
         Id = comida.Id,
+        RecetaId = comida.RecetaId,
+        RecetaTitulo = comida.Receta?.Titulo ?? string.Empty,
         FechaAsignada = comida.FechaAsignada,
         Turno = comida.Turno
     };
@@ -89,6 +95,7 @@ public static class DtoMappings
     public static SuscripcionResponseDto ToResponseDto(this Suscripcion suscripcion) => new()
     {
         Id = suscripcion.Id,
+        UsuarioId = suscripcion.UsuarioId,
         FechaInicio = suscripcion.FechaInicio,
         FechaFin = suscripcion.FechaFin,
         Activa = suscripcion.Activa,
@@ -98,6 +105,7 @@ public static class DtoMappings
     public static ContratoSubResponseDto ToResponseDto(this ContratoSub contrato) => new()
     {
         Id = contrato.Id,
+        SuscripcionId = contrato.SuscripcionId,
         FechaContratacion = contrato.FechaContratacion,
         FechaInicio = contrato.FechaInicio,
         FechaFin = contrato.FechaFin,
@@ -111,6 +119,7 @@ public static class DtoMappings
     public static PagoResponseDto ToResponseDto(this Pago pago) => new()
     {
         Id = pago.Id,
+        ContratoSubId = pago.ContratoSubId,
         FechaPago = pago.FechaPago,
         Monto = pago.Monto,
         EstadoPago = pago.EstadoPago,

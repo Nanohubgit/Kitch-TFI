@@ -14,6 +14,12 @@ namespace Kitch.Application.Services;
 /// </summary>
 public class SuscripcionService : ISuscripcionService
 {
+    private const string MensajeAdminConsulta =
+        "Acceso denegado. Se requieren permisos de administrador para visualizar esta información.";
+
+    private const string MensajeHistorialSoloLectura =
+        "El historial de pagos, contratos y suscripciones es de solo lectura. No se puede modificar ni eliminar.";
+
     private readonly IRepository<Suscripcion> _repository;
     private readonly IRepository<ContratoSub> _contratoRepository;
     private readonly IRepository<Pago> _pagoRepository;
@@ -36,23 +42,37 @@ public class SuscripcionService : ISuscripcionService
 
     public async Task<IEnumerable<SuscripcionResponseDto>> GetAllAsync(int solicitanteId)
     {
-        await ValidarPermisosAdminAsync(solicitanteId);
+        await ValidarPermisosAdminAsync(solicitanteId, MensajeAdminConsulta);
 
         var suscripciones = await _repository.GetAllAsync();
         return suscripciones.Select(suscripcion => suscripcion.ToResponseDto());
     }
 
+    public async Task<IEnumerable<SuscripcionResponseDto>> GetByUsuarioIdAsync(int usuarioId)
+    {
+        var suscripciones = await _repository.FindAsync(suscripcion => suscripcion.UsuarioId == usuarioId);
+        return suscripciones.Select(suscripcion => suscripcion.ToResponseDto());
+    }
+
     public async Task<SuscripcionResponseDto?> GetByIdAsync(int id, int solicitanteId)
     {
-        await ValidarPermisosAdminAsync(solicitanteId);
-
         var suscripcion = await _repository.GetByIdAsync(id);
-        return suscripcion?.ToResponseDto();
+        if (suscripcion is null)
+        {
+            return null;
+        }
+
+        if (suscripcion.UsuarioId != solicitanteId)
+        {
+            await ValidarPermisosAdminAsync(solicitanteId, MensajeAdminConsulta);
+        }
+
+        return suscripcion.ToResponseDto();
     }
 
     public async Task<SuscripcionResponseDto> CreateAsync(SuscripcionCreateDto suscripcion, int solicitanteId)
     {
-        await ValidarPermisosAdminAsync(solicitanteId);
+        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
 
         if (suscripcion.Activa && await _repository.AnyAsync(existing =>
                 existing.UsuarioId == suscripcion.UsuarioId && existing.Activa))
@@ -77,7 +97,7 @@ public class SuscripcionService : ISuscripcionService
 
     public async Task<bool> UpdateAsync(int id, SuscripcionUpdateDto suscripcion, int solicitanteId)
     {
-        await ValidarPermisosAdminAsync(solicitanteId);
+        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
 
         var existingSuscripcion = await _repository.GetByIdAsync(id);
 
@@ -109,7 +129,7 @@ public class SuscripcionService : ISuscripcionService
 
     public async Task<bool> DeleteAsync(int id, int solicitanteId)
     {
-        await ValidarPermisosAdminAsync(solicitanteId);
+        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
 
         var suscripcion = await _repository.GetByIdAsync(id);
 
@@ -123,7 +143,7 @@ public class SuscripcionService : ISuscripcionService
         return true;
     }
 
-    private async Task ValidarPermisosAdminAsync(int usuarioId)
+    private async Task ValidarPermisosAdminAsync(int usuarioId, string mensaje)
     {
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
         if (usuario is null)
@@ -133,8 +153,7 @@ public class SuscripcionService : ISuscripcionService
 
         if (usuario.Rol != RolUsuario.Admin)
         {
-            throw new ForbiddenException(
-                "Acceso denegado. Se requieren permisos de administrador para visualizar esta información.");
+            throw new ForbiddenException(mensaje);
         }
     }
 

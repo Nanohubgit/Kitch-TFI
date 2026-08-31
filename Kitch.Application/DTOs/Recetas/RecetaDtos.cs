@@ -17,6 +17,9 @@ public class IngredienteRecetaCreateDto
 
 public class IngredienteRecetaResponseDto
 {
+    public int Id { get; set; }
+    public int IngredienteId { get; set; }
+    public string Nombre { get; set; } = string.Empty;
     public decimal Cantidad { get; set; }
     public string UnidadMedida { get; set; } = string.Empty;
 }
@@ -32,6 +35,7 @@ public class PreparacionRecetaCreateDto
 
 public class PreparacionRecetaResponseDto
 {
+    public int Id { get; set; }
     public int NumeroPaso { get; set; }
     public string DescripcionPaso { get; set; } = string.Empty;
 }

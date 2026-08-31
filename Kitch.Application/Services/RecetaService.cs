@@ -5,6 +5,7 @@ using Kitch.Application.Mappings;
 using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
+using System.Linq.Expressions;
 
 namespace Kitch.Application.Services;
 
@@ -23,13 +24,13 @@ public class RecetaService : IRecetaService
 
     public async Task<IEnumerable<RecetaResponseDto>> GetAllAsync(string? rolUsuario = null)
     {
-        var recetas = await _repository.GetAllAsync();
+        var recetas = await CargarRecetasAsync(_ => true);
         return FiltrarPorPlan(recetas, rolUsuario).Select(receta => receta.ToResponseDto());
     }
 
     public async Task<RecetaResponseDto?> GetByIdAsync(int id, string? rolUsuario = null)
     {
-        var receta = await _repository.GetByIdAsync(id);
+        var receta = await CargarRecetaCompletaAsync(id);
         if (receta is null)
         {
             return null;
@@ -48,7 +49,8 @@ public class RecetaService : IRecetaService
     {
         ValidateReceta(receta);
         var created = await _repository.AddAsync(ToEntity(receta));
-        return created.ToResponseDto();
+        var completa = await CargarRecetaCompletaAsync(created.Id);
+        return (completa ?? created).ToResponseDto();
     }
 
     public async Task<bool> UpdateAsync(int id, RecetaUpdateDto receta)
@@ -91,8 +93,20 @@ public class RecetaService : IRecetaService
                 "Las recetas de dificultad Avanzada (Difícil) requieren plan Profesional.");
         }
 
-        var recetas = await _repository.FindAsync(receta => receta.Dificultad == dificultad);
+        var recetas = await CargarRecetasAsync(receta => receta.Dificultad == dificultad);
         return recetas.Select(receta => receta.ToResponseDto());
+    }
+
+    private Task<IReadOnlyList<Receta>> CargarRecetasAsync(Expression<Func<Receta, bool>> predicate) =>
+        _repository.FindWithIncludePathsAsync(
+            predicate,
+            $"{nameof(Receta.IngredientesReceta)}.{nameof(IngredienteReceta.Ingrediente)}",
+            nameof(Receta.Preparaciones));
+
+    private async Task<Receta?> CargarRecetaCompletaAsync(int id)
+    {
+        var recetas = await CargarRecetasAsync(receta => receta.Id == id);
+        return recetas.FirstOrDefault();
     }
 
     private async Task ValidarPermisosAdminAsync(int usuarioId)

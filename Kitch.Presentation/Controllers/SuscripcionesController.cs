@@ -61,11 +61,22 @@ public class SuscripcionesController : ApiControllerBase
         return Ok(suscripciones);
     }
 
+    /// <summary>
+    /// Historial propio: solo lectura. El usuario no puede editar ni borrar suscripciones.
+    /// </summary>
+    [HttpGet("mias")]
+    public async Task<ActionResult<IEnumerable<SuscripcionResponseDto>>> GetMias()
+    {
+        var usuarioId = GetUsuarioIdOrThrow();
+        var suscripciones = await _suscripcionService.GetByUsuarioIdAsync(usuarioId);
+        return Ok(suscripciones);
+    }
+
     [HttpGet("{id:int}")]
     public async Task<ActionResult<SuscripcionResponseDto>> GetById(int id)
     {
-        var adminId = GetUsuarioIdOrThrow();
-        var suscripcion = await _suscripcionService.GetByIdAsync(id, adminId);
+        var solicitanteId = GetUsuarioIdOrThrow();
+        var suscripcion = await _suscripcionService.GetByIdAsync(id, solicitanteId);
         if (suscripcion is null)
         {
             return NotFound(new { message = "Suscripción no encontrada." });
@@ -74,6 +85,7 @@ public class SuscripcionesController : ApiControllerBase
         return Ok(suscripcion);
     }
 
+    /// <summary>Solo administrador. El historial de suscripciones del usuario es de solo lectura.</summary>
     [HttpPost]
     public async Task<ActionResult<SuscripcionResponseDto>> Create([FromBody] SuscripcionCreateDto suscripcion)
     {

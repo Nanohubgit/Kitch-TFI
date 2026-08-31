@@ -10,6 +10,12 @@ namespace Kitch.Application.Services;
 
 public class PagoService : IPagoService
 {
+    private const string MensajeAdminConsulta =
+        "Acceso denegado. Se requieren permisos de administrador para visualizar esta información.";
+
+    private const string MensajeHistorialSoloLectura =
+        "El historial de pagos, contratos y suscripciones es de solo lectura. No se puede modificar ni eliminar.";
+
     private readonly IRepository<Pago> _repository;
     private readonly IRepository<ContratoSub> _contratoRepository;
     private readonly IRepository<Usuario> _usuarioRepository;
@@ -26,7 +32,7 @@ public class PagoService : IPagoService
 
     public async Task<IEnumerable<PagoResponseDto>> GetAllAsync(int solicitanteId)
     {
-        await ValidarPermisosAdminAsync(solicitanteId);
+        await ValidarPermisosAdminAsync(solicitanteId, MensajeAdminConsulta);
 
         var pagos = await _repository.GetAllAsync();
         return pagos.Select(pago => pago.ToResponseDto());
@@ -40,15 +46,23 @@ public class PagoService : IPagoService
 
     public async Task<PagoResponseDto?> GetByIdAsync(int id, int solicitanteId)
     {
-        await ValidarPermisosAdminAsync(solicitanteId);
-
         var pago = await _repository.GetByIdAsync(id);
-        return pago?.ToResponseDto();
+        if (pago is null)
+        {
+            return null;
+        }
+
+        if (pago.UsuarioId != solicitanteId)
+        {
+            await ValidarPermisosAdminAsync(solicitanteId, MensajeAdminConsulta);
+        }
+
+        return pago.ToResponseDto();
     }
 
     public async Task<PagoResponseDto> CreateAsync(PagoCreateDto pago, int solicitanteId)
     {
-        await ValidarPermisosAdminAsync(solicitanteId);
+        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
 
         var contrato = await _contratoRepository.GetByIdAsync(pago.ContratoSubId);
 
@@ -78,7 +92,7 @@ public class PagoService : IPagoService
 
     public async Task<bool> UpdateAsync(int id, PagoUpdateDto pago, int solicitanteId)
     {
-        await ValidarPermisosAdminAsync(solicitanteId);
+        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
 
         var existingPago = await _repository.GetByIdAsync(id);
 
@@ -98,7 +112,7 @@ public class PagoService : IPagoService
 
     public async Task<bool> DeleteAsync(int id, int solicitanteId)
     {
-        await ValidarPermisosAdminAsync(solicitanteId);
+        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
 
         var pago = await _repository.GetByIdAsync(id);
 
@@ -112,7 +126,7 @@ public class PagoService : IPagoService
         return true;
     }
 
-    private async Task ValidarPermisosAdminAsync(int usuarioId)
+    private async Task ValidarPermisosAdminAsync(int usuarioId, string mensaje)
     {
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
         if (usuario is null)
@@ -122,8 +136,7 @@ public class PagoService : IPagoService
 
         if (usuario.Rol != RolUsuario.Admin)
         {
-            throw new ForbiddenException(
-                "Acceso denegado. Se requieren permisos de administrador para visualizar esta información.");
+            throw new ForbiddenException(mensaje);
         }
     }
 }
