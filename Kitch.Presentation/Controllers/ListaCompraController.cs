@@ -29,7 +29,7 @@ public class ListaCompraController : ApiControllerBase
     public async Task<ActionResult<IEnumerable<ItemListaCompraResponseDto>>> GetFaltantes()
     {
         var usuarioId = GetUsuarioIdOrThrow();
-        var faltantes = await _listaCompraService.GenerarListaFaltantesAsync(usuarioId);
+        var faltantes = await _listaCompraService.SincronizarFaltantesAsync(usuarioId);
         return Ok(faltantes);
     }
 

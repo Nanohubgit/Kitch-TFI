@@ -22,6 +22,10 @@ namespace Kitch.Infrastructure.Persistence.Configurations
             entity.Property(itemListaCompra => itemListaCompra.EstaComprado)
                 .IsRequired();
 
+            entity.Property(itemListaCompra => itemListaCompra.UnidadMedida)
+                .IsRequired()
+                .HasMaxLength(50);
+
             entity.Property(itemListaCompra => itemListaCompra.UsuarioId)
                 .IsRequired();
 
@@ -30,7 +34,14 @@ namespace Kitch.Infrastructure.Persistence.Configurations
                 .HasForeignKey(itemListaCompra => itemListaCompra.UsuarioId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            entity.HasOne(itemListaCompra => itemListaCompra.Ingrediente)
+                .WithMany()
+                .HasForeignKey(itemListaCompra => itemListaCompra.IngredienteId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .IsRequired(false);
+
             entity.HasIndex(itemListaCompra => itemListaCompra.UsuarioId);
+            entity.HasIndex(itemListaCompra => itemListaCompra.IngredienteId);
         }
      }
 }

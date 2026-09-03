@@ -1,5 +1,4 @@
 using Kitch.Application.DTOs.Planificador;
-using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -75,10 +74,6 @@ public class PlanificadorController : ApiControllerBase
             var createdComida = await _planificadorService.CreateAsync(comida);
             return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
         }
-        catch (ForbiddenException ex)
-        {
-            return ForbiddenMessage(ex.Message);
-        }
         catch (KeyNotFoundException ex)
         {
             return NotFound(new { message = ex.Message });
@@ -106,10 +101,6 @@ public class PlanificadorController : ApiControllerBase
             }
 
             return NoContent();
-        }
-        catch (ForbiddenException ex)
-        {
-            return ForbiddenMessage(ex.Message);
         }
         catch (KeyNotFoundException ex)
         {

@@ -22,13 +22,14 @@ public class RecetaService : IRecetaService
         _usuarioRepository = usuarioRepository;
     }
 
-    public async Task<IEnumerable<RecetaResponseDto>> GetAllAsync(string? rolUsuario = null)
+    public async Task<IEnumerable<RecetaResponseDto>> GetAllAsync(int usuarioId)
     {
+        var rol = await ObtenerRolAsync(usuarioId);
         var recetas = await CargarRecetasAsync(_ => true);
-        return FiltrarPorPlan(recetas, rolUsuario).Select(receta => receta.ToResponseDto());
+        return FiltrarPorPlan(recetas, rol).Select(receta => receta.ToResponseDto());
     }
 
-    public async Task<RecetaResponseDto?> GetByIdAsync(int id, string? rolUsuario = null)
+    public async Task<RecetaResponseDto?> GetByIdAsync(int id, int usuarioId)
     {
         var receta = await CargarRecetaCompletaAsync(id);
         if (receta is null)
@@ -36,24 +37,25 @@ public class RecetaService : IRecetaService
             return null;
         }
 
-        if (!PuedeVerDificultad(rolUsuario, receta.Dificultad))
+        var rol = await ObtenerRolAsync(usuarioId);
+        if (!LimitesPlan.PuedeUsarDificultad(rol, receta.Dificultad))
         {
-            throw new ForbiddenException(
-                "Las recetas de dificultad Avanzada (Difícil) requieren plan Profesional.");
+            throw new ForbiddenException(LimitesPlan.MensajeDificultadPremium);
         }
 
         return receta.ToResponseDto();
     }
 
-    public async Task<RecetaResponseDto> CreateAsync(RecetaCreateDto receta)
+    public async Task<RecetaResponseDto> CreateAsync(RecetaCreateDto receta, int usuarioId)
     {
         ValidateReceta(receta);
+        await AsegurarDificultadPermitidaAsync(usuarioId, receta.Dificultad);
         var created = await _repository.AddAsync(ToEntity(receta));
         var completa = await CargarRecetaCompletaAsync(created.Id);
         return (completa ?? created).ToResponseDto();
     }
 
-    public async Task<bool> UpdateAsync(int id, RecetaUpdateDto receta)
+    public async Task<bool> UpdateAsync(int id, RecetaUpdateDto receta, int usuarioId)
     {
         if (!await _repository.AnyAsync(existing => existing.Id == id))
         {
@@ -61,6 +63,7 @@ public class RecetaService : IRecetaService
         }
 
         ValidateReceta(receta);
+        await AsegurarDificultadPermitidaAsync(usuarioId, receta.Dificultad);
         var entity = ToEntity(receta);
         entity.Id = id;
         await _repository.UpdateAsync(entity);
@@ -85,12 +88,12 @@ public class RecetaService : IRecetaService
 
     public async Task<IEnumerable<RecetaResponseDto>> GetByDificultadAsync(
         DificultadReceta dificultad,
-        string? rolUsuario = null)
+        int usuarioId)
     {
-        if (!PuedeVerDificultad(rolUsuario, dificultad))
+        var rol = await ObtenerRolAsync(usuarioId);
+        if (!LimitesPlan.PuedeUsarDificultad(rol, dificultad))
         {
-            throw new ForbiddenException(
-                "Las recetas de dificultad Avanzada (Difícil) requieren plan Profesional.");
+            throw new ForbiddenException(LimitesPlan.MensajeDificultadPremium);
         }
 
         var recetas = await CargarRecetasAsync(receta => receta.Dificultad == dificultad);
@@ -124,6 +127,21 @@ public class RecetaService : IRecetaService
         }
     }
 
+    private async Task<string?> ObtenerRolAsync(int usuarioId)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        return usuario?.Rol;
+    }
+
+    private async Task AsegurarDificultadPermitidaAsync(int usuarioId, DificultadReceta dificultad)
+    {
+        var rol = await ObtenerRolAsync(usuarioId);
+        if (!LimitesPlan.PuedeUsarDificultad(rol, dificultad))
+        {
+            throw new ForbiddenException(LimitesPlan.MensajeDificultadPremium);
+        }
+    }
+
     private static IEnumerable<Receta> FiltrarPorPlan(IEnumerable<Receta> recetas, string? rolUsuario)
     {
         if (RolUsuario.TieneAccesoPremium(rolUsuario))
@@ -131,18 +149,7 @@ public class RecetaService : IRecetaService
             return recetas;
         }
 
-        // Básico: Fácil e Intermedia (Medio). Sin Difícil/Avanzada.
-        return recetas.Where(r => r.Dificultad is DificultadReceta.Facil or DificultadReceta.Medio);
-    }
-
-    private static bool PuedeVerDificultad(string? rolUsuario, DificultadReceta dificultad)
-    {
-        if (RolUsuario.TieneAccesoPremium(rolUsuario))
-        {
-            return true;
-        }
-
-        return dificultad is DificultadReceta.Facil or DificultadReceta.Medio;
+        return recetas.Where(r => LimitesPlan.PuedeUsarDificultad(rolUsuario, r.Dificultad));
     }
 
     private static void ValidateReceta(RecetaCreateDto receta)
@@ -196,6 +203,7 @@ public class RecetaService : IRecetaService
         TiempoPreparacionMinutos = receta.TiempoPreparacionMinutos,
         Porciones = receta.Porciones,
         Dificultad = receta.Dificultad,
+        Categoria = CategoriasReceta.Normalizar(receta.Categoria),
         IngredientesReceta = receta.Ingredientes
             .Select(ingrediente => new IngredienteReceta
             {

@@ -1,5 +1,4 @@
 using Kitch.Application.DTOs.Recetas;
-using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -22,74 +21,46 @@ public class RecetasController : ApiControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<RecetaResponseDto>>> GetAll()
     {
-        var recetas = await _recetaService.GetAllAsync(GetRolOrNull());
+        var recetas = await _recetaService.GetAllAsync(GetUsuarioIdOrThrow());
         return Ok(recetas);
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<RecetaResponseDto>> GetById(int id)
     {
-        try
+        var receta = await _recetaService.GetByIdAsync(id, GetUsuarioIdOrThrow());
+        if (receta is null)
         {
-            var receta = await _recetaService.GetByIdAsync(id, GetRolOrNull());
-            if (receta is null)
-            {
-                return NotFound(new { message = "Receta no encontrada." });
-            }
+            return NotFound(new { message = "Receta no encontrada." });
+        }
 
-            return Ok(receta);
-        }
-        catch (ForbiddenException ex)
-        {
-            return ForbiddenMessage(ex.Message);
-        }
+        return Ok(receta);
     }
 
     [HttpGet("dificultad/{dificultad}")]
     public async Task<ActionResult<IEnumerable<RecetaResponseDto>>> GetByDificultad(DificultadReceta dificultad)
     {
-        try
-        {
-            var recetas = await _recetaService.GetByDificultadAsync(dificultad, GetRolOrNull());
-            return Ok(recetas);
-        }
-        catch (ForbiddenException ex)
-        {
-            return ForbiddenMessage(ex.Message);
-        }
+        var recetas = await _recetaService.GetByDificultadAsync(dificultad, GetUsuarioIdOrThrow());
+        return Ok(recetas);
     }
 
     [HttpPost]
     public async Task<ActionResult<RecetaResponseDto>> Create([FromBody] RecetaCreateDto receta)
     {
-        try
-        {
-            var createdReceta = await _recetaService.CreateAsync(receta);
-            return CreatedAtAction(nameof(GetById), new { id = createdReceta.Id }, createdReceta);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequestMessage(ex.Message);
-        }
+        var createdReceta = await _recetaService.CreateAsync(receta, GetUsuarioIdOrThrow());
+        return CreatedAtAction(nameof(GetById), new { id = createdReceta.Id }, createdReceta);
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] RecetaUpdateDto receta)
     {
-        try
+        var updated = await _recetaService.UpdateAsync(id, receta, GetUsuarioIdOrThrow());
+        if (!updated)
         {
-            var updated = await _recetaService.UpdateAsync(id, receta);
-            if (!updated)
-            {
-                return NotFound(new { message = "Receta no encontrada." });
-            }
+            return NotFound(new { message = "Receta no encontrada." });
+        }
 
-            return NoContent();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequestMessage(ex.Message);
-        }
+        return NoContent();
     }
 
     [HttpDelete("{id:int}")]

@@ -9,6 +9,7 @@ using Kitch.Application.DTOs.StockUsuarios;
 using Kitch.Application.DTOs.Sustitutos;
 using Kitch.Application.DTOs.Suscripciones;
 using Kitch.Application.DTOs.Usuarios;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 
 namespace Kitch.Application.Mappings;
@@ -36,6 +37,7 @@ public static class DtoMappings
         TiempoPreparacionMinutos = receta.TiempoPreparacionMinutos,
         Porciones = receta.Porciones,
         Dificultad = receta.Dificultad,
+        Categoria = CategoriasReceta.Normalizar(receta.Categoria),
         Ingredientes = receta.IngredientesReceta
             .Select(ingrediente => new IngredienteRecetaResponseDto
             {
@@ -87,8 +89,10 @@ public static class DtoMappings
     public static ItemListaCompraResponseDto ToResponseDto(this ItemListaCompra item) => new()
     {
         Id = item.Id,
+        IngredienteId = item.IngredienteId,
         NombreArticulo = item.NombreArticulo,
         CantidadFaltante = item.CantidadFaltante,
+        UnidadMedida = item.UnidadMedida,
         EstaComprado = item.EstaComprado
     };
 

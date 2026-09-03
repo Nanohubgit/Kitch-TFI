@@ -9,6 +9,7 @@ using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.DTOs.RecetaIa;
 using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -34,6 +35,7 @@ public class ChatIaService : IChatIaService
         "\"pasos\": [string] | null, " +
         "\"receta\": {\"titulo\": string, \"descripcion\": string, \"tiempoPreparacionMinutos\": number, " +
         "\"porciones\": number, \"dificultad\": \"Facil\"|\"Medio\"|\"Dificil\", \"caloriasEstimadas\": number, " +
+        "\"categoria\": \"pastas\"|\"carnes\"|\"pollo\"|\"ensaladas\"|\"sopas\"|\"pescados\"|\"pizzas\"|\"postres\"|\"tartas\"|\"guisos\"|\"general\", " +
         "\"ingredientes\": [{\"nombre\": string, \"cantidad\": number, \"unidadMedida\": string}], \"pasos\": [string]} | null, " +
         "\"ingredienteSustituir\": string | null, \"tituloEliminar\": string | null, \"eliminarTodas\": boolean, " +
         "\"tituloPlanificar\": string | null, \"fechaPlanificar\": string | null, \"turnoPlanificar\": string | null, " +
@@ -43,7 +45,10 @@ public class ChatIaService : IChatIaService
         "- 'generar_receta': el usuario pide una receta. Completás 'receta' (mín. 1 ingrediente y 1 paso, " +
         "tiempo y porciones > 0). Usá preferentemente lo que hay en la alacena. En 'mensaje' presentás la receta. " +
         "SIEMPRE poné en 'titulo' un nombre descriptivo y real del plato (ej. 'Tortilla de papas'); NUNCA uses 'string', " +
-        "'receta' ni dejes el título vacío. Si el usuario no aclara el nombre, inventá uno acorde a los ingredientes.\n" +
+        "'receta' ni dejes el título vacío. Si el usuario no aclara el nombre, inventá uno acorde a los ingredientes. " +
+        "OBLIGATORIO: en 'categoria' elegí exactamente uno de estos valores en minúsculas: " +
+        "pastas, carnes, pollo, ensaladas, sopas, pescados, pizzas, postres, tartas, guisos, general. " +
+        "Si no encaja con claridad, usá 'general'.\n" +
         "- 'guardar_receta': tenés memoria de la conversación. Si el usuario pide guardar, analizá el historial " +
         "para saber a cuál se refiere. 'guarda la anterior que dije' / 'guardala' / 'esa' → la última receta generada. " +
         "'guarda la de fideos con papa' → ESA receta concreta del historial (ingredientes y pasos de esa, no de otra). " +
@@ -154,6 +159,13 @@ public class ChatIaService : IChatIaService
             .Replace("__RESTRICCION_DIETETICA__", restriccion)
             .Replace("__NOMBRE_USUARIO__", nombreUsuario);
 
+        if (!RolUsuario.TieneAccesoPremium(usuario?.Rol))
+        {
+            systemInstruction +=
+                "\n\nPLAN BASICO: en toda receta que generes, dificultad SOLO puede ser \"Facil\" o \"Medio\". " +
+                "NUNCA uses \"Dificil\". Si el plato es elaborado, bajá la dificultad a Medio y simplificá los pasos.";
+        }
+
         var contexto = await ConstruirContextoAsync(usuarioId, request.RecetaActual, usuario?.PreferenciaDietetica);
         var mensajes = ConstruirConversacion(contexto, turnos);
 
@@ -233,6 +245,8 @@ public class ChatIaService : IChatIaService
         }
 
         receta.Titulo = RecetaIaService.GenerarTituloPorDefecto(receta.Titulo, receta.Ingredientes);
+        receta.Categoria = CategoriasReceta.Normalizar(receta.Categoria);
+        await AjustarDificultadAlPlanAsync(usuarioId, receta);
 
         UltimaRecetaPorUsuario[usuarioId] = receta;
 
@@ -294,7 +308,7 @@ public class ChatIaService : IChatIaService
             {
                 Accion = ChatAccion.Conversar,
                 Mensaje = string.IsNullOrWhiteSpace(ex.Message)
-                    ? "Llegaste al límite de recetas guardadas del plan Básico. Pasate a Profesional para guardar más."
+                    ? LimitesPlan.MensajeLimiteFavoritos
                     : ex.Message
             };
         }
@@ -362,6 +376,7 @@ public class ChatIaService : IChatIaService
 
         receta.Ingredientes ??= [];
         receta.Pasos ??= [];
+        receta.Categoria = CategoriasReceta.Normalizar(receta.Categoria);
 
         if (receta.Pasos.Count == 0 && receta.Ingredientes.Count > 0)
         {
@@ -369,6 +384,12 @@ public class ChatIaService : IChatIaService
         }
 
         return receta;
+    }
+
+    private async Task AjustarDificultadAlPlanAsync(int usuarioId, RecetaGeneradaDto receta)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        RecetaIaService.AjustarDificultadAlPlan(receta, usuario?.Rol);
     }
 
     private static bool EsRecetaValida(RecetaGeneradaDto? receta)
@@ -403,15 +424,22 @@ public class ChatIaService : IChatIaService
         });
 
         var sustitutos = (await _sustitucionService.BuscarSustitutosAsync(usuarioId, ingrediente.Id)).ToList();
+        var hayMasPremium = sustitutos.Any(sustituto => sustituto.HayMasConProfesional);
+        var mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
+            ? $"Estos son los reemplazos que te recomiendo para {nombre}:"
+            : sobre.Mensaje;
+        if (hayMasPremium)
+        {
+            mensaje = $"{mensaje} {LimitesPlan.MensajeMasSustitutosPremium}";
+        }
 
         return new ChatRespuestaDto
         {
             Accion = ChatAccion.Sustituir,
-            Mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
-                ? $"Estos son los reemplazos que te recomiendo para {nombre}:"
-                : sobre.Mensaje,
+            Mensaje = mensaje,
             IngredienteSustituido = ingrediente.Nombre,
-            Sustitutos = sustitutos
+            Sustitutos = sustitutos,
+            HayMasSustitutosPremium = hayMasPremium
         };
     }
 
@@ -544,14 +572,8 @@ public class ChatIaService : IChatIaService
 
     private async Task<ChatRespuestaDto> ResolverConsultarRecetasGuardadasAsync(int usuarioId, SobreAgente sobre)
     {
-        var favoritos = await _favoritoRepository.FindWithIncludesAsync(
-            favorito => favorito.UsuarioId == usuarioId,
-            favorito => favorito.Receta);
-
-        var cantidad = favoritos
-            .Select(favorito => favorito.RecetaId)
-            .Distinct()
-            .Count();
+        var favoritos = (await _favoritoService.GetByUsuarioIdAsync(usuarioId)).ToList();
+        var cantidad = favoritos.Count;
 
         var mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
             ? (cantidad == 0

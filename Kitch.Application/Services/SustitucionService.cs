@@ -100,9 +100,16 @@ public class SustitucionService : ISustitucionService
             .ToList();
 
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
-        if (usuario is not null && !RolUsuario.TieneAccesoPremium(usuario.Rol))
+        if (usuario is not null && !RolUsuario.TieneAccesoPremium(usuario.Rol)
+            && sugeridos.Count > LimitesPlan.MaxSustitutosBasico)
         {
-            return sugeridos.Take(LimitesPlan.MaxSustitutosBasico).ToList();
+            var recortados = sugeridos.Take(LimitesPlan.MaxSustitutosBasico).ToList();
+            foreach (var sugerido in recortados)
+            {
+                sugerido.HayMasConProfesional = true;
+            }
+
+            return recortados;
         }
 
         return sugeridos;

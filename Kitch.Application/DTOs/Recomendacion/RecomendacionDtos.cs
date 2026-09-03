@@ -10,6 +10,7 @@ public class RecetaCompatibleDto
     public int TiempoPreparacionMinutos { get; set; }
     public int CaloriasEstimadas { get; set; }
     public int Porciones { get; set; }
+    public string Categoria { get; set; } = "general";
 
     public int TotalIngredientes { get; set; }
     public int IngredientesDisponibles { get; set; }

@@ -96,7 +96,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 await context.Response.WriteAsJsonAsync(new ProblemDetails
                 {
                     Status = StatusCodes.Status401Unauthorized,
-                    Title = "Unauthorized",
+                    Title = "Tenés que iniciar sesión",
                     Detail = "Tenés que iniciar sesión para acceder a este recurso.",
                     Instance = context.Request.Path
                 });
@@ -108,8 +108,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 await context.Response.WriteAsJsonAsync(new ProblemDetails
                 {
                     Status = StatusCodes.Status403Forbidden,
-                    Title = "Forbidden",
-                    Detail = "No tenés permisos para acceder a este recurso.",
+                    Title = "Plan insuficiente",
+                    Detail = "No tenés permiso para esta acción. Si acabás de pasar a Profesional, cerrá sesión y volvé a entrar para que se actualice tu plan.",
                     Instance = context.Request.Path
                 });
             }

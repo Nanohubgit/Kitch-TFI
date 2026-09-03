@@ -49,6 +49,8 @@ public class ChatRespuestaDto
 
     public List<SustitutoSugerido>? Sustitutos { get; set; }
 
+    public bool HayMasSustitutosPremium { get; set; }
+
     public List<RecetaCompatibleDto>? Recomendaciones { get; set; }
 
     public int? RecetasEliminadas { get; set; }
