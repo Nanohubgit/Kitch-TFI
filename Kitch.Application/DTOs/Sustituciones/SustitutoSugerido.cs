@@ -8,4 +8,6 @@ public class SustitutoSugerido
     public string? Notas { get; set; }
 
     public bool DisponibleEnAlacena { get; set; }
+
+    public bool HayMasConProfesional { get; set; }
 }

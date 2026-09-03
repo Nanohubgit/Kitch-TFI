@@ -12,6 +12,11 @@ public class ItemListaCompraCreateDto
 
     [Range(0.01, float.MaxValue)]
     public float CantidadFaltante { get; set; }
+
+    [MaxLength(50)]
+    public string UnidadMedida { get; set; } = string.Empty;
+
+    public int? IngredienteId { get; set; }
 }
 
 public class ItemListaCompraUpdateDto
@@ -23,12 +28,19 @@ public class ItemListaCompraUpdateDto
     public float CantidadFaltante { get; set; }
 
     public bool EstaComprado { get; set; }
+
+    [MaxLength(50)]
+    public string UnidadMedida { get; set; } = string.Empty;
+
+    public int? IngredienteId { get; set; }
 }
 
 public class ItemListaCompraResponseDto
 {
     public int Id { get; set; }
+    public int? IngredienteId { get; set; }
     public string NombreArticulo { get; set; } = string.Empty;
     public float CantidadFaltante { get; set; }
+    public string UnidadMedida { get; set; } = string.Empty;
     public bool EstaComprado { get; set; }
 }

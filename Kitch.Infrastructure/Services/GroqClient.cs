@@ -10,7 +10,7 @@ namespace Kitch.Infrastructure.Services;
 public class GroqClient : IAsistenteIaClient
 {
     private const string ChatEndpoint = "openai/v1/chat/completions";
-    private const string ModeloPorDefecto = "llama-3.1-8b-instant";
+    private const string ModeloPorDefecto = "openai/gpt-oss-120b";
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _modelo;

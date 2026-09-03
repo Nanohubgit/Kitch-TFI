@@ -60,6 +60,9 @@ public class RecetaCreateDto
     [EnumDataType(typeof(DificultadReceta))]
     public DificultadReceta Dificultad { get; set; } = DificultadReceta.Medio;
 
+    [MaxLength(50)]
+    public string Categoria { get; set; } = "general";
+
     [MinLength(1)]
     public List<IngredienteRecetaCreateDto> Ingredientes { get; set; } = new();
 
@@ -80,6 +83,7 @@ public class RecetaResponseDto
     public int TiempoPreparacionMinutos { get; set; }
     public int Porciones { get; set; }
     public DificultadReceta Dificultad { get; set; }
+    public string Categoria { get; set; } = "general";
     public List<IngredienteRecetaResponseDto> Ingredientes { get; set; } = new();
     public List<PreparacionRecetaResponseDto> Preparaciones { get; set; } = new();
 }

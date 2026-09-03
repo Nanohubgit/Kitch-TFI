@@ -33,6 +33,11 @@ namespace Kitch.Infrastructure.Persistence.Configurations
                 .HasConversion<string>()
                 .IsRequired()
                 .HasMaxLength(20);
+
+            entity.Property(receta => receta.Categoria)
+                .IsRequired()
+                .HasMaxLength(50)
+                .HasDefaultValue("general");
         }
     }
 }

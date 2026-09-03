@@ -4,6 +4,7 @@ using Kitch.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Kitch.Infrastructure.Migrations
 {
     [DbContext(typeof(KitchDbContext))]
-    partial class KitchDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260831141137_ListaCompraIngredienteYUnidad")]
+    partial class ListaCompraIngredienteYUnidad
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -283,13 +286,6 @@ namespace Kitch.Infrastructure.Migrations
 
                     b.Property<int>("CaloriasEstimadas")
                         .HasColumnType("int");
-
-                    b.Property<string>("Categoria")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)")
-                        .HasDefaultValue("general");
 
                     b.Property<string>("Descripcion")
                         .IsRequired()

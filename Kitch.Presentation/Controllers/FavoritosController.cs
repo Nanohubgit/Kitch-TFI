@@ -1,5 +1,4 @@
 using Kitch.Application.DTOs.Favoritos;
-using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -60,10 +59,6 @@ public class FavoritosController : ApiControllerBase
             var esFavorito = await _favoritoService.ToggleFavoritoAsync(usuarioId, recetaId);
             return Ok(new { esFavorito, message = esFavorito ? "Agregado a favoritos." : "Quitado de favoritos." });
         }
-        catch (ForbiddenException ex)
-        {
-            return ForbiddenMessage(ex.Message);
-        }
         catch (InvalidOperationException ex)
         {
             return BadRequestMessage(ex.Message);
@@ -84,10 +79,6 @@ public class FavoritosController : ApiControllerBase
         {
             var createdFavorito = await _favoritoService.AddFavoritoAsync(favorito);
             return CreatedAtAction(nameof(GetById), new { id = createdFavorito.Id }, createdFavorito);
-        }
-        catch (ForbiddenException ex)
-        {
-            return ForbiddenMessage(ex.Message);
         }
         catch (InvalidOperationException ex)
         {

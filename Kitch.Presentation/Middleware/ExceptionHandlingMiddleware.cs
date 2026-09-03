@@ -35,27 +35,27 @@ public class ExceptionHandlingMiddleware
         {
             ArgumentException => (
                 HttpStatusCode.BadRequest,
-                "Bad Request",
+                "Pedido inválido",
                 exception.Message),
             UnauthorizedAccessException => (
                 HttpStatusCode.Unauthorized,
-                "Unauthorized",
+                "Tenés que iniciar sesión",
                 exception.Message),
             ForbiddenException => (
                 HttpStatusCode.Forbidden,
-                "Forbidden",
+                "Plan insuficiente",
                 exception.Message),
             KeyNotFoundException => (
                 HttpStatusCode.NotFound,
-                "Not Found",
+                "No encontrado",
                 exception.Message),
             InvalidOperationException => (
                 HttpStatusCode.BadRequest,
-                "Bad Request",
+                "Pedido inválido",
                 exception.Message),
             _ => (
                 HttpStatusCode.InternalServerError,
-                "Internal Server Error",
+                "Error del servidor",
                 "Ocurrió un error inesperado. Intentá nuevamente más tarde.")
         };
 

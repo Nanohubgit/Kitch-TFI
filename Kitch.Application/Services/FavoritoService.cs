@@ -12,23 +12,31 @@ public class FavoritoService : IFavoritoService
 {
     private readonly IRepository<RecetaFavorita> _repository;
     private readonly IRepository<Usuario> _usuarioRepository;
+    private readonly IRepository<Receta> _recetaRepository;
 
     public FavoritoService(
         IRepository<RecetaFavorita> repository,
-        IRepository<Usuario> usuarioRepository)
+        IRepository<Usuario> usuarioRepository,
+        IRepository<Receta> recetaRepository)
     {
         _repository = repository;
         _usuarioRepository = usuarioRepository;
+        _recetaRepository = recetaRepository;
     }
 
     public async Task<IEnumerable<FavoritoResponseDto>> GetByUsuarioIdAsync(int usuarioId)
     {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
         var favoritos = await _repository.FindWithIncludesAsync(
             favorito => favorito.UsuarioId == usuarioId,
             favorito => favorito.Usuario,
             favorito => favorito.Receta);
 
-        return favoritos.Select(favorito => favorito.ToResponseDto());
+        return favoritos
+            .Where(favorito =>
+                favorito.Receta is not null &&
+                LimitesPlan.PuedeUsarDificultad(usuario?.Rol, favorito.Receta.Dificultad))
+            .Select(favorito => favorito.ToResponseDto());
     }
 
     public async Task<FavoritoResponseDto?> GetByIdAsync(int id, int usuarioId)
@@ -49,6 +57,7 @@ public class FavoritoService : IFavoritoService
         }
 
         await AsegurarCupoFavoritosAsync(favorito.UsuarioId);
+        await AsegurarRecetaVisibleAsync(favorito.UsuarioId, favorito.RecetaId);
 
         var entity = new RecetaFavorita
         {
@@ -72,6 +81,7 @@ public class FavoritoService : IFavoritoService
         }
 
         await AsegurarCupoFavoritosAsync(usuarioId);
+        await AsegurarRecetaVisibleAsync(usuarioId, recetaId);
 
         await _repository.AddAsync(new RecetaFavorita
         {
@@ -114,8 +124,20 @@ public class FavoritoService : IFavoritoService
         var cantidad = await _repository.CountAsync(favorito => favorito.UsuarioId == usuarioId);
         if (cantidad >= LimitesPlan.MaxFavoritosBasico)
         {
-            throw new ForbiddenException(
-                $"Límite alcanzado. El plan Básico permite hasta {LimitesPlan.MaxFavoritosBasico} favoritos. Mejorá tu plan a Profesional para guardar más favoritos.");
+            throw new ForbiddenException(LimitesPlan.MensajeLimiteFavoritos);
+        }
+    }
+
+    private async Task AsegurarRecetaVisibleAsync(int usuarioId, int recetaId)
+    {
+        var receta = await _recetaRepository.GetByIdAsync(recetaId)
+            ?? throw new InvalidOperationException("La receta no existe.");
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
+            ?? throw new InvalidOperationException("El usuario no existe.");
+
+        if (!LimitesPlan.PuedeUsarDificultad(usuario.Rol, receta.Dificultad))
+        {
+            throw new ForbiddenException(LimitesPlan.MensajeDificultadPremium);
         }
     }
 }

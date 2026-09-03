@@ -39,4 +39,5 @@ public class SustitutoResponseDto
     public string IngredienteSustituto { get; set; } = string.Empty;
     public decimal FactorEquivalencia { get; set; }
     public string? Notas { get; set; }
+    public bool HayMasConProfesional { get; set; }
 }
