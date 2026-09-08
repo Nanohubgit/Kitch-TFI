@@ -3,6 +3,7 @@ using Kitch.Application.Interfaces;
 using Kitch.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace Kitch.Presentation.Controllers;
 
@@ -19,97 +20,140 @@ public class SuscripcionesController : ApiControllerBase
     }
 
     /// <summary>
-    /// Contrata la suscripción Profesional: cobra vía pasarela y, si aprueba, actualiza el rol.
-    /// 200 OK | 400 Bad Request | 401 Unauthorized | 403 Forbidden
+    /// Inicia Checkout Pro. Devuelve InitPoint. El rol NO se cambia acá.
     /// </summary>
     [HttpPost("contratar")]
     [Authorize(Roles = RolUsuario.Basico)]
-    public async Task<ActionResult<ContratarSuscripcionResult>> Contratar(
-        [FromBody] ContratarSuscripcionRequest request)
+    public async Task<ActionResult<IniciarPagoResponseDto>> Contratar(
+        [FromBody] ContratarSuscripcionRequest? request)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
-        try
-        {
-            var result = await _suscripcionService.ContratarAsync(usuarioId, request);
-
-            if (!result.Aprobado)
-            {
-                return BadRequest(result);
-            }
-
-            return Ok(result);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (InvalidOperationException ex) when (EsUsuarioYaProfesional(ex))
-        {
-            return StatusCode(StatusCodes.Status403Forbidden, new { error = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+        var usuarioId = GetUsuarioIdOrThrow();
+        var result = await _suscripcionService.ContratarAsync(usuarioId, request);
+        return Ok(result);
     }
 
-    private static bool EsUsuarioYaProfesional(InvalidOperationException ex) =>
-        ex.Message.Contains("ya posee el rol Profesional", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Webhook público de Mercado Pago. Único camino que promueve a Profesional.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("webhook")]
+    public async Task<IActionResult> Webhook(
+        [FromQuery] string? type,
+        [FromQuery] string? topic,
+        [FromQuery] string? id,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] PasarelaWebhookRequest? body)
+    {
+        var paymentId = ExtraerPaymentId(type, topic, id, body);
+        if (string.IsNullOrWhiteSpace(paymentId))
+        {
+            return Ok();
+        }
+
+        await _suscripcionService.ProcesarNotificacionPagoAsync(paymentId);
+        return Ok();
+    }
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<SuscripcionResponseDto>>> GetAll()
     {
-        var suscripciones = await _suscripcionService.GetAllAsync();
+        var adminId = GetUsuarioIdOrThrow();
+        var suscripciones = await _suscripcionService.GetAllAsync(adminId);
+        return Ok(suscripciones);
+    }
+
+    /// <summary>
+    /// Historial propio: solo lectura. El usuario no puede editar ni borrar suscripciones.
+    /// </summary>
+    [HttpGet("mias")]
+    public async Task<ActionResult<IEnumerable<SuscripcionResponseDto>>> GetMias()
+    {
+        var usuarioId = GetUsuarioIdOrThrow();
+        var suscripciones = await _suscripcionService.GetByUsuarioIdAsync(usuarioId);
         return Ok(suscripciones);
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<SuscripcionResponseDto>> GetById(int id)
     {
-        var suscripcion = await _suscripcionService.GetByIdAsync(id);
-
+        var solicitanteId = GetUsuarioIdOrThrow();
+        var suscripcion = await _suscripcionService.GetByIdAsync(id, solicitanteId);
         if (suscripcion is null)
         {
-            return NotFound();
+            return NotFound(new { message = "Suscripción no encontrada." });
         }
 
         return Ok(suscripcion);
     }
 
+    /// <summary>Solo administrador. El historial de suscripciones del usuario es de solo lectura.</summary>
     [HttpPost]
     public async Task<ActionResult<SuscripcionResponseDto>> Create([FromBody] SuscripcionCreateDto suscripcion)
     {
-        var createdSuscripcion = await _suscripcionService.CreateAsync(suscripcion);
-        return Created(string.Empty, createdSuscripcion);
+        try
+        {
+            var adminId = GetUsuarioIdOrThrow();
+            var createdSuscripcion = await _suscripcionService.CreateAsync(suscripcion, adminId);
+            return CreatedAtAction(nameof(GetById), new { id = createdSuscripcion.Id }, createdSuscripcion);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequestMessage(ex.Message);
+        }
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] SuscripcionUpdateDto suscripcion)
     {
-        var updated = await _suscripcionService.UpdateAsync(id, suscripcion);
-
-        if (!updated)
+        try
         {
-            return NotFound();
-        }
+            var adminId = GetUsuarioIdOrThrow();
+            var updated = await _suscripcionService.UpdateAsync(id, suscripcion, adminId);
+            if (!updated)
+            {
+                return NotFound(new { message = "Suscripción no encontrada." });
+            }
 
-        return NoContent();
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequestMessage(ex.Message);
+        }
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _suscripcionService.DeleteAsync(id);
-
+        var adminId = GetUsuarioIdOrThrow();
+        var deleted = await _suscripcionService.DeleteAsync(id, adminId);
         if (!deleted)
         {
-            return NotFound();
+            return NotFound(new { message = "Suscripción no encontrada." });
         }
 
         return NoContent();
+    }
+
+    private static string? ExtraerPaymentId(
+        string? type,
+        string? topic,
+        string? id,
+        PasarelaWebhookRequest? body)
+    {
+        var tipo = body?.Type ?? type ?? topic ?? body?.Topic;
+        var esPago = string.IsNullOrWhiteSpace(tipo) ||
+            tipo.Equals("payment", StringComparison.OrdinalIgnoreCase);
+
+        if (!esPago)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(body?.Data?.Id))
+        {
+            return body.Data.Id.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(id) ? null : id.Trim();
     }
 }

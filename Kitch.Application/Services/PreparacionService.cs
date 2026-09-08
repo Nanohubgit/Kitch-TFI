@@ -43,6 +43,8 @@ public class PreparacionService : IPreparacionService
             Ingredientes = receta.IngredientesReceta
                 .Select(ingrediente => new IngredienteAjustadoDto
                 {
+                    IngredienteId = ingrediente.IngredienteId,
+                    Nombre = ingrediente.Ingrediente?.Nombre ?? $"#{ingrediente.IngredienteId}",
                     CantidadOriginal = ingrediente.Cantidad,
                     CantidadAjustada = Math.Round(ingrediente.Cantidad * factor, 2),
                     UnidadMedida = ingrediente.UnidadMedida
@@ -77,6 +79,8 @@ public class PreparacionService : IPreparacionService
 
                     return new IngredienteDescuentoDto
                     {
+                        IngredienteId = ingrediente.IngredienteId,
+                        Nombre = ingrediente.Ingrediente?.Nombre ?? $"#{ingrediente.IngredienteId}",
                         CantidadDisponible = cantidadDisponible,
                         CantidadNecesaria = cantidadNecesaria,
                         CantidadPosterior = cantidadPosterior,
@@ -90,9 +94,9 @@ public class PreparacionService : IPreparacionService
 
     private async Task<Receta> GetRecetaConIngredientesAsync(int recetaId)
     {
-        var recetas = await _recetaRepository.FindWithIncludesAsync(
+        var recetas = await _recetaRepository.FindWithIncludePathsAsync(
             receta => receta.Id == recetaId,
-            receta => receta.IngredientesReceta);
+            $"{nameof(Receta.IngredientesReceta)}.{nameof(IngredienteReceta.Ingrediente)}");
 
         var receta = recetas.FirstOrDefault();
 

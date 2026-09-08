@@ -42,7 +42,7 @@ public class SmtpEmailService : IEmailService
 
         using var client = new SmtpClient();
 
-        // Mailtrap / la mayoría de SMTP de desarrollo usan el puerto 587 con STARTTLS.
+        // SendGrid SMTP (smtp.sendgrid.net:587) usa STARTTLS. User = "apikey", Password = API key.
         await client.ConnectAsync(host, port, SecureSocketOptions.StartTls);
 
         if (!string.IsNullOrWhiteSpace(user))

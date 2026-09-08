@@ -1,8 +1,11 @@
 using Kitch.Application.DTOs.Planificador;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Application.Mappings;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
+using System.Linq.Expressions;
 
 namespace Kitch.Application.Services;
 
@@ -11,29 +14,26 @@ public class PlanificadorService : IPlanificadorService
     private readonly IRepository<ComidaPlanificada> _repository;
     private readonly IRepository<Receta> _recetaRepository;
     private readonly IRepository<IngredienteReceta> _ingredienteRecetaRepository;
-    private readonly IRepository<StockUsuario> _stockRepository;
-    private readonly IRepository<ItemListaCompra> _listaCompraRepository;
-    private readonly IRepository<Ingrediente> _ingredienteRepository;
+    private readonly IRepository<Usuario> _usuarioRepository;
+    private readonly IListaCompraService _listaCompraService;
 
     public PlanificadorService(
         IRepository<ComidaPlanificada> repository,
         IRepository<Receta> recetaRepository,
         IRepository<IngredienteReceta> ingredienteRecetaRepository,
-        IRepository<StockUsuario> stockRepository,
-        IRepository<ItemListaCompra> listaCompraRepository,
-        IRepository<Ingrediente> ingredienteRepository)
+        IRepository<Usuario> usuarioRepository,
+        IListaCompraService listaCompraService)
     {
         _repository = repository;
         _recetaRepository = recetaRepository;
         _ingredienteRecetaRepository = ingredienteRecetaRepository;
-        _stockRepository = stockRepository;
-        _listaCompraRepository = listaCompraRepository;
-        _ingredienteRepository = ingredienteRepository;
+        _usuarioRepository = usuarioRepository;
+        _listaCompraService = listaCompraService;
     }
 
     public async Task<IEnumerable<ComidaPlanificadaResponseDto>> GetByUsuarioIdAsync(int usuarioId)
     {
-        var comidas = await _repository.FindAsync(comida => comida.UsuarioId == usuarioId);
+        var comidas = await ObtenerComidasConRecetaAsync(comida => comida.UsuarioId == usuarioId);
         return comidas.Select(comida => comida.ToResponseDto());
     }
 
@@ -42,7 +42,7 @@ public class PlanificadorService : IPlanificadorService
         var fechaInicio = fecha.Date;
         var fechaFin = fechaInicio.AddDays(1);
 
-        var comidas = await _repository.FindAsync(comida =>
+        var comidas = await ObtenerComidasConRecetaAsync(comida =>
             comida.UsuarioId == usuarioId &&
             comida.FechaAsignada >= fechaInicio &&
             comida.FechaAsignada < fechaFin);
@@ -52,14 +52,10 @@ public class PlanificadorService : IPlanificadorService
 
     public async Task<ComidaPlanificadaResponseDto?> GetByIdAsync(int id, int usuarioId)
     {
-        var comida = await _repository.GetByIdAsync(id);
+        var comidas = await ObtenerComidasConRecetaAsync(comida =>
+            comida.Id == id && comida.UsuarioId == usuarioId);
 
-        if (comida is null || comida.UsuarioId != usuarioId)
-        {
-            return null;
-        }
-
-        return comida.ToResponseDto();
+        return comidas.FirstOrDefault()?.ToResponseDto();
     }
 
     public async Task<ComidaPlanificadaResponseDto> CreateAsync(ComidaPlanificadaCreateDto comida)
@@ -70,7 +66,10 @@ public class PlanificadorService : IPlanificadorService
 
     public async Task<PlanificacionResultadoDto> PlanificarAsync(ComidaPlanificadaCreateDto comida)
     {
-        await ValidarRecetaExisteAsync(comida.RecetaId);
+        var receta = await ObtenerRecetaAsync(comida.RecetaId);
+        await AsegurarRecetaVisibleAsync(comida.UsuarioId, receta);
+        await ValidarHorizontePlanificacionAsync(comida.UsuarioId, comida.FechaAsignada);
+        await AsegurarCupoComidasPlanificadasAsync(comida.UsuarioId);
 
         if (await ExisteConflictoAsync(comida.UsuarioId, comida.FechaAsignada, comida.Turno))
         {
@@ -80,14 +79,15 @@ public class PlanificadorService : IPlanificadorService
         var entity = new ComidaPlanificada
         {
             UsuarioId = comida.UsuarioId,
-            RecetaId = comida.RecetaId,
+            RecetaId = receta.Id,
             FechaAsignada = comida.FechaAsignada,
             Turno = comida.Turno.Trim()
         };
 
         var created = await _repository.AddAsync(entity);
+        created.Receta = receta;
 
-        var agregados = await AgregarFaltantesAListaCompraAsync(comida.UsuarioId, comida.RecetaId);
+        var agregados = await ObtenerNombresAgregadosDeRecetaAsync(comida.UsuarioId, receta.Id);
 
         return new PlanificacionResultadoDto
         {
@@ -96,76 +96,21 @@ public class PlanificadorService : IPlanificadorService
         };
     }
 
-    private async Task<List<string>> AgregarFaltantesAListaCompraAsync(int usuarioId, int recetaId)
+    private async Task<List<string>> ObtenerNombresAgregadosDeRecetaAsync(int usuarioId, int recetaId)
     {
-        var agregados = new List<string>();
-
         var ingredientesReceta = await _ingredienteRecetaRepository.FindAsync(
             ingrediente => ingrediente.RecetaId == recetaId);
+        var idsReceta = ingredientesReceta
+            .Select(ingrediente => ingrediente.IngredienteId)
+            .ToHashSet();
 
-        if (ingredientesReceta.Count == 0)
-        {
-            return agregados;
-        }
+        var pendientes = await _listaCompraService.SincronizarFaltantesAsync(usuarioId);
 
-        var stock = await _stockRepository.FindAsync(item => item.UsuarioId == usuarioId);
-        var stockPorIngrediente = stock.ToDictionary(item => item.IngredienteId, item => item.Cantidad);
-
-        var faltantes = new Dictionary<int, decimal>();
-        foreach (var ingrediente in ingredientesReceta)
-        {
-            stockPorIngrediente.TryGetValue(ingrediente.IngredienteId, out var enStock);
-            var faltante = ingrediente.Cantidad - enStock;
-            if (faltante > 0)
-            {
-                faltantes.TryGetValue(ingrediente.IngredienteId, out var acumulado);
-                faltantes[ingrediente.IngredienteId] = acumulado + faltante;
-            }
-        }
-
-        if (faltantes.Count == 0)
-        {
-            return agregados;
-        }
-
-        var ingredienteIds = faltantes.Keys.ToList();
-        var ingredientes = await _ingredienteRepository.FindAsync(
-            ingrediente => ingredienteIds.Contains(ingrediente.Id));
-        var nombrePorIngrediente = ingredientes.ToDictionary(
-            ingrediente => ingrediente.Id,
-            ingrediente => ingrediente.Nombre);
-
-        var itemsExistentes = await _listaCompraRepository.FindAsync(item => item.UsuarioId == usuarioId);
-
-        foreach (var (ingredienteId, cantidadFaltante) in faltantes)
-        {
-            var nombre = nombrePorIngrediente.TryGetValue(ingredienteId, out var n)
-                ? n
-                : $"Ingrediente #{ingredienteId}";
-
-            var existente = itemsExistentes.FirstOrDefault(item =>
-                string.Equals(item.NombreArticulo, nombre, StringComparison.OrdinalIgnoreCase));
-
-            if (existente is not null)
-            {
-                existente.CantidadFaltante += (float)cantidadFaltante;
-                await _listaCompraRepository.UpdateAsync(existente);
-            }
-            else
-            {
-                await _listaCompraRepository.AddAsync(new ItemListaCompra
-                {
-                    UsuarioId = usuarioId,
-                    NombreArticulo = nombre,
-                    CantidadFaltante = (float)cantidadFaltante,
-                    EstaComprado = false
-                });
-            }
-
-            agregados.Add(nombre);
-        }
-
-        return agregados;
+        return pendientes
+            .Where(item => item.IngredienteId is int id && idsReceta.Contains(id))
+            .Select(item => item.NombreArticulo)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public async Task<bool> UpdateAsync(int id, ComidaPlanificadaUpdateDto comida, int usuarioId)
@@ -177,7 +122,9 @@ public class PlanificadorService : IPlanificadorService
             return false;
         }
 
-        await ValidarRecetaExisteAsync(comida.RecetaId);
+        var receta = await ObtenerRecetaAsync(comida.RecetaId);
+        await AsegurarRecetaVisibleAsync(usuarioId, receta);
+        await ValidarHorizontePlanificacionAsync(usuarioId, comida.FechaAsignada);
 
         if (await _repository.AnyAsync(existing =>
                 existing.Id != id &&
@@ -194,6 +141,7 @@ public class PlanificadorService : IPlanificadorService
         existingComida.Turno = comida.Turno.Trim();
 
         await _repository.UpdateAsync(existingComida);
+        await _listaCompraService.SincronizarFaltantesAsync(usuarioId);
 
         return true;
     }
@@ -208,11 +156,52 @@ public class PlanificadorService : IPlanificadorService
         }
 
         await _repository.DeleteAsync(comida);
+        await _listaCompraService.SincronizarFaltantesAsync(usuarioId);
 
         return true;
     }
 
-    private async Task ValidarRecetaExisteAsync(int recetaId)
+    private async Task AsegurarCupoComidasPlanificadasAsync(int usuarioId)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
+            ?? throw new InvalidOperationException("El usuario no existe.");
+
+        if (RolUsuario.TieneAccesoPremium(usuario.Rol))
+        {
+            return;
+        }
+
+        var cantidad = await _repository.CountAsync(comida => comida.UsuarioId == usuarioId);
+        if (cantidad >= LimitesPlan.MaxComidasPlanificadasBasico)
+        {
+            throw new ForbiddenException(LimitesPlan.MensajeLimitePlanner);
+        }
+    }
+
+    private async Task ValidarHorizontePlanificacionAsync(int usuarioId, DateTime fechaAsignada)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
+            ?? throw new InvalidOperationException("El usuario no existe.");
+
+        var diasMax = RolUsuario.TieneAccesoPremium(usuario.Rol)
+            ? LimitesPlan.DiasPlanificacionProfesional
+            : LimitesPlan.DiasPlanificacionBasico;
+
+        var hoy = DateTime.UtcNow.Date;
+        var limite = hoy.AddDays(diasMax);
+
+        if (fechaAsignada.Date < hoy)
+        {
+            throw new InvalidOperationException("No podés planificar comidas en fechas pasadas.");
+        }
+
+        if (fechaAsignada.Date > limite)
+        {
+            throw new ForbiddenException(LimitesPlan.MensajeHorizontePlanner);
+        }
+    }
+
+    private async Task<Receta> ObtenerRecetaAsync(int recetaId)
     {
         var receta = await _recetaRepository.GetByIdAsync(recetaId);
         if (receta is null)
@@ -220,7 +209,24 @@ public class PlanificadorService : IPlanificadorService
             throw new KeyNotFoundException(
                 $"La receta con id {recetaId} no existe. Generá y guardá una receta primero para obtener su id.");
         }
+
+        return receta;
     }
+
+    private async Task AsegurarRecetaVisibleAsync(int usuarioId, Receta receta)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
+            ?? throw new InvalidOperationException("El usuario no existe.");
+
+        if (!LimitesPlan.PuedeUsarDificultad(usuario.Rol, receta.Dificultad))
+        {
+            throw new ForbiddenException(LimitesPlan.MensajeDificultadPremium);
+        }
+    }
+
+    private Task<IReadOnlyList<ComidaPlanificada>> ObtenerComidasConRecetaAsync(
+        Expression<Func<ComidaPlanificada, bool>> predicate) =>
+        _repository.FindWithIncludesAsync(predicate, comida => comida.Receta);
 
     private async Task<bool> ExisteConflictoAsync(int usuarioId, DateTime fecha, string turno)
     {

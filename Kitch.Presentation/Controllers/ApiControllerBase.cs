@@ -11,4 +11,21 @@ public abstract class ApiControllerBase : ControllerBase
 
         return int.TryParse(usuarioIdClaim, out usuarioId);
     }
+
+    protected int GetUsuarioIdOrThrow(string? mensaje = null)
+    {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            throw new UnauthorizedAccessException(
+                mensaje ?? "No se pudo identificar al usuario a partir del token.");
+        }
+
+        return usuarioId;
+    }
+
+    protected ActionResult BadRequestMessage(string message) =>
+        BadRequest(new { message });
+
+    protected ActionResult UnauthorizedMessage(string message) =>
+        Unauthorized(new { message });
 }

@@ -6,7 +6,7 @@ public interface IIngredienteService
 {
     Task<IEnumerable<IngredienteResponseDto>> GetAllAsync();
     Task<IngredienteResponseDto?> GetByIdAsync(int id);
-    Task<IngredienteResponseDto> CreateAsync(IngredienteCreateDto ingrediente);
-    Task<bool> UpdateAsync(int id, IngredienteUpdateDto ingrediente);
-    Task<bool> DeleteAsync(int id);
+    Task<IngredienteResponseDto> CreateAsync(IngredienteCreateDto ingrediente, int solicitanteId);
+    Task<bool> UpdateAsync(int id, IngredienteUpdateDto ingrediente, int solicitanteId);
+    Task<bool> DeleteAsync(int id, int solicitanteId);
 }

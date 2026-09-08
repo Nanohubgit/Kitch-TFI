@@ -20,18 +20,15 @@ public class PagosController : ApiControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<PagoResponseDto>>> GetAll()
     {
-        var pagos = await _pagoService.GetAllAsync();
+        var adminId = GetUsuarioIdOrThrow();
+        var pagos = await _pagoService.GetAllAsync(adminId);
         return Ok(pagos);
     }
 
     [HttpGet("mios")]
     public async Task<ActionResult<IEnumerable<PagoResponseDto>>> GetMios()
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
+        var usuarioId = GetUsuarioIdOrThrow();
         var pagos = await _pagoService.GetByUsuarioIdAsync(usuarioId);
         return Ok(pagos);
     }
@@ -39,7 +36,8 @@ public class PagosController : ApiControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<PagoResponseDto>> GetById(int id)
     {
-        var pago = await _pagoService.GetByIdAsync(id);
+        var solicitanteId = GetUsuarioIdOrThrow();
+        var pago = await _pagoService.GetByIdAsync(id, solicitanteId);
 
         if (pago is null)
         {
@@ -49,17 +47,21 @@ public class PagosController : ApiControllerBase
         return Ok(pago);
     }
 
+    /// <summary>Solo administrador. El usuario no puede crear pagos de su historial.</summary>
     [HttpPost]
     public async Task<ActionResult<PagoResponseDto>> Create([FromBody] PagoCreateDto pago)
     {
-        var createdPago = await _pagoService.CreateAsync(pago);
-        return Created(string.Empty, createdPago);
+        var adminId = GetUsuarioIdOrThrow();
+        var createdPago = await _pagoService.CreateAsync(pago, adminId);
+        return CreatedAtAction(nameof(GetById), new { id = createdPago.Id }, createdPago);
     }
 
+    /// <summary>Solo administrador. El historial del usuario es de solo lectura.</summary>
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] PagoUpdateDto pago)
     {
-        var updated = await _pagoService.UpdateAsync(id, pago);
+        var adminId = GetUsuarioIdOrThrow();
+        var updated = await _pagoService.UpdateAsync(id, pago, adminId);
 
         if (!updated)
         {
@@ -69,10 +71,12 @@ public class PagosController : ApiControllerBase
         return NoContent();
     }
 
+    /// <summary>Solo administrador. El usuario no puede borrar su historial de pagos.</summary>
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _pagoService.DeleteAsync(id);
+        var adminId = GetUsuarioIdOrThrow();
+        var deleted = await _pagoService.DeleteAsync(id, adminId);
 
         if (!deleted)
         {

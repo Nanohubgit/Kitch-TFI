@@ -21,55 +21,24 @@ public class PreparacionController : ApiControllerBase
     public async Task<ActionResult<PrevisualizarPorcionesResponseDto>> PrevisualizarPorciones(
         [FromBody] PrevisualizarPorcionesRequestDto request)
     {
-        try
-        {
-            var response = await _preparacionService.PrevisualizarRecalculoPorcionesAsync(request);
-            return Ok(response);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        var response = await _preparacionService.PrevisualizarRecalculoPorcionesAsync(request);
+        return Ok(response);
     }
 
     [HttpPost("previsualizar-descuento-stock")]
     public async Task<ActionResult<PrevisualizarDescuentoStockResponseDto>> PrevisualizarDescuentoStock(
         [FromBody] PrevisualizarDescuentoStockRequestDto request)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
-        request.UsuarioId = usuarioId;
-
-        try
-        {
-            var response = await _preparacionService.PrevisualizarDescuentoStockAsync(request);
-            return Ok(response);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        request.UsuarioId = GetUsuarioIdOrThrow();
+        var response = await _preparacionService.PrevisualizarDescuentoStockAsync(request);
+        return Ok(response);
     }
 
     [HttpPost("descontar-stock")]
     public async Task<IActionResult> DescontarStock([FromBody] ConfirmarDescuentoStockRequestDto request)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized("No se pudo identificar al usuario a partir del token.");
-        }
-
-        try
-        {
-            await _preparacionService.DescontarIngredientesAsync(usuarioId, request.RecetaId, request.PorcionesCocinadas);
-            return Ok(new { mensaje = "Stock actualizado correctamente. ¡Buen provecho!" });
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
-        {
-            return BadRequest(ex.Message);
-        }
+        var usuarioId = GetUsuarioIdOrThrow();
+        await _preparacionService.DescontarIngredientesAsync(usuarioId, request.RecetaId, request.PorcionesCocinadas);
+        return Ok(new { mensaje = "Stock actualizado correctamente. ¡Buen provecho!" });
     }
 }

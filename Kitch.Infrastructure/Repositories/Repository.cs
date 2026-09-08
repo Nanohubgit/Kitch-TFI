@@ -43,6 +43,18 @@ public class Repository<T> : IRepository<T> where T : class
         return await query.ToListAsync();
     }
 
+    public async Task<IReadOnlyList<T>> FindWithIncludePathsAsync(Expression<Func<T, bool>> predicate, params string[] includePaths)
+    {
+        IQueryable<T> query = _dbSet.Where(predicate);
+
+        foreach (var path in includePaths)
+        {
+            query = query.Include(path);
+        }
+
+        return await query.ToListAsync();
+    }
+
     public async Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate)
     {
         return await _dbSet.FirstOrDefaultAsync(predicate);
@@ -51,6 +63,11 @@ public class Repository<T> : IRepository<T> where T : class
     public async Task<bool> AnyAsync(Expression<Func<T, bool>> predicate)
     {
         return await _dbSet.AnyAsync(predicate);
+    }
+
+    public async Task<int> CountAsync(Expression<Func<T, bool>> predicate)
+    {
+        return await _dbSet.CountAsync(predicate);
     }
 
     public async Task<T> AddAsync(T entity)

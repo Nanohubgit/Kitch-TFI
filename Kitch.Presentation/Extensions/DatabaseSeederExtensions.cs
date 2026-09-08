@@ -7,6 +7,13 @@ namespace Kitch.Presentation.Extensions;
 
 public static class DatabaseSeederExtensions
 {
+    public static async Task MigrateDatabaseAsync(this WebApplication app)
+    {
+        using var scope = app.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<KitchDbContext>();
+        await context.Database.MigrateAsync();
+    }
+
     public static async Task SeedAdminUserAsync(this WebApplication app)
     {
         using var scope = app.Services.CreateScope();

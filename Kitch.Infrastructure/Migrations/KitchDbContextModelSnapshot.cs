@@ -175,15 +175,25 @@ namespace Kitch.Infrastructure.Migrations
                     b.Property<bool>("EstaComprado")
                         .HasColumnType("bit");
 
+                    b.Property<int?>("IngredienteId")
+                        .HasColumnType("int");
+
                     b.Property<string>("NombreArticulo")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("UnidadMedida")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<int>("UsuarioId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IngredienteId");
 
                     b.HasIndex("UsuarioId");
 
@@ -273,6 +283,13 @@ namespace Kitch.Infrastructure.Migrations
 
                     b.Property<int>("CaloriasEstimadas")
                         .HasColumnType("int");
+
+                    b.Property<string>("Categoria")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("general");
 
                     b.Property<string>("Descripcion")
                         .IsRequired()
@@ -561,11 +578,18 @@ namespace Kitch.Infrastructure.Migrations
 
             modelBuilder.Entity("Kitch.Domain.Entities.ItemListaCompra", b =>
                 {
+                    b.HasOne("Kitch.Domain.Entities.Ingrediente", "Ingrediente")
+                        .WithMany()
+                        .HasForeignKey("IngredienteId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Kitch.Domain.Entities.Usuario", "Usuario")
                         .WithMany()
                         .HasForeignKey("UsuarioId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Ingrediente");
 
                     b.Navigation("Usuario");
                 });

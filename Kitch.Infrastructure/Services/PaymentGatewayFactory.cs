@@ -26,8 +26,8 @@ public class PaymentGatewayFactory : IPaymentGatewayFactory
     {
         var gateway = _configuration["PaymentGateway"]?.Trim();
 
-        return gateway?.Equals(MercadoPago, StringComparison.OrdinalIgnoreCase) == true
-            ? _serviceProvider.GetRequiredService<MercadoPagoPaymentService>()
-            : _serviceProvider.GetRequiredService<StripePaymentService>();
+        return gateway?.Equals(Stripe, StringComparison.OrdinalIgnoreCase) == true
+            ? _serviceProvider.GetRequiredService<StripePaymentService>()
+            : _serviceProvider.GetRequiredService<MercadoPagoPaymentService>();
     }
 }

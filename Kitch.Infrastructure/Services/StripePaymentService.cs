@@ -47,4 +47,19 @@ public class StripePaymentService : IPaymentGatewayService
             Mensaje = "Pago simulado aprobado (Stripe dummy)."
         };
     }
+
+    public Task<CheckoutPreferenceResult> CrearPreferenciaAsync(
+        PaymentGatewayRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        throw new InvalidOperationException(
+            "Stripe no implementa Checkout Pro. Configurá PaymentGateway=MercadoPago.");
+    }
+
+    public Task<PaymentNotificationResult?> ConsultarPagoAsync(
+        string paymentId,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<PaymentNotificationResult?>(null);
+    }
 }

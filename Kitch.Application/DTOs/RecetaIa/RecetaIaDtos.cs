@@ -39,6 +39,9 @@ public class RecetaGeneradaDto
     [JsonPropertyName("caloriasEstimadas")]
     public int CaloriasEstimadas { get; set; }
 
+    [JsonPropertyName("categoria")]
+    public string Categoria { get; set; } = "general";
+
     [JsonPropertyName("ingredientes")]
     public List<IngredienteGeneradoDto> Ingredientes { get; set; } = [];
 

@@ -1,6 +1,5 @@
 using Kitch.Application.DTOs.Recetas;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +9,7 @@ namespace Kitch.Presentation.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class RecetasController : ControllerBase
+public class RecetasController : ApiControllerBase
 {
     private readonly IRecetaService _recetaService;
 
@@ -22,18 +21,17 @@ public class RecetasController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<RecetaResponseDto>>> GetAll()
     {
-        var recetas = await _recetaService.GetAllAsync();
+        var recetas = await _recetaService.GetAllAsync(GetUsuarioIdOrThrow());
         return Ok(recetas);
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<RecetaResponseDto>> GetById(int id)
     {
-        var receta = await _recetaService.GetByIdAsync(id);
-
+        var receta = await _recetaService.GetByIdAsync(id, GetUsuarioIdOrThrow());
         if (receta is null)
         {
-            return NotFound();
+            return NotFound(new { message = "Receta no encontrada." });
         }
 
         return Ok(receta);
@@ -42,39 +40,37 @@ public class RecetasController : ControllerBase
     [HttpGet("dificultad/{dificultad}")]
     public async Task<ActionResult<IEnumerable<RecetaResponseDto>>> GetByDificultad(DificultadReceta dificultad)
     {
-        var recetas = await _recetaService.GetByDificultadAsync(dificultad);
+        var recetas = await _recetaService.GetByDificultadAsync(dificultad, GetUsuarioIdOrThrow());
         return Ok(recetas);
     }
 
     [HttpPost]
     public async Task<ActionResult<RecetaResponseDto>> Create([FromBody] RecetaCreateDto receta)
     {
-        var createdReceta = await _recetaService.CreateAsync(receta);
-        return Created(string.Empty, createdReceta);
+        var createdReceta = await _recetaService.CreateAsync(receta, GetUsuarioIdOrThrow());
+        return CreatedAtAction(nameof(GetById), new { id = createdReceta.Id }, createdReceta);
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] RecetaUpdateDto receta)
     {
-        var updated = await _recetaService.UpdateAsync(id, receta);
-
+        var updated = await _recetaService.UpdateAsync(id, receta, GetUsuarioIdOrThrow());
         if (!updated)
         {
-            return NotFound();
+            return NotFound(new { message = "Receta no encontrada." });
         }
 
         return NoContent();
     }
 
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = RolUsuario.Admin)]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _recetaService.DeleteAsync(id);
-
+        var adminId = GetUsuarioIdOrThrow();
+        var deleted = await _recetaService.DeleteAsync(id, adminId);
         if (!deleted)
         {
-            return NotFound();
+            return NotFound(new { message = "Receta no encontrada." });
         }
 
         return NoContent();

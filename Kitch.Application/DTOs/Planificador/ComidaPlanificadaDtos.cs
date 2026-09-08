@@ -24,6 +24,8 @@ public class ComidaPlanificadaUpdateDto : ComidaPlanificadaCreateDto
 public class ComidaPlanificadaResponseDto
 {
     public int Id { get; set; }
+    public int RecetaId { get; set; }
+    public string RecetaTitulo { get; set; } = string.Empty;
     public DateTime FechaAsignada { get; set; }
     public string Turno { get; set; } = string.Empty;
 }

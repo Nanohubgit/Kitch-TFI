@@ -1,6 +1,5 @@
 using Kitch.Application.DTOs.Ingredientes;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Constants;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -8,8 +7,8 @@ namespace Kitch.Presentation.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = RolUsuario.Admin)]
-public class IngredientesController : ControllerBase
+[Authorize]
+public class IngredientesController : ApiControllerBase
 {
     private readonly IIngredienteService _ingredienteService;
 
@@ -41,41 +40,30 @@ public class IngredientesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<IngredienteResponseDto>> Create([FromBody] IngredienteCreateDto ingrediente)
     {
-        try
-        {
-            var createdIngrediente = await _ingredienteService.CreateAsync(ingrediente);
-            return Created(string.Empty, createdIngrediente);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        var adminId = GetUsuarioIdOrThrow();
+        var createdIngrediente = await _ingredienteService.CreateAsync(ingrediente, adminId);
+        return CreatedAtAction(nameof(GetById), new { id = createdIngrediente.Id }, createdIngrediente);
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] IngredienteUpdateDto ingrediente)
     {
-        try
-        {
-            var updated = await _ingredienteService.UpdateAsync(id, ingrediente);
+        var adminId = GetUsuarioIdOrThrow();
+        var updated = await _ingredienteService.UpdateAsync(id, ingrediente, adminId);
 
-            if (!updated)
-            {
-                return NotFound();
-            }
-
-            return NoContent();
-        }
-        catch (InvalidOperationException ex)
+        if (!updated)
         {
-            return BadRequest(ex.Message);
+            return NotFound();
         }
+
+        return NoContent();
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await _ingredienteService.DeleteAsync(id);
+        var adminId = GetUsuarioIdOrThrow();
+        var deleted = await _ingredienteService.DeleteAsync(id, adminId);
 
         if (!deleted)
         {
