@@ -8,7 +8,8 @@ namespace Kitch.Infrastructure.Persistence.Configurations
     {
         public void Configure(EntityTypeBuilder<StockUsuario> entity)
         {
-         entity.ToTable("StockUsuario");
+            entity.ToTable("StockUsuario", tabla =>
+                tabla.HasCheckConstraint("CK_StockUsuario_CantidadNoNegativa", "[Cantidad] >= 0"));
 
             entity.HasKey(stockUsuario => stockUsuario.Id);
 

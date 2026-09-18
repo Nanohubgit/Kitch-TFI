@@ -1,5 +1,6 @@
 using System.Text;
 using Kitch.Presentation.Extensions;
+using Kitch.Presentation.Filters;
 using Kitch.Presentation.Middleware;
 using Kitch.Application;
 using Kitch.Infrastructure;
@@ -12,7 +13,35 @@ using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    options.Filters.Add<AsegurarRolVigenteFilter>();
+})
+.ConfigureApiBehaviorOptions(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var detalle = string.Join(" ",
+            context.ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => string.IsNullOrWhiteSpace(e.ErrorMessage)
+                    ? "Dato inválido."
+                    : e.ErrorMessage));
+
+        return new BadRequestObjectResult(new ProblemDetails
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "Pedido inválido",
+            Detail = string.IsNullOrWhiteSpace(detalle)
+                ? "Revisá los datos enviados."
+                : detalle,
+            Instance = context.HttpContext.Request.Path
+        })
+        {
+            ContentTypes = { "application/problem+json" }
+        };
+    };
+});
 builder.Services.AddProblemDetails();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>

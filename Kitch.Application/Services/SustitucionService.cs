@@ -27,6 +27,7 @@ public class SustitucionService : ISustitucionService
     private readonly IRepository<Usuario> _usuarioRepository;
     private readonly IAsistenteIaClient _asistenteIa;
     private readonly IIngredienteNormalizerService _normalizer;
+    private readonly ICuotaIaService _cuotaIa;
 
     public SustitucionService(
         IRepository<SustitutoIngrediente> sustitutoRepository,
@@ -34,7 +35,8 @@ public class SustitucionService : ISustitucionService
         IRepository<StockUsuario> stockRepository,
         IRepository<Usuario> usuarioRepository,
         IAsistenteIaClient asistenteIa,
-        IIngredienteNormalizerService normalizer)
+        IIngredienteNormalizerService normalizer,
+        ICuotaIaService cuotaIa)
     {
         _sustitutoRepository = sustitutoRepository;
         _ingredienteRepository = ingredienteRepository;
@@ -42,6 +44,7 @@ public class SustitucionService : ISustitucionService
         _usuarioRepository = usuarioRepository;
         _asistenteIa = asistenteIa;
         _normalizer = normalizer;
+        _cuotaIa = cuotaIa;
     }
 
     public async Task<IEnumerable<SustitutoSugerido>> BuscarSustitutosAsync(int usuarioId, int ingredienteId)
@@ -57,7 +60,7 @@ public class SustitucionService : ISustitucionService
 
         if (sustitutos.Count == 0)
         {
-            await GenerarYPersistirSustitutosAsync(ingredienteOriginal);
+            await GenerarYPersistirSustitutosAsync(usuarioId, ingredienteOriginal);
             sustitutos = await _sustitutoRepository.FindAsync(
                 sustituto => sustituto.IngredienteOriginalId == ingredienteId);
         }
@@ -115,8 +118,10 @@ public class SustitucionService : ISustitucionService
         return sugeridos;
     }
 
-    private async Task GenerarYPersistirSustitutosAsync(Ingrediente ingredienteOriginal)
+    private async Task GenerarYPersistirSustitutosAsync(int usuarioId, Ingrediente ingredienteOriginal)
     {
+        await _cuotaIa.ConsumirAsync(usuarioId);
+
         var prompt = $"Ingrediente original: {ingredienteOriginal.Nombre}.";
         var json = await _asistenteIa.GenerarRespuestaJsonAsync(prompt, InstruccionSustitutos);
 

@@ -12,9 +12,20 @@ public static class LimitesPlan
     public const int DiasPlanificacionBasico = 7;
     public const int DiasPlanificacionProfesional = 30;
     public const int MaxSustitutosBasico = 1;
+    public const int MaxPeticionesIaBasico = 8;
+    public const int MaxPeticionesIaProfesional = 40;
 
     public const string MensajeDificultadPremium =
         "Las recetas difíciles son del plan Profesional. Con Básico podés usar Fácil e Intermedia. Pasate a Profesional para desbloquearlas.";
+
+    public const string MensajePedidoDificilBasico =
+        "Las recetas difíciles son del plan Profesional. Con Básico puedo armarte recetas Fácil o Intermedia. Pasate a Profesional para desbloquearlas.";
+
+    public const string MensajeLimiteIaBasico =
+        "Llegaste al límite diario de consultas al asistente del plan Básico (8). Pasate a Profesional para tener más, o probá mañana.";
+
+    public const string MensajeLimiteIaProfesional =
+        "Llegaste al límite diario de consultas al asistente (40). Probá de nuevo mañana.";
 
     public const string MensajeLimiteFavoritos =
         "Alcanzaste el límite de recetas guardadas del plan Básico (5). Pasate a Profesional para guardar más.";

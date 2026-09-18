@@ -42,6 +42,20 @@ public class PlanificadorController : ApiControllerBase
         return Ok(comidas);
     }
 
+    [HttpGet("mias/rango")]
+    public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetMiasPorRango(
+        [FromQuery] DateTime desde,
+        [FromQuery] DateTime hasta)
+    {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
+        }
+
+        var comidas = await _planificadorService.GetByRangoFechasAsync(usuarioId, desde, hasta);
+        return Ok(comidas);
+    }
+
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ComidaPlanificadaResponseDto>> GetById(int id)
     {
@@ -72,6 +86,29 @@ public class PlanificadorController : ApiControllerBase
         try
         {
             var createdComida = await _planificadorService.CreateAsync(comida);
+            return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("agendar")]
+    public async Task<ActionResult<ComidaPlanificadaResponseDto>> Agendar([FromBody] AgendarRecetaRequestDto request)
+    {
+        if (!TryGetUsuarioId(out var usuarioId))
+        {
+            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
+        }
+
+        try
+        {
+            var createdComida = await _planificadorService.AgendarAsync(usuarioId, request);
             return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
         }
         catch (KeyNotFoundException ex)

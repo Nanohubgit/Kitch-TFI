@@ -15,6 +15,7 @@ public static class DependencyInjection
         services.AddScoped<ISuscripcionService, SuscripcionService>();
         services.AddScoped<IContratoSubService, ContratoSubService>();
         services.AddScoped<IStockUsuarioService, StockUsuarioService>();
+        services.AddScoped<IAlacenaService, AlacenaService>();
         services.AddScoped<IPlanificadorService, PlanificadorService>();
         services.AddScoped<IListaCompraService, ListaCompraService>();
         services.AddScoped<IFavoritoService, FavoritoService>();
@@ -26,6 +27,8 @@ public static class DependencyInjection
         services.AddScoped<IChatIaService, ChatIaService>();
         services.AddScoped<IRecetaIaService, RecetaIaService>();
         services.AddScoped<IRecomendacionService, RecomendacionService>();
+        services.AddScoped<ICuotaIaService, CuotaIaService>();
+        services.AddScoped<ISuscripcionVigenciaService, SuscripcionVigenciaService>();
 
         return services;
     }

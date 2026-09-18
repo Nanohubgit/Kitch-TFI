@@ -50,6 +50,27 @@ public class PlanificadorService : IPlanificadorService
         return comidas.Select(comida => comida.ToResponseDto());
     }
 
+    public async Task<IEnumerable<ComidaPlanificadaResponseDto>> GetByRangoFechasAsync(
+        int usuarioId,
+        DateTime desde,
+        DateTime hasta)
+    {
+        if (hasta.Date < desde.Date)
+        {
+            throw new ArgumentException("La fecha 'hasta' no puede ser anterior a 'desde'.");
+        }
+
+        var fechaInicio = desde.Date;
+        var fechaFin = hasta.Date.AddDays(1);
+
+        var comidas = await ObtenerComidasConRecetaAsync(comida =>
+            comida.UsuarioId == usuarioId &&
+            comida.FechaAsignada >= fechaInicio &&
+            comida.FechaAsignada < fechaFin);
+
+        return comidas.Select(comida => comida.ToResponseDto());
+    }
+
     public async Task<ComidaPlanificadaResponseDto?> GetByIdAsync(int id, int usuarioId)
     {
         var comidas = await ObtenerComidasConRecetaAsync(comida =>
@@ -62,6 +83,17 @@ public class PlanificadorService : IPlanificadorService
     {
         var resultado = await PlanificarAsync(comida);
         return resultado.Comida;
+    }
+
+    public Task<ComidaPlanificadaResponseDto> AgendarAsync(int usuarioId, AgendarRecetaRequestDto request)
+    {
+        return CreateAsync(new ComidaPlanificadaCreateDto
+        {
+            UsuarioId = usuarioId,
+            RecetaId = request.RecetaId,
+            FechaAsignada = request.FechaAsignada,
+            Turno = request.Turno
+        });
     }
 
     public async Task<PlanificacionResultadoDto> PlanificarAsync(ComidaPlanificadaCreateDto comida)

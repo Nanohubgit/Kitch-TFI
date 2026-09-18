@@ -21,5 +21,9 @@ public class PerfilUsuarioResponseDto
     /// </summary>
     public DateTime? SuscripcionActivaHasta { get; set; }
 
+    public int PeticionesIaDelDia { get; set; }
+
+    public int LimitePeticionesIa { get; set; }
+
     public string PreferenciaDietetica { get; set; } = string.Empty;
 }

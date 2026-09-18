@@ -3,7 +3,7 @@ using Kitch.Application.DTOs.Suscripciones;
 namespace Kitch.Application.Interfaces;
 
 /// <summary>
-/// Puerto de Application para cobros. La implementación concreta (Stripe, MercadoPago, etc.)
+/// Puerto de Application para cobros. La implementación concreta (Mercado Pago)
 /// vive en Infrastructure; Application solo conoce este contrato.
 /// </summary>
 public interface IPaymentGatewayService

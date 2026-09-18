@@ -22,15 +22,18 @@ public class AuthService : IAuthService
     private readonly KitchDbContext _context;
     private readonly IConfiguration _configuration;
     private readonly IEmailService _emailService;
+    private readonly ISuscripcionVigenciaService _suscripcionVigencia;
 
     public AuthService(
         KitchDbContext context,
         IConfiguration configuration,
-        IEmailService emailService)
+        IEmailService emailService,
+        ISuscripcionVigenciaService suscripcionVigencia)
     {
         _context = context;
         _configuration = configuration;
         _emailService = emailService;
+        _suscripcionVigencia = suscripcionVigencia;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
@@ -193,6 +196,7 @@ public class AuthService : IAuthService
         // Un solo uso: limpiar OTP antes de emitir sesión.
         usuario.TwoFactorCode = null;
         usuario.TwoFactorCodeExpiresAt = null;
+        await _suscripcionVigencia.AsegurarRolVigenteAsync(usuario);
         await _context.SaveChangesAsync();
 
         var expiresAt = DateTime.UtcNow.AddMinutes(GetJwtExpiresInMinutes());
@@ -212,7 +216,6 @@ public class AuthService : IAuthService
     public async Task<PerfilUsuarioResponseDto?> GetPerfilAsync(int usuarioId)
     {
         var usuario = await _context.Usuarios
-            .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == usuarioId);
 
         if (usuario is null)
@@ -220,6 +223,7 @@ public class AuthService : IAuthService
             return null;
         }
 
+        await _suscripcionVigencia.AsegurarRolVigenteAsync(usuario);
         return await MapPerfilAsync(usuario);
     }
 
@@ -254,6 +258,7 @@ public class AuthService : IAuthService
 
         usuario.NombreUsuario = nombreUsuario;
         usuario.PreferenciaDietetica = preferencia;
+        await _suscripcionVigencia.AsegurarRolVigenteAsync(usuario);
         await _context.SaveChangesAsync();
 
         return await MapPerfilAsync(usuario);
@@ -281,6 +286,10 @@ public class AuthService : IAuthService
             Apellido = usuario.Apellido,
             Rol = usuario.Rol,
             SuscripcionActivaHasta = suscripcionActivaHasta,
+            PeticionesIaDelDia = usuario.FechaCuotaIaUtc?.Date == DateTime.UtcNow.Date
+                ? usuario.PeticionesIaDelDia
+                : 0,
+            LimitePeticionesIa = PedidoRecetaPremium.TopeDiario(usuario.Rol),
             PreferenciaDietetica = usuario.PreferenciaDietetica
         };
     }
