@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Kitch.Application.DTOs.Favoritos;
 using Kitch.Application.DTOs.RecetaIa;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
@@ -37,6 +38,7 @@ public class RecetaIaService : IRecetaIaService
     private readonly IRepository<Usuario> _usuarioRepository;
     private readonly IFavoritoService _favoritoService;
     private readonly IIngredienteNormalizerService _normalizer;
+    private readonly ICuotaIaService _cuotaIa;
 
     public RecetaIaService(
         IAsistenteIaClient asistenteIa,
@@ -45,7 +47,8 @@ public class RecetaIaService : IRecetaIaService
         IRepository<Receta> recetaRepository,
         IRepository<Usuario> usuarioRepository,
         IFavoritoService favoritoService,
-        IIngredienteNormalizerService normalizer)
+        IIngredienteNormalizerService normalizer,
+        ICuotaIaService cuotaIa)
     {
         _asistenteIa = asistenteIa;
         _stockRepository = stockRepository;
@@ -54,10 +57,19 @@ public class RecetaIaService : IRecetaIaService
         _usuarioRepository = usuarioRepository;
         _favoritoService = favoritoService;
         _normalizer = normalizer;
+        _cuotaIa = cuotaIa;
     }
 
     public async Task<RecetaGeneradaDto> GenerarRecetaAsync(int usuarioId, string? preferencias)
     {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        if (!RolUsuario.TieneAccesoPremium(usuario?.Rol) && PedidoRecetaPremium.EsPedido(preferencias))
+        {
+            throw new ForbiddenException(LimitesPlan.MensajePedidoDificilBasico);
+        }
+
+        await _cuotaIa.ConsumirAsync(usuarioId);
+
         var stock = await _stockRepository.FindWithIncludesAsync(
             item => item.UsuarioId == usuarioId && item.Cantidad > 0,
             item => item.Ingrediente);
@@ -80,7 +92,6 @@ public class RecetaIaService : IRecetaIaService
             }
         }
 
-        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
         var restriccion = RestriccionDieteticaPrompt.ParaSystemPrompt(usuario?.PreferenciaDietetica);
         var systemInstruction = restriccion + " " + InstruccionGeneracion;
 

@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using Kitch.Application.DTOs.ChatIa;
 using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.DTOs.RecetaIa;
+using Kitch.Application.DTOs.Sustituciones;
 using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Constants;
@@ -102,12 +103,12 @@ public class ChatIaService : IChatIaService
     private readonly IRecetaIaService _recetaIaService;
     private readonly ISustitucionService _sustitucionService;
     private readonly IRecomendacionService _recomendacionService;
-    private readonly IRepository<Receta> _recetaRepository;
     private readonly IRepository<RecetaFavorita> _favoritoRepository;
     private readonly IPlanificadorService _planificadorService;
     private readonly IPreparacionService _preparacionService;
     private readonly IIngredienteNormalizerService _normalizer;
     private readonly IFavoritoService _favoritoService;
+    private readonly ICuotaIaService _cuotaIa;
 
     public ChatIaService(
         IAsistenteIaClient asistenteIa,
@@ -117,12 +118,12 @@ public class ChatIaService : IChatIaService
         IRecetaIaService recetaIaService,
         ISustitucionService sustitucionService,
         IRecomendacionService recomendacionService,
-        IRepository<Receta> recetaRepository,
         IRepository<RecetaFavorita> favoritoRepository,
         IPlanificadorService planificadorService,
         IPreparacionService preparacionService,
         IIngredienteNormalizerService normalizer,
-        IFavoritoService favoritoService)
+        IFavoritoService favoritoService,
+        ICuotaIaService cuotaIa)
     {
         _asistenteIa = asistenteIa;
         _usuarioRepository = usuarioRepository;
@@ -131,12 +132,12 @@ public class ChatIaService : IChatIaService
         _recetaIaService = recetaIaService;
         _sustitucionService = sustitucionService;
         _recomendacionService = recomendacionService;
-        _recetaRepository = recetaRepository;
         _favoritoRepository = favoritoRepository;
         _planificadorService = planificadorService;
         _preparacionService = preparacionService;
         _normalizer = normalizer;
         _favoritoService = favoritoService;
+        _cuotaIa = cuotaIa;
     }
 
     public async Task<ChatRespuestaDto> ProcesarMensajeAsync(int usuarioId, ChatRequestDto request)
@@ -164,6 +165,29 @@ public class ChatIaService : IChatIaService
             systemInstruction +=
                 "\n\nPLAN BASICO: en toda receta que generes, dificultad SOLO puede ser \"Facil\" o \"Medio\". " +
                 "NUNCA uses \"Dificil\". Si el plato es elaborado, bajá la dificultad a Medio y simplificá los pasos.";
+        }
+
+        var ultimoTexto = turnos[^1].Texto;
+        if (!RolUsuario.TieneAccesoPremium(usuario?.Rol) && PedidoRecetaPremium.EsPedido(ultimoTexto))
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = LimitesPlan.MensajePedidoDificilBasico
+            };
+        }
+
+        try
+        {
+            await _cuotaIa.ConsumirAsync(usuarioId);
+        }
+        catch (ForbiddenException ex)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = ex.Message
+            };
         }
 
         var contexto = await ConstruirContextoAsync(usuarioId, request.RecetaActual, usuario?.PreferenciaDietetica);
@@ -249,6 +273,7 @@ public class ChatIaService : IChatIaService
         await AjustarDificultadAlPlanAsync(usuarioId, receta);
 
         UltimaRecetaPorUsuario[usuarioId] = receta;
+        await PersistirUltimaRecetaAsync(usuarioId, receta);
 
         try
         {
@@ -273,7 +298,7 @@ public class ChatIaService : IChatIaService
         SobreAgente sobre,
         RecetaGeneradaDto? recetaActual)
     {
-        var receta = ElegirRecetaParaGuardar(usuarioId, sobre, recetaActual);
+        var receta = await ElegirRecetaParaGuardarAsync(usuarioId, sobre, recetaActual);
 
         if (receta is null)
         {
@@ -292,6 +317,7 @@ public class ChatIaService : IChatIaService
             var guardada = await _recetaIaService.GuardarRecetaAsync(usuarioId, receta);
 
             UltimaRecetaPorUsuario.TryRemove(usuarioId, out _);
+            await LimpiarUltimaRecetaPersistidaAsync(usuarioId);
             return new ChatRespuestaDto
             {
                 Accion = ChatAccion.GuardarReceta,
@@ -322,7 +348,7 @@ public class ChatIaService : IChatIaService
         }
     }
 
-    private RecetaGeneradaDto? ElegirRecetaParaGuardar(
+    private async Task<RecetaGeneradaDto?> ElegirRecetaParaGuardarAsync(
         int usuarioId,
         SobreAgente sobre,
         RecetaGeneradaDto? recetaActual)
@@ -339,7 +365,65 @@ public class ChatIaService : IChatIaService
             return recetaActual;
         }
 
-        return UltimaRecetaPorUsuario.TryGetValue(usuarioId, out var recordada) ? recordada : null;
+        return await ObtenerUltimaRecetaAsync(usuarioId);
+    }
+
+    private async Task<RecetaGeneradaDto?> ObtenerUltimaRecetaAsync(int usuarioId)
+    {
+        if (UltimaRecetaPorUsuario.TryGetValue(usuarioId, out var enMemoria) && EsRecetaValida(enMemoria))
+        {
+            return enMemoria;
+        }
+
+        return await ObtenerUltimaRecetaPersistidaAsync(usuarioId);
+    }
+
+    private async Task PersistirUltimaRecetaAsync(int usuarioId, RecetaGeneradaDto receta)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        if (usuario is null)
+        {
+            return;
+        }
+
+        usuario.UltimaRecetaIaJson = JsonSerializer.Serialize(receta, JsonOptions);
+        await _usuarioRepository.UpdateAsync(usuario);
+    }
+
+    private async Task LimpiarUltimaRecetaPersistidaAsync(int usuarioId)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        if (usuario is null || string.IsNullOrWhiteSpace(usuario.UltimaRecetaIaJson))
+        {
+            return;
+        }
+
+        usuario.UltimaRecetaIaJson = null;
+        await _usuarioRepository.UpdateAsync(usuario);
+    }
+
+    private async Task<RecetaGeneradaDto?> ObtenerUltimaRecetaPersistidaAsync(int usuarioId)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        if (string.IsNullOrWhiteSpace(usuario?.UltimaRecetaIaJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            var receta = JsonSerializer.Deserialize<RecetaGeneradaDto>(usuario.UltimaRecetaIaJson, JsonOptions);
+            if (EsRecetaValida(receta) && receta is not null)
+            {
+                UltimaRecetaPorUsuario[usuarioId] = receta;
+            }
+
+            return receta;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static RecetaGeneradaDto? ComponerRecetaDesdeSobre(SobreAgente sobre)
@@ -423,7 +507,19 @@ public class ChatIaService : IChatIaService
             Categoria = "Varios"
         });
 
-        var sustitutos = (await _sustitucionService.BuscarSustitutosAsync(usuarioId, ingrediente.Id)).ToList();
+        List<SustitutoSugerido> sustitutos;
+        try
+        {
+            sustitutos = (await _sustitucionService.BuscarSustitutosAsync(usuarioId, ingrediente.Id)).ToList();
+        }
+        catch (ForbiddenException ex)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = ex.Message
+            };
+        }
         var hayMasPremium = sustitutos.Any(sustituto => sustituto.HayMasConProfesional);
         var mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
             ? $"Estos son los reemplazos que te recomiendo para {nombre}:"
@@ -476,21 +572,13 @@ public class ChatIaService : IChatIaService
             favorito => favorito.UsuarioId == usuarioId,
             favorito => favorito.Receta);
 
-        var recetas = favoritos
-            .Select(favorito => favorito.Receta)
-            .Where(receta => receta is not null)
-            .GroupBy(receta => receta!.Id)
-            .Select(grupo => grupo.First()!)
-            .ToList();
-
-        if (!sobre.EliminarTodas)
-        {
-            recetas = recetas
-                .Where(receta => CoincideTitulo(receta.Titulo, titulo!))
+        var favoritosABorrar = sobre.EliminarTodas
+            ? favoritos.ToList()
+            : favoritos
+                .Where(favorito => favorito.Receta is not null && CoincideTitulo(favorito.Receta.Titulo, titulo!))
                 .ToList();
-        }
 
-        if (recetas.Count == 0)
+        if (favoritosABorrar.Count == 0)
         {
             return new ChatRespuestaDto
             {
@@ -502,9 +590,9 @@ public class ChatIaService : IChatIaService
             };
         }
 
-        foreach (var receta in recetas)
+        foreach (var favorito in favoritosABorrar)
         {
-            await _recetaRepository.DeleteAsync(receta);
+            await _favoritoRepository.DeleteAsync(favorito);
         }
 
         return new ChatRespuestaDto
@@ -512,10 +600,10 @@ public class ChatIaService : IChatIaService
             Accion = ChatAccion.EliminarReceta,
             Mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
                 ? (sobre.EliminarTodas
-                    ? $"Listo, borré tus {recetas.Count} receta(s) guardada(s)."
-                    : $"Listo, borré {recetas.Count} receta(s) que coincidían con \"{titulo}\".")
+                    ? $"Listo, borré tus {favoritosABorrar.Count} receta(s) guardada(s)."
+                    : $"Listo, borré {favoritosABorrar.Count} receta(s) que coincidían con \"{titulo}\".")
                 : sobre.Mensaje,
-            RecetasEliminadas = recetas.Count
+            RecetasEliminadas = favoritosABorrar.Count
         };
     }
 
@@ -611,11 +699,12 @@ public class ChatIaService : IChatIaService
             }
         }
 
-        if (UltimaRecetaPorUsuario.TryGetValue(usuarioId, out var recordada) && EsRecetaValida(recordada))
+        var recordada = await ObtenerUltimaRecetaAsync(usuarioId);
+        if (EsRecetaValida(recordada))
         {
             try
             {
-                var guardada = await _recetaIaService.GuardarRecetaAsync(usuarioId, recordada);
+                var guardada = await _recetaIaService.GuardarRecetaAsync(usuarioId, recordada!);
                 return (guardada.RecetaId, guardada.Titulo, null);
             }
             catch (Exception ex) when (ex is InvalidOperationException or ForbiddenException)
@@ -703,11 +792,12 @@ public class ChatIaService : IChatIaService
             }
         }
 
-        if (UltimaRecetaPorUsuario.TryGetValue(usuarioId, out var recordada) && EsRecetaValida(recordada))
+        var recordada = await ObtenerUltimaRecetaAsync(usuarioId);
+        if (EsRecetaValida(recordada))
         {
             try
             {
-                var guardada = await _recetaIaService.GuardarRecetaAsync(usuarioId, recordada);
+                var guardada = await _recetaIaService.GuardarRecetaAsync(usuarioId, recordada!);
                 return (guardada.RecetaId, guardada.Titulo, null);
             }
             catch (Exception ex) when (ex is InvalidOperationException or ForbiddenException)
@@ -816,7 +906,7 @@ public class ChatIaService : IChatIaService
 
         var recetaContexto = EsRecetaValida(recetaActual)
             ? recetaActual
-            : (UltimaRecetaPorUsuario.TryGetValue(usuarioId, out var recordada) ? recordada : null);
+            : await ObtenerUltimaRecetaAsync(usuarioId);
 
         if (recetaContexto is not null)
         {

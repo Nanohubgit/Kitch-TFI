@@ -161,7 +161,7 @@ public class PreparacionService : IPreparacionService
 
         foreach (var (stock, cantidad) in descuentos)
         {
-            stock.Cantidad -= cantidad;
+            stock.Cantidad = Math.Max(0, Math.Round(stock.Cantidad - cantidad, 2));
             await _stockRepository.UpdateAsync(stock);
         }
     }
@@ -204,7 +204,7 @@ public class PreparacionService : IPreparacionService
             var aDescontar = Math.Min(disponible, cantidadNecesaria);
             if (aDescontar > 0 && stock is not null)
             {
-                stock.Cantidad = Math.Round(disponible - aDescontar, 2);
+                stock.Cantidad = Math.Max(0, Math.Round(disponible - aDescontar, 2));
                 await _stockRepository.UpdateAsync(stock);
 
                 resultado.Descontados.Add(new IngredienteMovimientoStockDto

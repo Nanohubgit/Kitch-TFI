@@ -50,5 +50,20 @@ namespace Kitch.Domain.Entities
         /// UTC: vencimiento del código 2FA (típicamente 5 minutos). Null = sin desafío pendiente.
         /// </summary>
         public DateTime? TwoFactorCodeExpiresAt { get; set; }
+
+        /// <summary>
+        /// Día UTC al que corresponde <see cref="PeticionesIaDelDia"/>. Null = nunca usó el asistente.
+        /// </summary>
+        public DateTime? FechaCuotaIaUtc { get; set; }
+
+        /// <summary>
+        /// Peticiones al asistente de IA consumidas en <see cref="FechaCuotaIaUtc"/>.
+        /// </summary>
+        public int PeticionesIaDelDia { get; set; }
+
+        /// <summary>
+        /// Última receta generada por el chat (JSON), para sobrevivir restart e instancias de Azure.
+        /// </summary>
+        public string? UltimaRecetaIaJson { get; set; }
     }
 }

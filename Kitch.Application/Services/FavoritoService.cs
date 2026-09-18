@@ -46,7 +46,20 @@ public class FavoritoService : IFavoritoService
             favorito => favorito.Usuario,
             favorito => favorito.Receta);
 
-        return favoritos.FirstOrDefault()?.ToResponseDto();
+        var favorito = favoritos.FirstOrDefault();
+        if (favorito is null)
+        {
+            return null;
+        }
+
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        if (favorito.Receta is not null &&
+            !LimitesPlan.PuedeUsarDificultad(usuario?.Rol, favorito.Receta.Dificultad))
+        {
+            throw new ForbiddenException(LimitesPlan.MensajeDificultadPremium);
+        }
+
+        return favorito.ToResponseDto();
     }
 
     public async Task<FavoritoResponseDto> AddFavoritoAsync(FavoritoCreateDto favorito)

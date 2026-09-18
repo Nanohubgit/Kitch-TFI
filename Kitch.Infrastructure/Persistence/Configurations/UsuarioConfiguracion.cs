@@ -66,6 +66,14 @@ namespace Kitch.Infrastructure.Persistence.Configurations
 
             // Búsqueda O(1) al resetear: se busca por hash del token, no por scan completo.
             entity.HasIndex(x => x.PasswordResetTokenHash);
+
+            entity.Property(x => x.FechaCuotaIaUtc);
+
+            entity.Property(x => x.PeticionesIaDelDia)
+                .IsRequired()
+                .HasDefaultValue(0);
+
+            entity.Property(x => x.UltimaRecetaIaJson);
         }
     }
 }

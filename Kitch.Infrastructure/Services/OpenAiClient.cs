@@ -1,103 +1,144 @@
-using System.ClientModel;
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Kitch.Domain.Interfaces;
 using Microsoft.Extensions.Configuration;
-using OpenAI.Chat;
 
 namespace Kitch.Infrastructure.Services;
 
 /// <summary>
-/// Adaptador de Infrastructure: OpenAI gpt-4o-mini detrás de <see cref="IAsistenteIaClient"/>.
-/// Application no conoce este tipo.
+/// Cliente OpenAI (gpt-4o-mini por defecto) vía HttpClientFactory.
+/// Se activa con Ai:Provider = OpenAI. El modelo se lee de OpenAi:Model.
 /// </summary>
 public class OpenAiClient : IAsistenteIaClient
 {
-    private const string Modelo = "gpt-4o-mini";
+    private const string ChatEndpoint = "v1/chat/completions";
+    private const string ModeloPorDefecto = "gpt-4o-mini";
 
-    private readonly ChatClient _chatClient;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly string _modelo;
 
-    public OpenAiClient(IConfiguration configuration)
+    public OpenAiClient(IHttpClientFactory httpClientFactory, IConfiguration configuration)
     {
-        var apiKey = configuration["OpenAi:ApiKey"];
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            throw new InvalidOperationException(
-                "OpenAi:ApiKey no está configurada. Definila en User Secrets (local) o en la configuración de Azure.");
-        }
+        _httpClientFactory = httpClientFactory;
 
-        _chatClient = new ChatClient(model: Modelo, apiKey: apiKey);
+        var modeloConfig = configuration["OpenAi:Model"];
+        _modelo = string.IsNullOrWhiteSpace(modeloConfig) ? ModeloPorDefecto : modeloConfig.Trim();
     }
 
     public Task<string> GenerarRespuestaAsync(string prompt, string systemInstruction) =>
-        CompletarAsync(
-            [
-                new SystemChatMessage(systemInstruction),
-                new UserChatMessage(prompt)
-            ]);
+        EnviarAsync(
+            [new OpenAiMessage { Role = "user", Content = prompt }],
+            systemInstruction,
+            jsonMode: false);
 
     public Task<string> GenerarRespuestaJsonAsync(string prompt, string systemInstruction) =>
-        CompletarAsync(
-            [
-                new SystemChatMessage(systemInstruction),
-                new UserChatMessage(prompt)
-            ]);
+        EnviarAsync(
+            [new OpenAiMessage { Role = "user", Content = prompt }],
+            systemInstruction,
+            jsonMode: true);
 
     public Task<string> GenerarRespuestaConversacionAsync(
         IEnumerable<MensajeIa> mensajes,
         string systemInstruction,
         bool jsonMode = false)
     {
-        _ = jsonMode;
-        var messages = MapearMensajes(mensajes, systemInstruction);
-        return CompletarAsync(messages);
+        var messages = mensajes
+            .Select(mensaje => new OpenAiMessage
+            {
+                Role = string.Equals(mensaje.Rol, "model", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(mensaje.Rol, "assistant", StringComparison.OrdinalIgnoreCase)
+                    ? "assistant"
+                    : "user",
+                Content = mensaje.Texto
+            })
+            .ToList();
+
+        return EnviarAsync(messages, systemInstruction, jsonMode);
     }
 
-    private static List<ChatMessage> MapearMensajes(IEnumerable<MensajeIa> mensajes, string systemInstruction)
+    private async Task<string> EnviarAsync(List<OpenAiMessage> messages, string systemInstruction, bool jsonMode)
     {
-        var lista = new List<ChatMessage>
+        var client = _httpClientFactory.CreateClient("OpenAiClient");
+
+        var todosLosMensajes = new List<OpenAiMessage>
         {
-            new SystemChatMessage(systemInstruction)
+            new() { Role = "system", Content = systemInstruction }
         };
+        todosLosMensajes.AddRange(messages);
 
-        foreach (var mensaje in mensajes)
+        var request = new OpenAiRequest
         {
-            if (string.Equals(mensaje.Rol, "model", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(mensaje.Rol, "assistant", StringComparison.OrdinalIgnoreCase))
-            {
-                lista.Add(new AssistantChatMessage(mensaje.Texto));
-            }
-            else
-            {
-                lista.Add(new UserChatMessage(mensaje.Texto));
-            }
-        }
-
-        return lista;
-    }
-
-    private async Task<string> CompletarAsync(List<ChatMessage> messages)
-    {
-        var options = new ChatCompletionOptions
-        {
-            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
+            Model = _modelo,
+            Messages = todosLosMensajes,
+            ResponseFormat = jsonMode
+                ? new OpenAiResponseFormat { Type = "json_object" }
+                : null
         };
 
         const int maxIntentos = 3;
 
         for (var intento = 1; ; intento++)
         {
-            try
+            using var response = await client.PostAsJsonAsync(ChatEndpoint, request);
+
+            if (response.IsSuccessStatusCode)
             {
-                ChatCompletion completion = await _chatClient.CompleteChatAsync(messages, options);
-                return completion.Content.Count > 0
-                    ? completion.Content[0].Text ?? string.Empty
-                    : string.Empty;
+                var resultado = await response.Content.ReadFromJsonAsync<OpenAiResponse>();
+                return resultado?.Choices?.FirstOrDefault()?.Message?.Content ?? string.Empty;
             }
-            catch (ClientResultException ex) when (
-                intento < maxIntentos &&
-                (ex.Status == 429 || ex.Status == 503))
+
+            var esTransitorio = response.StatusCode == HttpStatusCode.ServiceUnavailable ||
+                response.StatusCode == HttpStatusCode.TooManyRequests;
+
+            if (esTransitorio && intento < maxIntentos)
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(700 * intento));
+                continue;
             }
+
+            response.EnsureSuccessStatusCode();
         }
+    }
+
+    private sealed class OpenAiRequest
+    {
+        [JsonPropertyName("model")]
+        public string Model { get; set; } = string.Empty;
+
+        [JsonPropertyName("messages")]
+        public List<OpenAiMessage> Messages { get; set; } = [];
+
+        [JsonPropertyName("response_format")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public OpenAiResponseFormat? ResponseFormat { get; set; }
+    }
+
+    private sealed class OpenAiResponseFormat
+    {
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = string.Empty;
+    }
+
+    private sealed class OpenAiMessage
+    {
+        [JsonPropertyName("role")]
+        public string Role { get; set; } = string.Empty;
+
+        [JsonPropertyName("content")]
+        public string Content { get; set; } = string.Empty;
+    }
+
+    private sealed class OpenAiResponse
+    {
+        [JsonPropertyName("choices")]
+        public List<OpenAiChoice>? Choices { get; set; }
+    }
+
+    private sealed class OpenAiChoice
+    {
+        [JsonPropertyName("message")]
+        public OpenAiMessage? Message { get; set; }
     }
 }

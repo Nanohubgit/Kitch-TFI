@@ -23,21 +23,33 @@ public static class DependencyInjection
             MercadoPagoConfig.AccessToken = mercadoPagoToken;
         }
 
-        services.AddScoped<StripePaymentService>();
-        services.AddScoped<MercadoPagoPaymentService>();
-        services.AddScoped<IPaymentGatewayFactory, PaymentGatewayFactory>();
+        services.AddScoped<IPaymentGatewayService, MercadoPagoPaymentService>();
 
-        services.AddScoped<IPaymentGatewayService>(sp =>
-            sp.GetRequiredService<IPaymentGatewayFactory>().Create());
-
-        services.AddScoped<IAsistenteIaClient, GroqClient>();
+        var proveedorIa = configuration["Ai:Provider"]?.Trim();
+        var usarOpenAi = string.Equals(proveedorIa, "OpenAI", StringComparison.OrdinalIgnoreCase);
+        if (usarOpenAi)
+        {
+            services.AddScoped<IAsistenteIaClient, OpenAiClient>();
+        }
+        else
+        {
+            services.AddScoped<IAsistenteIaClient, GroqClient>();
+        }
 
         services.AddHttpClient("GroqClient", (serviceProvider, client) =>
         {
             var config = serviceProvider.GetRequiredService<IConfiguration>();
             var apiKey = config["Groq:ApiKey"];
-
             client.BaseAddress = new Uri("https://api.groq.com/");
+            client.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+        });
+
+        services.AddHttpClient("OpenAiClient", (serviceProvider, client) =>
+        {
+            var config = serviceProvider.GetRequiredService<IConfiguration>();
+            var apiKey = config["OpenAi:ApiKey"];
+            client.BaseAddress = new Uri("https://api.openai.com/");
             client.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
         });
