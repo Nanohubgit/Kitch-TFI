@@ -1,3 +1,4 @@
+using Kitch.Application.Common;
 using Kitch.Application.DTOs.Recomendacion;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Constants;
@@ -34,7 +35,7 @@ public class RecomendacionService : IRecomendacionService
         var idsEnAlacena = stock.Select(item => item.IngredienteId).ToHashSet();
 
         var recetas = await _recetaRepository.FindWithIncludesAsync(
-            receta => true,
+            AccesoReceta.Filtro(usuarioId, rol),
             receta => receta.IngredientesReceta);
 
         var ingredienteIds = recetas
@@ -60,6 +61,14 @@ public class RecomendacionService : IRecomendacionService
 
             var total = receta.IngredientesReceta.Count;
             if (total == 0)
+            {
+                continue;
+            }
+
+            var respetaDieta = receta.IngredientesReceta.All(ingrediente =>
+                !nombrePorIngrediente.TryGetValue(ingrediente.IngredienteId, out var nombreIngrediente) ||
+                RestriccionDietetica.PermiteIngrediente(usuario?.PreferenciaDietetica, nombreIngrediente));
+            if (!respetaDieta)
             {
                 continue;
             }
@@ -90,7 +99,12 @@ public class RecomendacionService : IRecomendacionService
                 TotalIngredientes = total,
                 IngredientesDisponibles = disponibles,
                 PorcentajeCoincidencia = (int)Math.Round(disponibles * 100.0 / total),
-                IngredientesFaltantes = faltantes
+                IngredientesFaltantes = faltantes,
+                Grupo = faltantes.Count == 0
+                    ? GrupoRecomendacion.Completa
+                    : faltantes.Count <= LimitesPlan.MaxFaltantesRecomendacion
+                        ? GrupoRecomendacion.TeFaltanPocos
+                        : GrupoRecomendacion.Otras
             });
         }
 

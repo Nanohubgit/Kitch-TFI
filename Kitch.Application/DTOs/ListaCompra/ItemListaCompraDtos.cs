@@ -43,4 +43,13 @@ public class ItemListaCompraResponseDto
     public float CantidadFaltante { get; set; }
     public string UnidadMedida { get; set; } = string.Empty;
     public bool EstaComprado { get; set; }
+    public string Categoria { get; set; } = "Varios";
+    public bool GeneradoPorPlan { get; set; }
+}
+
+public class ListaCompraResumenDto
+{
+    public bool TodoCubierto { get; set; }
+    public string Mensaje { get; set; } = string.Empty;
+    public List<ItemListaCompraResponseDto> Items { get; set; } = [];
 }

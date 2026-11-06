@@ -16,17 +16,56 @@ public class AdminService : IAdminService
     private readonly IRepository<Suscripcion> _suscripcionRepository;
     private readonly IRepository<ContratoSub> _contratoRepository;
     private readonly IRepository<Pago> _pagoRepository;
+    private readonly IAuthService _authService;
 
     public AdminService(
         IRepository<Usuario> usuarioRepository,
         IRepository<Suscripcion> suscripcionRepository,
         IRepository<ContratoSub> contratoRepository,
-        IRepository<Pago> pagoRepository)
+        IRepository<Pago> pagoRepository,
+        IAuthService authService)
     {
         _usuarioRepository = usuarioRepository;
         _suscripcionRepository = suscripcionRepository;
         _contratoRepository = contratoRepository;
         _pagoRepository = pagoRepository;
+        _authService = authService;
+    }
+
+    public async Task<UsuarioResponseDto> CambiarBloqueoAsync(int adminId, int usuarioId, bool bloquear)
+    {
+        await ValidarPermisosAdminAsync(adminId);
+
+        if (adminId == usuarioId)
+        {
+            throw new InvalidOperationException("No podés bloquear ni desbloquear tu propia cuenta.");
+        }
+
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
+            ?? throw new KeyNotFoundException("Usuario no encontrado.");
+
+        if (usuario.Rol == RolUsuario.Admin)
+        {
+            throw new ForbiddenException("No se puede bloquear a otro administrador.");
+        }
+
+        usuario.Activo = !bloquear;
+        if (bloquear)
+        {
+            usuario.TwoFactorCode = null;
+            usuario.TwoFactorCodeExpiresAt = null;
+            usuario.PasswordResetTokenHash = null;
+            usuario.PasswordResetTokenExpiresAt = null;
+        }
+
+        await _usuarioRepository.UpdateAsync(usuario);
+        return usuario.ToResponseDto();
+    }
+
+    public async Task EnviarRecuperacionPasswordAsync(int adminId, int usuarioId)
+    {
+        await ValidarPermisosAdminAsync(adminId);
+        await _authService.EnviarRecuperacionPasswordAsync(usuarioId);
     }
 
     public async Task<MetricasPlataformaDto> GetMetricasAsync(int usuarioId)
@@ -35,19 +74,29 @@ public class AdminService : IAdminService
 
         var pagosAprobados = await _pagoRepository.FindAsync(pago =>
             pago.EstadoPago == EstadoPago.Aprobado);
+        var usuarios = await _usuarioRepository.GetAllAsync();
+        var hoy = FechaLocal.Hoy();
 
         return new MetricasPlataformaDto
         {
-            UsuariosTotales = await _usuarioRepository.CountAsync(_ => true),
-            UsuariosActivos = await _usuarioRepository.CountAsync(u => u.Activo),
-            UsuariosBasicos = await _usuarioRepository.CountAsync(u => u.Rol == RolUsuario.Basico),
-            UsuariosProfesionales = await _usuarioRepository.CountAsync(u => u.Rol == RolUsuario.Profesional),
-            UsuariosAdmin = await _usuarioRepository.CountAsync(u => u.Rol == RolUsuario.Admin),
+            UsuariosTotales = usuarios.Count,
+            UsuariosActivos = usuarios.Count(u => u.Activo),
+            UsuariosBasicos = usuarios.Count(u => u.Rol == RolUsuario.Basico),
+            UsuariosProfesionales = usuarios.Count(u => u.Rol == RolUsuario.Profesional),
+            UsuariosAdmin = usuarios.Count(u => u.Rol == RolUsuario.Admin),
             SuscripcionesTotales = await _suscripcionRepository.CountAsync(_ => true),
             SuscripcionesActivas = await _suscripcionRepository.CountAsync(s => s.Activa),
             ContratosActivos = await _contratoRepository.CountAsync(c => c.Estado == EstadoContratoSub.Activo),
             PagosAprobados = pagosAprobados.Count,
-            IngresosTotales = pagosAprobados.Sum(pago => pago.Monto)
+            IngresosTotales = pagosAprobados.Sum(pago => pago.Monto),
+            PeticionesIaHoy = usuarios
+                .Where(u => u.FechaCuotaIaUtc?.Date == hoy)
+                .Sum(u => u.PeticionesIaDelDia),
+            UsuariosEnTopeIa = usuarios.Count(u =>
+                u.FechaCuotaIaUtc?.Date == hoy &&
+                u.PeticionesIaDelDia >= PedidoRecetaPremium.TopeDiario(u.Rol)),
+            LimiteIaBasico = LimitesPlan.MaxPeticionesIaBasico,
+            LimiteIaProfesional = LimitesPlan.MaxPeticionesIaProfesional
         };
     }
 

@@ -1,3 +1,4 @@
+using Kitch.Application.Common;
 using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
@@ -16,14 +17,17 @@ public class PlanificadorService : IPlanificadorService
     private readonly IRepository<IngredienteReceta> _ingredienteRecetaRepository;
     private readonly IRepository<Usuario> _usuarioRepository;
     private readonly IListaCompraService _listaCompraService;
+    private readonly IUnidadDeTrabajo _unidadDeTrabajo;
 
     public PlanificadorService(
         IRepository<ComidaPlanificada> repository,
         IRepository<Receta> recetaRepository,
         IRepository<IngredienteReceta> ingredienteRecetaRepository,
         IRepository<Usuario> usuarioRepository,
-        IListaCompraService listaCompraService)
+        IListaCompraService listaCompraService,
+        IUnidadDeTrabajo unidadDeTrabajo)
     {
+        _unidadDeTrabajo = unidadDeTrabajo;
         _repository = repository;
         _recetaRepository = recetaRepository;
         _ingredienteRecetaRepository = ingredienteRecetaRepository;
@@ -81,8 +85,11 @@ public class PlanificadorService : IPlanificadorService
 
     public async Task<ComidaPlanificadaResponseDto> CreateAsync(ComidaPlanificadaCreateDto comida)
     {
+        comida.Turno = TurnosComida.Normalizar(comida.Turno);
+        comida.FechaAsignada = comida.FechaAsignada.Date;
+        var habiaConflicto = await ExisteConflictoAsync(comida.UsuarioId, comida.FechaAsignada, comida.Turno);
         var resultado = await PlanificarAsync(comida);
-        return resultado.Comida;
+        return CompletarRespuestaPlanificacion(resultado, habiaConflicto && comida.ReemplazarSiConflicto);
     }
 
     public Task<ComidaPlanificadaResponseDto> AgendarAsync(int usuarioId, AgendarRecetaRequestDto request)
@@ -92,28 +99,48 @@ public class PlanificadorService : IPlanificadorService
             UsuarioId = usuarioId,
             RecetaId = request.RecetaId,
             FechaAsignada = request.FechaAsignada,
-            Turno = request.Turno
+            Turno = request.Turno,
+            ReemplazarSiConflicto = request.ReemplazarSiConflicto
         });
     }
 
-    public async Task<PlanificacionResultadoDto> PlanificarAsync(ComidaPlanificadaCreateDto comida)
+    public Task<PlanificacionResultadoDto> PlanificarAsync(ComidaPlanificadaCreateDto comida) =>
+        EnTransaccionAsync(comida.UsuarioId, () => PlanificarEnTransaccionAsync(comida));
+
+    private Task<T> EnTransaccionAsync<T>(int usuarioId, Func<Task<T>> operacion) =>
+        _unidadDeTrabajo.EjecutarAsync(async () =>
+        {
+            await _unidadDeTrabajo.BloquearRecursoAsync($"kitch:stock:usuario:{usuarioId}");
+            return await operacion();
+        });
+
+    private async Task<PlanificacionResultadoDto> PlanificarEnTransaccionAsync(ComidaPlanificadaCreateDto comida)
     {
+        comida.Turno = TurnosComida.Normalizar(comida.Turno);
+        comida.FechaAsignada = comida.FechaAsignada.Date;
         var receta = await ObtenerRecetaAsync(comida.RecetaId);
         await AsegurarRecetaVisibleAsync(comida.UsuarioId, receta);
         await ValidarHorizontePlanificacionAsync(comida.UsuarioId, comida.FechaAsignada);
-        await AsegurarCupoComidasPlanificadasAsync(comida.UsuarioId);
 
         if (await ExisteConflictoAsync(comida.UsuarioId, comida.FechaAsignada, comida.Turno))
         {
-            throw new InvalidOperationException("Ya existe una comida planificada para ese usuario, fecha y turno.");
+            if (!comida.ReemplazarSiConflicto)
+            {
+                throw new ConflictException(
+                    "Ya tenés una comida asignada en ese día y turno. ¿Querés reemplazarla?");
+            }
+
+            await EliminarConflictoAsync(comida.UsuarioId, comida.FechaAsignada, comida.Turno);
         }
+
+        await AsegurarCupoComidasPlanificadasAsync(comida.UsuarioId);
 
         var entity = new ComidaPlanificada
         {
             UsuarioId = comida.UsuarioId,
             RecetaId = receta.Id,
             FechaAsignada = comida.FechaAsignada,
-            Turno = comida.Turno.Trim()
+            Turno = comida.Turno
         };
 
         var created = await _repository.AddAsync(entity);
@@ -145,7 +172,10 @@ public class PlanificadorService : IPlanificadorService
             .ToList();
     }
 
-    public async Task<bool> UpdateAsync(int id, ComidaPlanificadaUpdateDto comida, int usuarioId)
+    public Task<bool> UpdateAsync(int id, ComidaPlanificadaUpdateDto comida, int usuarioId) =>
+        EnTransaccionAsync(usuarioId, () => UpdateEnTransaccionAsync(id, comida, usuarioId));
+
+    private async Task<bool> UpdateEnTransaccionAsync(int id, ComidaPlanificadaUpdateDto comida, int usuarioId)
     {
         var existingComida = await _repository.GetByIdAsync(id);
 
@@ -154,23 +184,34 @@ public class PlanificadorService : IPlanificadorService
             return false;
         }
 
+        var turno = TurnosComida.Normalizar(comida.Turno);
+        var fecha = comida.FechaAsignada.Date;
+        var fechaFin = fecha.AddDays(1);
+
         var receta = await ObtenerRecetaAsync(comida.RecetaId);
         await AsegurarRecetaVisibleAsync(usuarioId, receta);
-        await ValidarHorizontePlanificacionAsync(usuarioId, comida.FechaAsignada);
+        await ValidarHorizontePlanificacionAsync(usuarioId, fecha);
 
         if (await _repository.AnyAsync(existing =>
                 existing.Id != id &&
                 existing.UsuarioId == usuarioId &&
-                existing.FechaAsignada.Date == comida.FechaAsignada.Date &&
-                existing.Turno == comida.Turno.Trim()))
+                existing.FechaAsignada >= fecha &&
+                existing.FechaAsignada < fechaFin &&
+                existing.Turno == turno))
         {
-            throw new InvalidOperationException("Ya existe una comida planificada para ese usuario, fecha y turno.");
+            throw new ConflictException("Ya existe una comida planificada para ese usuario, fecha y turno.");
+        }
+
+        var hoy = FechaLocal.Hoy();
+        if (existingComida.FechaAsignada < hoy && fecha >= hoy)
+        {
+            await AsegurarCupoComidasPlanificadasAsync(usuarioId);
         }
 
         existingComida.UsuarioId = usuarioId;
         existingComida.RecetaId = comida.RecetaId;
-        existingComida.FechaAsignada = comida.FechaAsignada;
-        existingComida.Turno = comida.Turno.Trim();
+        existingComida.FechaAsignada = fecha;
+        existingComida.Turno = turno;
 
         await _repository.UpdateAsync(existingComida);
         await _listaCompraService.SincronizarFaltantesAsync(usuarioId);
@@ -178,7 +219,10 @@ public class PlanificadorService : IPlanificadorService
         return true;
     }
 
-    public async Task<bool> DeleteAsync(int id, int usuarioId)
+    public Task<bool> DeleteAsync(int id, int usuarioId) =>
+        EnTransaccionAsync(usuarioId, () => DeleteEnTransaccionAsync(id, usuarioId));
+
+    private async Task<bool> DeleteEnTransaccionAsync(int id, int usuarioId)
     {
         var comida = await _repository.GetByIdAsync(id);
 
@@ -203,7 +247,9 @@ public class PlanificadorService : IPlanificadorService
             return;
         }
 
-        var cantidad = await _repository.CountAsync(comida => comida.UsuarioId == usuarioId);
+        var hoy = FechaLocal.Hoy();
+        var cantidad = await _repository.CountAsync(comida =>
+            comida.UsuarioId == usuarioId && comida.FechaAsignada >= hoy);
         if (cantidad >= LimitesPlan.MaxComidasPlanificadasBasico)
         {
             throw new ForbiddenException(LimitesPlan.MensajeLimitePlanner);
@@ -219,7 +265,7 @@ public class PlanificadorService : IPlanificadorService
             ? LimitesPlan.DiasPlanificacionProfesional
             : LimitesPlan.DiasPlanificacionBasico;
 
-        var hoy = DateTime.UtcNow.Date;
+        var hoy = FechaLocal.Hoy();
         var limite = hoy.AddDays(diasMax);
 
         if (fechaAsignada.Date < hoy)
@@ -250,6 +296,11 @@ public class PlanificadorService : IPlanificadorService
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
             ?? throw new InvalidOperationException("El usuario no existe.");
 
+        if (!AccesoReceta.Permitido(receta, usuarioId, usuario.Rol))
+        {
+            throw new KeyNotFoundException(AccesoReceta.MensajeNoEncontrada);
+        }
+
         if (!LimitesPlan.PuedeUsarDificultad(usuario.Rol, receta.Dificultad))
         {
             throw new ForbiddenException(LimitesPlan.MensajeDificultadPremium);
@@ -259,6 +310,37 @@ public class PlanificadorService : IPlanificadorService
     private Task<IReadOnlyList<ComidaPlanificada>> ObtenerComidasConRecetaAsync(
         Expression<Func<ComidaPlanificada, bool>> predicate) =>
         _repository.FindWithIncludesAsync(predicate, comida => comida.Receta);
+
+    private async Task EliminarConflictoAsync(int usuarioId, DateTime fecha, string turno)
+    {
+        var fechaInicio = fecha.Date;
+        var fechaFin = fechaInicio.AddDays(1);
+        var turnoNormalizado = turno.Trim();
+        var existentes = await _repository.FindAsync(comida =>
+            comida.UsuarioId == usuarioId &&
+            comida.FechaAsignada >= fechaInicio &&
+            comida.FechaAsignada < fechaFin &&
+            comida.Turno == turnoNormalizado);
+
+        foreach (var existente in existentes)
+        {
+            await _repository.DeleteAsync(existente);
+        }
+    }
+
+    private static ComidaPlanificadaResponseDto CompletarRespuestaPlanificacion(
+        PlanificacionResultadoDto resultado,
+        bool reemplazoRealizado)
+    {
+        var dto = resultado.Comida;
+        dto.IngredientesAgregadosALista = resultado.IngredientesAgregadosALista;
+        dto.TeniaTodoEnAlacena = resultado.IngredientesAgregadosALista.Count == 0;
+        dto.ReemplazoRealizado = reemplazoRealizado;
+        dto.MensajeLista = dto.TeniaTodoEnAlacena
+            ? "¡Tenés todo lo necesario en tu alacena!"
+            : string.Join(", ", resultado.IngredientesAgregadosALista);
+        return dto;
+    }
 
     private async Task<bool> ExisteConflictoAsync(int usuarioId, DateTime fecha, string turno)
     {

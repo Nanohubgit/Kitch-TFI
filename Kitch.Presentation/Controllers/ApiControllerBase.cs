@@ -22,10 +22,4 @@ public abstract class ApiControllerBase : ControllerBase
 
         return usuarioId;
     }
-
-    protected ActionResult BadRequestMessage(string message) =>
-        BadRequest(new { message });
-
-    protected ActionResult UnauthorizedMessage(string message) =>
-        Unauthorized(new { message });
 }

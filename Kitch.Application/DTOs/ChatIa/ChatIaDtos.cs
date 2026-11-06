@@ -64,4 +64,19 @@ public class ChatRespuestaDto
     public List<string>? StockDescontado { get; set; }
 
     public List<string>? StockFaltante { get; set; }
+
+    public bool RequiereConfirmacionReemplazo { get; set; }
+
+    public List<RecetaRecienteDto>? RecetasRecientes { get; set; }
+}
+
+public class RecetaRecienteDto
+{
+    public int Indice { get; set; }
+
+    public string Titulo { get; set; } = string.Empty;
+
+    public string Dificultad { get; set; } = string.Empty;
+
+    public string Categoria { get; set; } = string.Empty;
 }

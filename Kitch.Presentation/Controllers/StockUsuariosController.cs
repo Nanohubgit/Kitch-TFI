@@ -33,7 +33,7 @@ public class StockUsuariosController : ApiControllerBase
 
         if (stock is null)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Ingrediente no encontrado en el inventario.");
         }
 
         return Ok(stock);
@@ -57,7 +57,7 @@ public class StockUsuariosController : ApiControllerBase
 
         if (!updated)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Ingrediente no encontrado en el inventario.");
         }
 
         return NoContent();
@@ -71,7 +71,7 @@ public class StockUsuariosController : ApiControllerBase
 
         if (!deleted)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Ingrediente no encontrado en el inventario.");
         }
 
         return NoContent();

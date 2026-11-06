@@ -2,9 +2,6 @@ using System.Text.Json.Serialization;
 
 namespace Kitch.Application.DTOs.Suscripciones;
 
-/// <summary>
-/// Notificación IPN/Webhook de la pasarela. Shape de Mercado Pago, sin tipos del SDK.
-/// </summary>
 public class PasarelaWebhookRequest
 {
     [JsonPropertyName("type")]

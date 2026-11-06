@@ -31,6 +31,7 @@ public static class DtoMappings
     public static RecetaResponseDto ToResponseDto(this Receta receta) => new()
     {
         Id = receta.Id,
+        UsuarioId = receta.UsuarioId,
         Titulo = receta.Titulo,
         CaloriasEstimadas = receta.CaloriasEstimadas,
         Descripcion = receta.Descripcion,
@@ -50,10 +51,10 @@ public static class DtoMappings
             .ToList(),
         Preparaciones = receta.Preparaciones
             .OrderBy(preparacion => preparacion.NumeroPaso)
-            .Select(preparacion => new PreparacionRecetaResponseDto
+            .Select((preparacion, indice) => new PreparacionRecetaResponseDto
             {
                 Id = preparacion.Id,
-                NumeroPaso = preparacion.NumeroPaso,
+                NumeroPaso = indice + 1,
                 DescripcionPaso = preparacion.DescripcionPaso
             })
             .ToList()
@@ -74,7 +75,10 @@ public static class DtoMappings
         Id = favorito.Id,
         RecetaId = favorito.RecetaId,
         UsuarioEmail = favorito.Usuario?.Email ?? string.Empty,
-        RecetaTitulo = favorito.Receta?.Titulo ?? string.Empty
+        RecetaTitulo = favorito.Receta?.Titulo ?? string.Empty,
+        RecetaCategoria = favorito.Receta?.Categoria ?? "general",
+        RecetaDificultad = favorito.Receta?.Dificultad.ToString() ?? string.Empty,
+        RecetaTiempoPreparacionMinutos = favorito.Receta?.TiempoPreparacionMinutos ?? 0
     };
 
     public static ComidaPlanificadaResponseDto ToResponseDto(this ComidaPlanificada comida) => new()
@@ -83,7 +87,11 @@ public static class DtoMappings
         RecetaId = comida.RecetaId,
         RecetaTitulo = comida.Receta?.Titulo ?? string.Empty,
         FechaAsignada = comida.FechaAsignada,
-        Turno = comida.Turno
+        Turno = comida.Turno,
+        IngredientesAgregadosALista = [],
+        TeniaTodoEnAlacena = false,
+        ReemplazoRealizado = false,
+        MensajeLista = string.Empty
     };
 
     public static ItemListaCompraResponseDto ToResponseDto(this ItemListaCompra item) => new()
@@ -93,7 +101,8 @@ public static class DtoMappings
         NombreArticulo = item.NombreArticulo,
         CantidadFaltante = item.CantidadFaltante,
         UnidadMedida = item.UnidadMedida,
-        EstaComprado = item.EstaComprado
+        EstaComprado = item.EstaComprado,
+        GeneradoPorPlan = item.GeneradoPorPlan
     };
 
     public static SuscripcionResponseDto ToResponseDto(this Suscripcion suscripcion) => new()
@@ -134,7 +143,8 @@ public static class DtoMappings
     {
         Id = ingrediente.Id,
         Nombre = ingrediente.Nombre,
-        Descripcion = ingrediente.Descripcion
+        Descripcion = ingrediente.Descripcion,
+        Categoria = string.IsNullOrWhiteSpace(ingrediente.Categoria) ? "Varios" : ingrediente.Categoria
     };
 
     public static SustitutoResponseDto ToResponseDto(this SustitutoIngrediente sustituto) => new()

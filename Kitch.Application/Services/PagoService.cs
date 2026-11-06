@@ -17,16 +17,13 @@ public class PagoService : IPagoService
         "El historial de pagos, contratos y suscripciones es de solo lectura. No se puede modificar ni eliminar.";
 
     private readonly IRepository<Pago> _repository;
-    private readonly IRepository<ContratoSub> _contratoRepository;
     private readonly IRepository<Usuario> _usuarioRepository;
 
     public PagoService(
         IRepository<Pago> repository,
-        IRepository<ContratoSub> contratoRepository,
         IRepository<Usuario> usuarioRepository)
     {
         _repository = repository;
-        _contratoRepository = contratoRepository;
         _usuarioRepository = usuarioRepository;
     }
 
@@ -60,71 +57,14 @@ public class PagoService : IPagoService
         return pago.ToResponseDto();
     }
 
-    public async Task<PagoResponseDto> CreateAsync(PagoCreateDto pago, int solicitanteId)
-    {
-        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
+    public Task<PagoResponseDto> CreateAsync(PagoCreateDto pago, int solicitanteId) =>
+        throw new ForbiddenException(MensajeHistorialSoloLectura);
 
-        var contrato = await _contratoRepository.GetByIdAsync(pago.ContratoSubId);
+    public Task<bool> UpdateAsync(int id, PagoUpdateDto pago, int solicitanteId) =>
+        throw new ForbiddenException(MensajeHistorialSoloLectura);
 
-        if (contrato is null)
-        {
-            throw new InvalidOperationException("El contrato de suscripcion no existe.");
-        }
-
-        if (pago.Monto != contrato.Monto)
-        {
-            throw new InvalidOperationException("El monto del pago debe coincidir con el monto del contrato.");
-        }
-
-        var entity = new Pago
-        {
-            UsuarioId = contrato.UsuarioId,
-            ContratoSubId = pago.ContratoSubId,
-            FechaPago = DateTime.UtcNow,
-            Monto = pago.Monto,
-            EstadoPago = EstadoPago.Pendiente,
-            MetodoPago = pago.MetodoPago
-        };
-
-        var created = await _repository.AddAsync(entity);
-        return created.ToResponseDto();
-    }
-
-    public async Task<bool> UpdateAsync(int id, PagoUpdateDto pago, int solicitanteId)
-    {
-        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
-
-        var existingPago = await _repository.GetByIdAsync(id);
-
-        if (existingPago is null)
-        {
-            return false;
-        }
-
-        existingPago.Monto = pago.Monto;
-        existingPago.EstadoPago = pago.EstadoPago;
-        existingPago.MetodoPago = pago.MetodoPago;
-
-        await _repository.UpdateAsync(existingPago);
-
-        return true;
-    }
-
-    public async Task<bool> DeleteAsync(int id, int solicitanteId)
-    {
-        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
-
-        var pago = await _repository.GetByIdAsync(id);
-
-        if (pago is null)
-        {
-            return false;
-        }
-
-        await _repository.DeleteAsync(pago);
-
-        return true;
-    }
+    public Task<bool> DeleteAsync(int id, int solicitanteId) =>
+        throw new ForbiddenException(MensajeHistorialSoloLectura);
 
     private async Task ValidarPermisosAdminAsync(int usuarioId, string mensaje)
     {

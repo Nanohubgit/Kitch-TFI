@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kitch.Application.Common;
 using Kitch.Application.DTOs.Sustituciones;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Constants;
@@ -16,10 +17,11 @@ public class SustitucionService : ISustitucionService
         "original (ej: 0.8 => usar 0.8 por cada 1 del original). Respondé ÚNICAMENTE con JSON válido, " +
         "sin markdown, con esta forma: {\"sustitutos\":[{\"nombre\":string,\"factorEquivalencia\":number,\"notas\":string}]}.";
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
+    private const int MaxNombreIngrediente = 100;
+    private const int MaxNotas = 250;
+    private const decimal MaxFactor = 100m;
+
+    private static readonly JsonSerializerOptions JsonOptions = JsonIa.Opciones;
 
     private readonly IRepository<SustitutoIngrediente> _sustitutoRepository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
@@ -52,7 +54,7 @@ public class SustitucionService : ISustitucionService
         var ingredienteOriginal = await _ingredienteRepository.GetByIdAsync(ingredienteId);
         if (ingredienteOriginal is null)
         {
-            throw new InvalidOperationException("El ingrediente no existe.");
+            throw new KeyNotFoundException("El ingrediente no existe.");
         }
 
         var sustitutos = await _sustitutoRepository.FindAsync(
@@ -103,6 +105,10 @@ public class SustitucionService : ISustitucionService
             .ToList();
 
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        sugeridos = sugeridos
+            .Where(sugerido => RestriccionDietetica.PermiteIngrediente(usuario?.PreferenciaDietetica, sugerido.Nombre))
+            .ToList();
+
         if (usuario is not null && !RolUsuario.TieneAccesoPremium(usuario.Rol)
             && sugeridos.Count > LimitesPlan.MaxSustitutosBasico)
         {
@@ -122,12 +128,22 @@ public class SustitucionService : ISustitucionService
     {
         await _cuotaIa.ConsumirAsync(usuarioId);
 
-        var prompt = $"Ingrediente original: {ingredienteOriginal.Nombre}.";
-        var json = await _asistenteIa.GenerarRespuestaJsonAsync(prompt, InstruccionSustitutos);
+        List<SustitutoGeneradoDto>? generados;
+        try
+        {
+            var prompt = $"Ingrediente original: {ingredienteOriginal.Nombre}.";
+            var json = await _asistenteIa.GenerarRespuestaJsonAsync(prompt, InstruccionSustitutos);
+            generados = DeserializarSustitutos(json);
+        }
+        catch
+        {
+            await _cuotaIa.DevolverAsync(usuarioId);
+            throw;
+        }
 
-        var generados = DeserializarSustitutos(json);
         if (generados is null || generados.Count == 0)
         {
+            await _cuotaIa.DevolverAsync(usuarioId);
             return;
         }
 
@@ -141,6 +157,10 @@ public class SustitucionService : ISustitucionService
             }
 
             var nombre = _normalizer.Normalizar(generado.Nombre);
+            if (nombre.Length > MaxNombreIngrediente)
+            {
+                nombre = nombre[..MaxNombreIngrediente].TrimEnd();
+            }
 
             if (string.Equals(nombre, nombreOriginal, StringComparison.Ordinal))
             {
@@ -169,28 +189,24 @@ public class SustitucionService : ISustitucionService
             {
                 IngredienteOriginalId = ingredienteOriginal.Id,
                 IngredienteSustitutoId = ingredienteSustituto.Id,
-                FactorEquivalencia = generado.FactorEquivalencia > 0 ? generado.FactorEquivalencia : 1m,
-                Notas = generado.Notas
+                FactorEquivalencia = generado.FactorEquivalencia > 0
+                    ? Math.Clamp(Math.Round(generado.FactorEquivalencia, 2), 0.01m, MaxFactor)
+                    : 1m,
+                Notas = string.IsNullOrWhiteSpace(generado.Notas)
+                    ? null
+                    : generado.Notas.Trim().Length > MaxNotas
+                        ? generado.Notas.Trim()[..MaxNotas].TrimEnd()
+                        : generado.Notas.Trim()
             });
         }
     }
 
     private static List<SustitutoGeneradoDto>? DeserializarSustitutos(string json)
     {
-        if (string.IsNullOrWhiteSpace(json))
+        var limpio = JsonIa.LimpiarBloqueCodigo(json);
+        if (limpio.Length == 0)
         {
             return null;
-        }
-
-        var limpio = json.Trim();
-        if (limpio.StartsWith("```"))
-        {
-            limpio = limpio.Trim('`');
-            var saltoLinea = limpio.IndexOf('\n');
-            if (saltoLinea >= 0 && limpio[..saltoLinea].Contains("json", StringComparison.OrdinalIgnoreCase))
-            {
-                limpio = limpio[(saltoLinea + 1)..];
-            }
         }
 
         try

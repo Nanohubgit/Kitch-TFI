@@ -1,26 +1,31 @@
 using Kitch.Application.DTOs.Suscripciones;
+using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Constants;
+using MercadoPago.Client;
 using MercadoPago.Client.Payment;
 using MercadoPago.Client.Preference;
-using MercadoPago.Config;
+using MercadoPago.Error;
 using MercadoPago.Resource.Preference;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Kitch.Infrastructure.Services;
 
-/// <summary>
-/// Checkout Pro de Mercado Pago. Crea preferencias y consulta pagos.
-/// No cambia roles: eso lo hace Application al procesar el webhook.
-/// </summary>
 public class MercadoPagoPaymentService : IPaymentGatewayService
 {
-    private readonly IConfiguration _configuration;
+    private const string MensajeNoDisponible =
+        "Mercado Pago no está disponible en este momento. Intentá nuevamente en unos minutos.";
 
-    public MercadoPagoPaymentService(IConfiguration configuration)
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<MercadoPagoPaymentService> _logger;
+
+    public MercadoPagoPaymentService(IConfiguration configuration, ILogger<MercadoPagoPaymentService> logger)
     {
         _configuration = configuration;
-        AsegurarAccessToken();
+        _logger = logger;
     }
 
     public Task<PaymentGatewayResult> ProcesarPagoAsync(
@@ -35,7 +40,7 @@ public class MercadoPagoPaymentService : IPaymentGatewayService
         PaymentGatewayRequest request,
         CancellationToken cancellationToken = default)
     {
-        AsegurarAccessToken();
+        var opciones = CrearOpciones();
 
         var successUrl = ValorODefault(_configuration["MercadoPago:FrontSuccessUrl"], "http://localhost:5173/pago-exitoso");
         var failureUrl = ValorODefault(_configuration["MercadoPago:FrontFailureUrl"], "http://localhost:5173/perfil");
@@ -78,8 +83,16 @@ public class MercadoPagoPaymentService : IPaymentGatewayService
             preferenceRequest.AutoReturn = "approved";
         }
 
-        var client = new PreferenceClient();
-        Preference preference = await client.CreateAsync(preferenceRequest, cancellationToken: cancellationToken);
+        Preference preference;
+        try
+        {
+            preference = await new PreferenceClient().CreateAsync(preferenceRequest, opciones, cancellationToken);
+        }
+        catch (MercadoPagoException ex)
+        {
+            _logger.LogError(ex, "Mercado Pago rechazó la creación de la preferencia para el usuario {UsuarioId}", request.UsuarioId);
+            throw new ServicioExternoException(MensajeNoDisponible, ex);
+        }
 
         var initPoint = string.IsNullOrWhiteSpace(preference.InitPoint)
             ? preference.SandboxInitPoint
@@ -87,7 +100,7 @@ public class MercadoPagoPaymentService : IPaymentGatewayService
 
         if (string.IsNullOrWhiteSpace(initPoint))
         {
-            throw new InvalidOperationException("Mercado Pago no devolvió una URL de checkout (InitPoint).");
+            throw new ServicioExternoException("Mercado Pago no devolvió una URL de checkout. Intentá nuevamente.");
         }
 
         return new CheckoutPreferenceResult
@@ -101,15 +114,27 @@ public class MercadoPagoPaymentService : IPaymentGatewayService
         string paymentId,
         CancellationToken cancellationToken = default)
     {
-        AsegurarAccessToken();
-
-        if (!long.TryParse(paymentId, out var id))
+        if (!long.TryParse(paymentId?.Trim(), out var id) || id <= 0)
         {
             return null;
         }
 
-        var client = new PaymentClient();
-        var payment = await client.GetAsync(id, cancellationToken: cancellationToken);
+        var opciones = CrearOpciones();
+
+        MercadoPago.Resource.Payment.Payment? payment;
+        try
+        {
+            payment = await new PaymentClient().GetAsync(id, opciones, cancellationToken);
+        }
+        catch (MercadoPagoApiException ex) when (ex.ApiResponse?.StatusCode is 404)
+        {
+            return null;
+        }
+        catch (MercadoPagoException ex)
+        {
+            _logger.LogError(ex, "No se pudo consultar el pago {PaymentId} en Mercado Pago", paymentId);
+            throw new ServicioExternoException(MensajeNoDisponible, ex);
+        }
 
         if (payment is null)
         {
@@ -128,16 +153,63 @@ public class MercadoPagoPaymentService : IPaymentGatewayService
         };
     }
 
-    private void AsegurarAccessToken()
+    public bool FirmaWebhookValida(string? firma, string? requestId, string paymentId)
     {
-        var accessToken = _configuration["MercadoPago:AccessToken"];
-        if (string.IsNullOrWhiteSpace(accessToken))
+        var secret = _configuration["MercadoPago:WebhookSecret"]?.Trim();
+        if (string.IsNullOrWhiteSpace(secret))
         {
-            throw new InvalidOperationException(
-                "MercadoPago:AccessToken no está configurado. Definilo en User Secrets o en Azure.");
+            return true;
         }
 
-        MercadoPagoConfig.AccessToken = accessToken;
+        if (string.IsNullOrWhiteSpace(firma) || string.IsNullOrWhiteSpace(paymentId))
+        {
+            return false;
+        }
+
+        var partes = firma.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        string? ts = null;
+        string? hash = null;
+        foreach (var parte in partes)
+        {
+            var kv = parte.Split('=', 2);
+            if (kv.Length != 2)
+            {
+                continue;
+            }
+
+            if (kv[0].Equals("ts", StringComparison.OrdinalIgnoreCase))
+            {
+                ts = kv[1];
+            }
+            else if (kv[0].Equals("v1", StringComparison.OrdinalIgnoreCase))
+            {
+                hash = kv[1];
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(ts) || string.IsNullOrWhiteSpace(hash))
+        {
+            return false;
+        }
+
+        var manifiesto = $"id:{paymentId.ToLowerInvariant()};request-id:{requestId ?? string.Empty};ts:{ts};";
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+        var calculado = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(manifiesto))).ToLowerInvariant();
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(calculado),
+            Encoding.UTF8.GetBytes(hash.ToLowerInvariant()));
+    }
+
+    private RequestOptions CrearOpciones()
+    {
+        var accessToken = _configuration["MercadoPago:AccessToken"]?.Trim();
+        if (string.IsNullOrWhiteSpace(accessToken))
+        {
+            _logger.LogError("Falta configurar MercadoPago:AccessToken");
+            throw new ServicioExternoException("Los pagos no están disponibles por el momento. Contactá a un administrador.");
+        }
+
+        return new RequestOptions { AccessToken = accessToken };
     }
 
     private static string ValorODefault(string? valor, string fallback) =>

@@ -1,6 +1,7 @@
-using Kitch.Application.DTOs.ListaCompra;
+﻿using Kitch.Application.DTOs.ListaCompra;
 using Kitch.Application.Interfaces;
 using Kitch.Application.Mappings;
+using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
 
@@ -8,7 +9,7 @@ namespace Kitch.Application.Services;
 
 public class ListaCompraService : IListaCompraService
 {
-    private const float ToleranciaCantidad = 0.001f;
+    private const decimal ToleranciaCantidad = 0.01m;
 
     private readonly IRepository<ItemListaCompra> _itemRepository;
     private readonly IRepository<ComidaPlanificada> _comidaRepository;
@@ -16,6 +17,7 @@ public class ListaCompraService : IListaCompraService
     private readonly IRepository<StockUsuario> _stockRepository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
     private readonly IIngredienteNormalizerService _normalizer;
+    private readonly IUnidadDeTrabajo _unidadDeTrabajo;
 
     public ListaCompraService(
         IRepository<ItemListaCompra> itemRepository,
@@ -23,8 +25,10 @@ public class ListaCompraService : IListaCompraService
         IRepository<IngredienteReceta> ingredienteRecetaRepository,
         IRepository<StockUsuario> stockRepository,
         IRepository<Ingrediente> ingredienteRepository,
-        IIngredienteNormalizerService normalizer)
+        IIngredienteNormalizerService normalizer,
+        IUnidadDeTrabajo unidadDeTrabajo)
     {
+        _unidadDeTrabajo = unidadDeTrabajo;
         _itemRepository = itemRepository;
         _comidaRepository = comidaRepository;
         _ingredienteRecetaRepository = ingredienteRecetaRepository;
@@ -36,10 +40,9 @@ public class ListaCompraService : IListaCompraService
     public async Task<IEnumerable<ItemListaCompraResponseDto>> GetByUsuarioIdAsync(int usuarioId)
     {
         var items = await _itemRepository.FindAsync(item => item.UsuarioId == usuarioId);
-        return items
+        return await MapearConCategoriaAsync(items
             .OrderBy(item => item.EstaComprado)
-            .ThenBy(item => item.NombreArticulo)
-            .Select(item => item.ToResponseDto());
+            .ThenBy(item => item.NombreArticulo));
     }
 
     public async Task<ItemListaCompraResponseDto?> GetByIdAsync(int id, int usuarioId)
@@ -51,49 +54,65 @@ public class ListaCompraService : IListaCompraService
             return null;
         }
 
-        return item.ToResponseDto();
+        return await MapearUnoConCategoriaAsync(item);
     }
 
-    public async Task<ItemListaCompraResponseDto> CreateAsync(ItemListaCompraCreateDto item)
+    public Task<ItemListaCompraResponseDto> CreateAsync(ItemListaCompraCreateDto item) =>
+        EnTransaccionAsync(item.UsuarioId, () => CreateEnTransaccionAsync(item));
+
+    private async Task<ItemListaCompraResponseDto> CreateEnTransaccionAsync(ItemListaCompraCreateDto item)
     {
         var nombre = item.NombreArticulo.Trim();
-        var unidad = (item.UnidadMedida ?? string.Empty).Trim();
+        var unidad = NormalizarUnidad(item.UnidadMedida);
 
-        var pendientes = await _itemRepository.FindAsync(existente =>
-            existente.UsuarioId == item.UsuarioId && !existente.EstaComprado);
-
-        var duplicado = pendientes.FirstOrDefault(existente =>
-            CorrespondeAlMismoArticulo(existente, item.IngredienteId, nombre));
-
-        if (duplicado is not null)
+        if (nombre.Length == 0)
         {
-            duplicado.CantidadFaltante += item.CantidadFaltante;
-            duplicado.NombreArticulo = nombre;
-            duplicado.IngredienteId ??= item.IngredienteId;
-            if (string.IsNullOrWhiteSpace(duplicado.UnidadMedida) && unidad.Length > 0)
-            {
-                duplicado.UnidadMedida = unidad;
-            }
+            throw new ArgumentException("El nombre del artículo es obligatorio.");
+        }
 
+        if (item.CantidadFaltante <= 0)
+        {
+            throw new ArgumentException("La cantidad debe ser mayor a cero.");
+        }
+
+        await ValidarIngredienteExistenteAsync(item.IngredienteId);
+        var ingredienteId = item.IngredienteId ?? await ResolverIngredientePorNombreAsync(nombre);
+
+        var manualesPendientes = await _itemRepository.FindAsync(existente =>
+            existente.UsuarioId == item.UsuarioId && !existente.EstaComprado && !existente.GeneradoPorPlan);
+
+        var duplicado = manualesPendientes.FirstOrDefault(existente =>
+            CorrespondeAlMismoArticulo(existente, ingredienteId, nombre) &&
+            UnidadesMedida.SonCompatibles(existente.UnidadMedida, unidad));
+
+        if (duplicado is not null &&
+            UnidadesMedida.TryConvertir((decimal)item.CantidadFaltante, unidad, duplicado.UnidadMedida, out var sumada))
+        {
+            duplicado.CantidadFaltante = (float)Math.Round((decimal)duplicado.CantidadFaltante + sumada, 2);
+            duplicado.IngredienteId ??= ingredienteId;
             await _itemRepository.UpdateAsync(duplicado);
-            return duplicado.ToResponseDto();
+            return await MapearUnoConCategoriaAsync(duplicado);
         }
 
         var entity = new ItemListaCompra
         {
             UsuarioId = item.UsuarioId,
-            IngredienteId = item.IngredienteId,
+            IngredienteId = ingredienteId,
             NombreArticulo = nombre,
             UnidadMedida = unidad,
             CantidadFaltante = item.CantidadFaltante,
-            EstaComprado = false
+            EstaComprado = false,
+            GeneradoPorPlan = false
         };
 
         var created = await _itemRepository.AddAsync(entity);
-        return created.ToResponseDto();
+        return await MapearUnoConCategoriaAsync(created);
     }
 
-    public async Task<bool> UpdateAsync(int id, ItemListaCompraUpdateDto item, int usuarioId)
+    public Task<bool> UpdateAsync(int id, ItemListaCompraUpdateDto item, int usuarioId) =>
+        EnTransaccionAsync(usuarioId, () => UpdateEnTransaccionAsync(id, item, usuarioId));
+
+    private async Task<bool> UpdateEnTransaccionAsync(int id, ItemListaCompraUpdateDto item, int usuarioId)
     {
         var existingItem = await _itemRepository.GetByIdAsync(id);
 
@@ -102,12 +121,28 @@ public class ListaCompraService : IListaCompraService
             return false;
         }
 
-        existingItem.NombreArticulo = item.NombreArticulo.Trim();
+        var nombre = item.NombreArticulo?.Trim() ?? string.Empty;
+        if (nombre.Length == 0)
+        {
+            throw new ArgumentException("El nombre del artículo es obligatorio.");
+        }
+
+        if (item.CantidadFaltante <= 0)
+        {
+            throw new ArgumentException("La cantidad debe ser mayor a cero.");
+        }
+
+        await ValidarIngredienteExistenteAsync(item.IngredienteId);
+
+        var pasaAComprado = !existingItem.EstaComprado && item.EstaComprado;
+
+        existingItem.NombreArticulo = nombre;
         existingItem.CantidadFaltante = item.CantidadFaltante;
         existingItem.EstaComprado = item.EstaComprado;
+        existingItem.GeneradoPorPlan = false;
         if (!string.IsNullOrWhiteSpace(item.UnidadMedida))
         {
-            existingItem.UnidadMedida = item.UnidadMedida.Trim();
+            existingItem.UnidadMedida = NormalizarUnidad(item.UnidadMedida);
         }
 
         if (item.IngredienteId.HasValue)
@@ -115,9 +150,28 @@ public class ListaCompraService : IListaCompraService
             existingItem.IngredienteId = item.IngredienteId;
         }
 
+        if (pasaAComprado)
+        {
+            existingItem.IngredienteId ??= await ResolverIngredientePorNombreAsync(existingItem.NombreArticulo);
+        }
+
         await _itemRepository.UpdateAsync(existingItem);
 
+        if (pasaAComprado)
+        {
+            await SumarCompradoAlStockAsync(usuarioId, existingItem);
+            await SincronizarFaltantesAsync(usuarioId);
+        }
+
         return true;
+    }
+
+    private async Task ValidarIngredienteExistenteAsync(int? ingredienteId)
+    {
+        if (ingredienteId is int id && !await _ingredienteRepository.AnyAsync(ingrediente => ingrediente.Id == id))
+        {
+            throw new ArgumentException($"El ingrediente con id {id} no existe. Indicá el artículo por nombre.");
+        }
     }
 
     public async Task<bool> DeleteAsync(int id, int usuarioId)
@@ -134,7 +188,10 @@ public class ListaCompraService : IListaCompraService
         return true;
     }
 
-    public async Task<bool> MarcarComoCompradoAsync(int id, int usuarioId)
+    public Task<bool> MarcarComoCompradoAsync(int id, int usuarioId) =>
+        EnTransaccionAsync(usuarioId, () => MarcarComoCompradoEnTransaccionAsync(id, usuarioId));
+
+    private async Task<bool> MarcarComoCompradoEnTransaccionAsync(int id, int usuarioId)
     {
         var item = await _itemRepository.GetByIdAsync(id);
 
@@ -143,89 +200,149 @@ public class ListaCompraService : IListaCompraService
             return false;
         }
 
+        if (item.EstaComprado)
+        {
+            return true;
+        }
+
         item.EstaComprado = true;
+        item.IngredienteId ??= await ResolverIngredientePorNombreAsync(item.NombreArticulo);
         await _itemRepository.UpdateAsync(item);
+        await SumarCompradoAlStockAsync(usuarioId, item);
         await SincronizarFaltantesAsync(usuarioId);
 
         return true;
     }
 
-    public async Task<IEnumerable<ItemListaCompraResponseDto>> SincronizarFaltantesAsync(int usuarioId)
+    private async Task SumarCompradoAlStockAsync(int usuarioId, ItemListaCompra item)
     {
-        var items = (await _itemRepository.FindAsync(item => item.UsuarioId == usuarioId)).ToList();
-        var necesidades = await CalcularNecesidadesDelPlanAsync(usuarioId);
-        var stockActual = await ObtenerStockActualAsync(usuarioId);
-        var reclamados = new HashSet<int>();
-
-        foreach (var necesidad in necesidades.Values)
+        if (item.IngredienteId is not int ingredienteId || item.CantidadFaltante <= 0)
         {
-            stockActual.TryGetValue(necesidad.IngredienteId, out var enStock);
-            var aComprar = Math.Max(0m, necesidad.Cantidad - enStock);
+            return;
+        }
 
-            var coincidencias = items
-                .Where(item => ItemCorrespondeAIngrediente(item, necesidad))
-                .ToList();
+        var cantidad = Math.Round((decimal)item.CantidadFaltante, 2);
+        var unidad = NormalizarUnidad(item.UnidadMedida);
+        var existente = await _stockRepository.FirstOrDefaultAsync(stock =>
+            stock.UsuarioId == usuarioId && stock.IngredienteId == ingredienteId);
 
-            var comprados = coincidencias.Where(item => item.EstaComprado).ToList();
-            var pendientes = coincidencias.Where(item => !item.EstaComprado).ToList();
-
-            foreach (var pendiente in pendientes)
+        if (existente is not null)
+        {
+            if (existente.Cantidad <= 0)
             {
-                reclamados.Add(pendiente.Id);
+                existente.Cantidad = cantidad;
+                existente.UnidadMedida = unidad;
             }
-
-            foreach (var comprado in comprados.Where(item => item.IngredienteId is null))
+            else if (UnidadesMedida.TryConvertir(cantidad, unidad, existente.UnidadMedida, out var convertida))
             {
-                comprado.IngredienteId = necesidad.IngredienteId;
-                if (string.IsNullOrWhiteSpace(comprado.UnidadMedida) && necesidad.UnidadMedida.Length > 0)
-                {
-                    comprado.UnidadMedida = necesidad.UnidadMedida;
-                }
-
-                await _itemRepository.UpdateAsync(comprado);
-            }
-
-            var yaComprado = comprados.Sum(item => (decimal)item.CantidadFaltante);
-            var pendienteNeto = aComprar - yaComprado;
-
-            if (pendienteNeto > (decimal)ToleranciaCantidad)
-            {
-                await UpsertPendienteAsync(usuarioId, items, pendientes, necesidad, pendienteNeto);
+                existente.Cantidad = Math.Round(existente.Cantidad + convertida, 2);
             }
             else
             {
-                await EliminarPendientesAsync(items, pendientes);
+                return;
+            }
+
+            await _stockRepository.UpdateAsync(existente);
+            return;
+        }
+
+        await _stockRepository.AddAsync(new StockUsuario
+        {
+            UsuarioId = usuarioId,
+            IngredienteId = ingredienteId,
+            Cantidad = cantidad,
+            UnidadMedida = unidad
+        });
+    }
+
+    public Task<IEnumerable<ItemListaCompraResponseDto>> SincronizarFaltantesAsync(int usuarioId) =>
+        EnTransaccionAsync(usuarioId, () => SincronizarEnTransaccionAsync(usuarioId));
+
+    private Task<T> EnTransaccionAsync<T>(int usuarioId, Func<Task<T>> operacion) =>
+        _unidadDeTrabajo.EjecutarAsync(async () =>
+        {
+            await _unidadDeTrabajo.BloquearRecursoAsync($"kitch:stock:usuario:{usuarioId}");
+            return await operacion();
+        });
+
+    private async Task<IEnumerable<ItemListaCompraResponseDto>> SincronizarEnTransaccionAsync(int usuarioId)
+    {
+        var items = (await _itemRepository.FindAsync(item => item.UsuarioId == usuarioId)).ToList();
+        var necesidades = await CalcularNecesidadesDelPlanAsync(usuarioId);
+        var stockPorIngrediente = await ObtenerStockPorIngredienteAsync(usuarioId);
+        var autoReclamados = new HashSet<int>();
+
+        foreach (var necesidad in necesidades)
+        {
+            var aComprar = necesidad.Cantidad;
+
+            if (stockPorIngrediente.TryGetValue(necesidad.IngredienteId, out var stock) &&
+                stock.Cantidad > 0 &&
+                UnidadesMedida.TryConvertir(stock.Cantidad, stock.UnidadMedida, necesidad.UnidadMedida, out var enStock))
+            {
+                aComprar -= enStock;
+            }
+
+            var coincidencias = items
+                .Where(item => !item.EstaComprado && ItemCorrespondeAIngrediente(item, necesidad))
+                .ToList();
+
+            foreach (var manual in coincidencias.Where(item => !item.GeneradoPorPlan))
+            {
+                if (UnidadesMedida.TryConvertir((decimal)manual.CantidadFaltante, manual.UnidadMedida, necesidad.UnidadMedida, out var yaAnotado))
+                {
+                    aComprar -= yaAnotado;
+                }
+            }
+
+            var automaticos = coincidencias.Where(item => item.GeneradoPorPlan).ToList();
+
+            if (aComprar > ToleranciaCantidad)
+            {
+                var keeper = await UpsertAutomaticoAsync(usuarioId, items, automaticos, necesidad, aComprar);
+                autoReclamados.Add(keeper.Id);
+            }
+            else
+            {
+                await EliminarAsync(items, automaticos);
             }
         }
 
         var obsoletos = items
-            .Where(item =>
-                !item.EstaComprado &&
-                item.IngredienteId.HasValue &&
-                !reclamados.Contains(item.Id) &&
-                !necesidades.ContainsKey(item.IngredienteId.Value))
+            .Where(item => item.GeneradoPorPlan && !item.EstaComprado && !autoReclamados.Contains(item.Id))
             .ToList();
 
-        await EliminarPendientesAsync(items, obsoletos);
+        await EliminarAsync(items, obsoletos);
 
-        return items
+        return await MapearConCategoriaAsync(items
             .Where(item => !item.EstaComprado)
-            .OrderBy(item => item.NombreArticulo)
-            .Select(item => item.ToResponseDto())
-            .ToList();
+            .OrderBy(item => item.NombreArticulo));
     }
 
-    private async Task UpsertPendienteAsync(
+    public async Task<ListaCompraResumenDto> GetResumenAsync(int usuarioId)
+    {
+        var items = (await SincronizarFaltantesAsync(usuarioId)).ToList();
+        var todoCubierto = items.Count == 0;
+        return new ListaCompraResumenDto
+        {
+            TodoCubierto = todoCubierto,
+            Mensaje = todoCubierto
+                ? "¡Tenés todo lo necesario en tu alacena!"
+                : "Esta es la lista de lo que te falta para el menú planificado.",
+            Items = items
+        };
+    }
+
+    private async Task<ItemListaCompra> UpsertAutomaticoAsync(
         int usuarioId,
         List<ItemListaCompra> items,
-        List<ItemListaCompra> pendientes,
+        List<ItemListaCompra> automaticos,
         NecesidadIngrediente necesidad,
         decimal cantidad)
     {
-        var cantidadRedondeada = (float)Math.Round((double)cantidad, 2);
-        var keeper = pendientes
-            .OrderByDescending(item => item.IngredienteId.HasValue)
-            .ThenBy(item => item.Id)
+        var cantidadRedondeada = (float)Math.Round(cantidad, 2);
+        var keeper = automaticos
+            .OrderBy(item => item.Id)
             .FirstOrDefault();
 
         if (keeper is null)
@@ -237,53 +354,53 @@ public class ListaCompraService : IListaCompraService
                 NombreArticulo = necesidad.Nombre,
                 UnidadMedida = necesidad.UnidadMedida,
                 CantidadFaltante = cantidadRedondeada,
-                EstaComprado = false
+                EstaComprado = false,
+                GeneradoPorPlan = true
             });
 
             items.Add(creado);
-            return;
+            return creado;
         }
 
-        var extras = pendientes.Where(item => item.Id != keeper.Id).ToList();
-        await EliminarPendientesAsync(items, extras);
+        await EliminarAsync(items, automaticos.Where(item => item.Id != keeper.Id).ToList());
 
         var cambio =
             keeper.IngredienteId != necesidad.IngredienteId ||
             !string.Equals(keeper.NombreArticulo, necesidad.Nombre, StringComparison.Ordinal) ||
             !string.Equals(keeper.UnidadMedida, necesidad.UnidadMedida, StringComparison.Ordinal) ||
-            Math.Abs(keeper.CantidadFaltante - cantidadRedondeada) > ToleranciaCantidad;
+            Math.Abs((decimal)keeper.CantidadFaltante - (decimal)cantidadRedondeada) > ToleranciaCantidad;
 
-        if (!cambio)
+        if (cambio)
         {
-            return;
+            keeper.IngredienteId = necesidad.IngredienteId;
+            keeper.NombreArticulo = necesidad.Nombre;
+            keeper.UnidadMedida = necesidad.UnidadMedida;
+            keeper.CantidadFaltante = cantidadRedondeada;
+            await _itemRepository.UpdateAsync(keeper);
         }
 
-        keeper.IngredienteId = necesidad.IngredienteId;
-        keeper.NombreArticulo = necesidad.Nombre;
-        keeper.UnidadMedida = necesidad.UnidadMedida;
-        keeper.CantidadFaltante = cantidadRedondeada;
-        await _itemRepository.UpdateAsync(keeper);
+        return keeper;
     }
 
-    private async Task EliminarPendientesAsync(List<ItemListaCompra> items, List<ItemListaCompra> pendientes)
+    private async Task EliminarAsync(List<ItemListaCompra> items, List<ItemListaCompra> aEliminar)
     {
-        foreach (var pendiente in pendientes)
+        foreach (var item in aEliminar)
         {
-            await _itemRepository.DeleteAsync(pendiente);
-            items.Remove(pendiente);
+            await _itemRepository.DeleteAsync(item);
+            items.Remove(item);
         }
     }
 
-    private async Task<Dictionary<int, NecesidadIngrediente>> CalcularNecesidadesDelPlanAsync(int usuarioId)
+    private async Task<List<NecesidadIngrediente>> CalcularNecesidadesDelPlanAsync(int usuarioId)
     {
-        var hoy = DateTime.UtcNow.Date;
+        var hoy = FechaLocal.Hoy();
         var comidas = await _comidaRepository.FindAsync(comida =>
             comida.UsuarioId == usuarioId &&
             comida.FechaAsignada >= hoy);
 
         if (comidas.Count == 0)
         {
-            return new Dictionary<int, NecesidadIngrediente>();
+            return [];
         }
 
         var recetaIds = comidas.Select(comida => comida.RecetaId).Distinct().ToList();
@@ -294,7 +411,7 @@ public class ListaCompraService : IListaCompraService
             .GroupBy(ingrediente => ingrediente.RecetaId)
             .ToDictionary(grupo => grupo.Key, grupo => grupo.ToList());
 
-        var necesidades = new Dictionary<int, NecesidadIngrediente>();
+        var necesidades = new Dictionary<(int IngredienteId, string Dimension), NecesidadIngrediente>();
 
         foreach (var comida in comidas)
         {
@@ -305,31 +422,32 @@ public class ListaCompraService : IListaCompraService
 
             foreach (var ingrediente in ingredientes)
             {
-                if (!necesidades.TryGetValue(ingrediente.IngredienteId, out var necesidad))
+                var unidad = NormalizarUnidad(ingrediente.UnidadMedida);
+                var clave = (ingrediente.IngredienteId, UnidadesMedida.Dimension(unidad));
+
+                if (!necesidades.TryGetValue(clave, out var necesidad))
                 {
                     necesidad = new NecesidadIngrediente
                     {
                         IngredienteId = ingrediente.IngredienteId,
-                        UnidadMedida = (ingrediente.UnidadMedida ?? string.Empty).Trim()
+                        UnidadMedida = unidad
                     };
-                    necesidades[ingrediente.IngredienteId] = necesidad;
+                    necesidades[clave] = necesidad;
                 }
 
-                necesidad.Cantidad += ingrediente.Cantidad;
-                if (string.IsNullOrWhiteSpace(necesidad.UnidadMedida)
-                    && !string.IsNullOrWhiteSpace(ingrediente.UnidadMedida))
+                if (UnidadesMedida.TryConvertir(ingrediente.Cantidad, unidad, necesidad.UnidadMedida, out var convertida))
                 {
-                    necesidad.UnidadMedida = ingrediente.UnidadMedida.Trim();
+                    necesidad.Cantidad += convertida;
                 }
             }
         }
 
         if (necesidades.Count == 0)
         {
-            return necesidades;
+            return [];
         }
 
-        var ingredienteIds = necesidades.Keys.ToList();
+        var ingredienteIds = necesidades.Values.Select(necesidad => necesidad.IngredienteId).Distinct().ToList();
         var catalogo = await _ingredienteRepository.FindAsync(ingrediente =>
             ingredienteIds.Contains(ingrediente.Id));
         var nombrePorId = catalogo.ToDictionary(ingrediente => ingrediente.Id, ingrediente => ingrediente.Nombre);
@@ -342,20 +460,37 @@ public class ListaCompraService : IListaCompraService
             necesidad.NombreNormalizado = NormalizarNombre(necesidad.Nombre);
         }
 
-        return necesidades;
+        return necesidades.Values.ToList();
     }
 
-    private async Task<Dictionary<int, decimal>> ObtenerStockActualAsync(int usuarioId)
+    private async Task<Dictionary<int, StockUsuario>> ObtenerStockPorIngredienteAsync(int usuarioId)
     {
         var stock = await _stockRepository.FindAsync(item => item.UsuarioId == usuarioId);
 
         return stock
             .GroupBy(item => item.IngredienteId)
-            .ToDictionary(grupo => grupo.Key, grupo => grupo.Sum(item => item.Cantidad));
+            .ToDictionary(grupo => grupo.Key, grupo => grupo.First());
+    }
+
+    private async Task<int?> ResolverIngredientePorNombreAsync(string? nombre)
+    {
+        var normalizado = NormalizarNombre(nombre);
+        if (normalizado.Length == 0)
+        {
+            return null;
+        }
+
+        var ingrediente = await _ingredienteRepository.FirstOrDefaultAsync(existente => existente.Nombre == normalizado);
+        return ingrediente?.Id;
     }
 
     private bool ItemCorrespondeAIngrediente(ItemListaCompra item, NecesidadIngrediente necesidad)
     {
+        if (!UnidadesMedida.SonCompatibles(item.UnidadMedida, necesidad.UnidadMedida))
+        {
+            return false;
+        }
+
         if (item.IngredienteId == necesidad.IngredienteId)
         {
             return true;
@@ -382,6 +517,17 @@ public class ListaCompraService : IListaCompraService
         return nombreExistente.Length > 0 && nombreExistente == nombreNuevo;
     }
 
+    private static string NormalizarUnidad(string? unidad)
+    {
+        var limpia = unidad?.Trim() ?? string.Empty;
+        if (limpia.Length == 0)
+        {
+            return UnidadesMedida.Unidad;
+        }
+
+        return limpia.Length > 50 ? limpia[..50] : limpia;
+    }
+
     private string NormalizarNombre(string? nombre)
     {
         if (string.IsNullOrWhiteSpace(nombre))
@@ -390,6 +536,42 @@ public class ListaCompraService : IListaCompraService
         }
 
         return _normalizer.Normalizar(nombre);
+    }
+
+    private async Task<ItemListaCompraResponseDto> MapearUnoConCategoriaAsync(ItemListaCompra item)
+    {
+        var mapped = await MapearConCategoriaAsync([item]);
+        return mapped[0];
+    }
+
+    private async Task<List<ItemListaCompraResponseDto>> MapearConCategoriaAsync(IEnumerable<ItemListaCompra> items)
+    {
+        var lista = items.ToList();
+        var ids = lista
+            .Where(item => item.IngredienteId.HasValue)
+            .Select(item => item.IngredienteId!.Value)
+            .Distinct()
+            .ToList();
+
+        var categorias = new Dictionary<int, string>();
+        if (ids.Count > 0)
+        {
+            var ingredientes = await _ingredienteRepository.FindAsync(ingrediente => ids.Contains(ingrediente.Id));
+            categorias = ingredientes.ToDictionary(
+                ingrediente => ingrediente.Id,
+                ingrediente => string.IsNullOrWhiteSpace(ingrediente.Categoria) ? "Varios" : ingrediente.Categoria);
+        }
+
+        return lista.Select(item =>
+        {
+            var dto = item.ToResponseDto();
+            if (item.IngredienteId is int id && categorias.TryGetValue(id, out var categoria))
+            {
+                dto.Categoria = categoria;
+            }
+
+            return dto;
+        }).ToList();
     }
 
     private sealed class NecesidadIngrediente

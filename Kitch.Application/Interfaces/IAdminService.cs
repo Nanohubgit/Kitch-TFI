@@ -9,4 +9,6 @@ public interface IAdminService
     Task<MetricasPlataformaDto> GetMetricasAsync(int usuarioId);
     Task<IEnumerable<UsuarioResponseDto>> GetUsuariosAsync(int usuarioId);
     Task<IEnumerable<SuscripcionResponseDto>> GetSuscripcionesAsync(int usuarioId);
+    Task<UsuarioResponseDto> CambiarBloqueoAsync(int adminId, int usuarioId, bool bloquear);
+    Task EnviarRecuperacionPasswordAsync(int adminId, int usuarioId);
 }

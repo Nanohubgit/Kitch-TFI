@@ -16,4 +16,12 @@ public class RecetaCompatibleDto
     public int IngredientesDisponibles { get; set; }
     public int PorcentajeCoincidencia { get; set; }
     public List<string> IngredientesFaltantes { get; set; } = new();
+    public string Grupo { get; set; } = GrupoRecomendacion.Otras;
+}
+
+public static class GrupoRecomendacion
+{
+    public const string Completa = "Completa";
+    public const string TeFaltanPocos = "TeFaltanPocos";
+    public const string Otras = "Otras";
 }

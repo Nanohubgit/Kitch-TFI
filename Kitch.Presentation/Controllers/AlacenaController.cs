@@ -20,27 +20,17 @@ public class AlacenaController : ApiControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<IngredienteAlacenaResponseDto>>> ObtenerInventario()
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        var inventario = await _alacenaService.ObtenerInventarioAsync(usuarioId);
+        var inventario = await _alacenaService.ObtenerInventarioAsync(GetUsuarioIdOrThrow());
         return Ok(inventario);
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<IngredienteAlacenaResponseDto>> ObtenerPorId(int id)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        var item = await _alacenaService.ObtenerPorIdAsync(id, usuarioId);
+        var item = await _alacenaService.ObtenerPorIdAsync(id, GetUsuarioIdOrThrow());
         if (item is null)
         {
-            return NotFound(new { message = "Ingrediente no encontrado en la alacena." });
+            throw new KeyNotFoundException("Ingrediente no encontrado en la alacena.");
         }
 
         return Ok(item);
@@ -50,20 +40,8 @@ public class AlacenaController : ApiControllerBase
     public async Task<ActionResult<IngredienteAlacenaResponseDto>> AgregarIngrediente(
         [FromBody] AgregarIngredienteRequestDto request)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        try
-        {
-            var creado = await _alacenaService.AgregarIngredienteAsync(usuarioId, request);
-            return CreatedAtAction(nameof(ObtenerPorId), new { id = creado.Id }, creado);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequestMessage(ex.Message);
-        }
+        var creado = await _alacenaService.AgregarIngredienteAsync(GetUsuarioIdOrThrow(), request);
+        return CreatedAtAction(nameof(ObtenerPorId), new { id = creado.Id }, creado);
     }
 
     [HttpPut("{id:int}")]
@@ -71,39 +49,22 @@ public class AlacenaController : ApiControllerBase
         int id,
         [FromBody] ActualizarCantidadAlacenaRequestDto request)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
+        var actualizado = await _alacenaService.ActualizarCantidadAsync(id, GetUsuarioIdOrThrow(), request);
+        if (actualizado is null)
         {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
+            throw new KeyNotFoundException("Ingrediente no encontrado en la alacena.");
         }
 
-        try
-        {
-            var actualizado = await _alacenaService.ActualizarCantidadAsync(id, usuarioId, request);
-            if (actualizado is null)
-            {
-                return NotFound(new { message = "Ingrediente no encontrado en la alacena." });
-            }
-
-            return Ok(actualizado);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequestMessage(ex.Message);
-        }
+        return Ok(actualizado);
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> EliminarIngrediente(int id)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        var eliminado = await _alacenaService.EliminarIngredienteAsync(id, usuarioId);
+        var eliminado = await _alacenaService.EliminarIngredienteAsync(id, GetUsuarioIdOrThrow());
         if (!eliminado)
         {
-            return NotFound(new { message = "Ingrediente no encontrado en la alacena." });
+            throw new KeyNotFoundException("Ingrediente no encontrado en la alacena.");
         }
 
         return NoContent();

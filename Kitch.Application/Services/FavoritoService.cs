@@ -1,3 +1,4 @@
+using Kitch.Application.Common;
 using Kitch.Application.DTOs.Favoritos;
 using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
@@ -33,10 +34,16 @@ public class FavoritoService : IFavoritoService
             favorito => favorito.Receta);
 
         return favoritos
-            .Where(favorito =>
-                favorito.Receta is not null &&
-                LimitesPlan.PuedeUsarDificultad(usuario?.Rol, favorito.Receta.Dificultad))
-            .Select(favorito => favorito.ToResponseDto());
+            .Where(favorito => favorito.Receta is not null &&
+                AccesoReceta.Permitido(favorito.Receta, usuarioId, usuario?.Rol))
+            .Select(favorito =>
+            {
+                var dto = favorito.ToResponseDto();
+                dto.BloqueadaPorPlan = !LimitesPlan.PuedeUsarDificultad(usuario?.Rol, favorito.Receta.Dificultad);
+                return dto;
+            })
+            .OrderBy(dto => dto.BloqueadaPorPlan)
+            .ToList();
     }
 
     public async Task<FavoritoResponseDto?> GetByIdAsync(int id, int usuarioId)
@@ -53,8 +60,12 @@ public class FavoritoService : IFavoritoService
         }
 
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
-        if (favorito.Receta is not null &&
-            !LimitesPlan.PuedeUsarDificultad(usuario?.Rol, favorito.Receta.Dificultad))
+        if (favorito.Receta is null || !AccesoReceta.Permitido(favorito.Receta, usuarioId, usuario?.Rol))
+        {
+            return null;
+        }
+
+        if (!LimitesPlan.PuedeUsarDificultad(usuario?.Rol, favorito.Receta.Dificultad))
         {
             throw new ForbiddenException(LimitesPlan.MensajeDificultadPremium);
         }
@@ -144,9 +155,14 @@ public class FavoritoService : IFavoritoService
     private async Task AsegurarRecetaVisibleAsync(int usuarioId, int recetaId)
     {
         var receta = await _recetaRepository.GetByIdAsync(recetaId)
-            ?? throw new InvalidOperationException("La receta no existe.");
+            ?? throw new KeyNotFoundException(AccesoReceta.MensajeNoEncontrada);
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
             ?? throw new InvalidOperationException("El usuario no existe.");
+
+        if (!AccesoReceta.Permitido(receta, usuarioId, usuario.Rol))
+        {
+            throw new KeyNotFoundException(AccesoReceta.MensajeNoEncontrada);
+        }
 
         if (!LimitesPlan.PuedeUsarDificultad(usuario.Rol, receta.Dificultad))
         {

@@ -27,6 +27,7 @@ public class StockUsuarioUpdateDto
 
     [Required, MaxLength(50)]
     public string UnidadMedida { get; set; } = string.Empty;
+    public DateTime? FechaCaducidad { get; set; }
 }
 
 public class StockUsuarioResponseDto

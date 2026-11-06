@@ -25,6 +25,8 @@ public class ActualizarCantidadAlacenaRequestDto
 
     [MaxLength(50)]
     public string? UnidadMedida { get; set; }
+
+    public DateTime? FechaCaducidad { get; set; }
 }
 
 public class IngredienteAlacenaResponseDto

@@ -11,6 +11,8 @@ namespace Kitch.Domain.Entities
         
         public DificultadReceta Dificultad { get; set; } = DificultadReceta.Medio;
         public string Categoria { get; set; } = "general";
+        public int? UsuarioId { get; set; }
+        public Usuario? Usuario { get; set; }
 
         public ICollection<IngredienteReceta> IngredientesReceta { get; set; } = new List<IngredienteReceta>();
         public ICollection<PreparacionReceta> Preparaciones { get; set; } = new List<PreparacionReceta>();

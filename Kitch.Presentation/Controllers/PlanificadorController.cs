@@ -20,12 +20,7 @@ public class PlanificadorController : ApiControllerBase
     [HttpGet("mias")]
     public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetMias()
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        var comidas = await _planificadorService.GetByUsuarioIdAsync(usuarioId);
+        var comidas = await _planificadorService.GetByUsuarioIdAsync(GetUsuarioIdOrThrow());
         return Ok(comidas);
     }
 
@@ -33,12 +28,7 @@ public class PlanificadorController : ApiControllerBase
     public async Task<ActionResult<IEnumerable<ComidaPlanificadaResponseDto>>> GetMiasPorFecha(
         [FromQuery] DateTime fecha)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        var comidas = await _planificadorService.GetByFechaAsync(usuarioId, fecha);
+        var comidas = await _planificadorService.GetByFechaAsync(GetUsuarioIdOrThrow(), fecha);
         return Ok(comidas);
     }
 
@@ -47,27 +37,17 @@ public class PlanificadorController : ApiControllerBase
         [FromQuery] DateTime desde,
         [FromQuery] DateTime hasta)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        var comidas = await _planificadorService.GetByRangoFechasAsync(usuarioId, desde, hasta);
+        var comidas = await _planificadorService.GetByRangoFechasAsync(GetUsuarioIdOrThrow(), desde, hasta);
         return Ok(comidas);
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ComidaPlanificadaResponseDto>> GetById(int id)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        var comida = await _planificadorService.GetByIdAsync(id, usuarioId);
+        var comida = await _planificadorService.GetByIdAsync(id, GetUsuarioIdOrThrow());
         if (comida is null)
         {
-            return NotFound(new { message = "Comida planificada no encontrada." });
+            throw new KeyNotFoundException("Comida planificada no encontrada.");
         }
 
         return Ok(comida);
@@ -76,91 +56,37 @@ public class PlanificadorController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<ComidaPlanificadaResponseDto>> Create([FromBody] ComidaPlanificadaCreateDto comida)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        comida.UsuarioId = usuarioId;
-
-        try
-        {
-            var createdComida = await _planificadorService.CreateAsync(comida);
-            return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new { message = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { message = ex.Message });
-        }
+        comida.UsuarioId = GetUsuarioIdOrThrow();
+        var createdComida = await _planificadorService.CreateAsync(comida);
+        return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
     }
 
     [HttpPost("agendar")]
     public async Task<ActionResult<ComidaPlanificadaResponseDto>> Agendar([FromBody] AgendarRecetaRequestDto request)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        try
-        {
-            var createdComida = await _planificadorService.AgendarAsync(usuarioId, request);
-            return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new { message = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { message = ex.Message });
-        }
+        var createdComida = await _planificadorService.AgendarAsync(GetUsuarioIdOrThrow(), request);
+        return CreatedAtAction(nameof(GetById), new { id = createdComida.Id }, createdComida);
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] ComidaPlanificadaUpdateDto comida)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
+        var updated = await _planificadorService.UpdateAsync(id, comida, GetUsuarioIdOrThrow());
+        if (!updated)
         {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
+            throw new KeyNotFoundException("Comida planificada no encontrada.");
         }
 
-        try
-        {
-            var updated = await _planificadorService.UpdateAsync(id, comida, usuarioId);
-            if (!updated)
-            {
-                return NotFound(new { message = "Comida planificada no encontrada." });
-            }
-
-            return NoContent();
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new { message = ex.Message });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(new { message = ex.Message });
-        }
+        return NoContent();
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        var deleted = await _planificadorService.DeleteAsync(id, usuarioId);
+        var deleted = await _planificadorService.DeleteAsync(id, GetUsuarioIdOrThrow());
         if (!deleted)
         {
-            return NotFound(new { message = "Comida planificada no encontrada." });
+            throw new KeyNotFoundException("Comida planificada no encontrada.");
         }
 
         return NoContent();

@@ -2,15 +2,12 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kitch.Application.Exceptions;
 using Kitch.Domain.Interfaces;
 using Microsoft.Extensions.Configuration;
 
 namespace Kitch.Infrastructure.Services;
 
-/// <summary>
-/// Cliente OpenAI (gpt-4o-mini por defecto) vía HttpClientFactory.
-/// Se activa con Ai:Provider = OpenAI. El modelo se lee de OpenAi:Model.
-/// </summary>
 public class OpenAiClient : IAsistenteIaClient
 {
     private const string ChatEndpoint = "v1/chat/completions";
@@ -18,6 +15,7 @@ public class OpenAiClient : IAsistenteIaClient
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _modelo;
+    private readonly bool _configurado;
 
     public OpenAiClient(IHttpClientFactory httpClientFactory, IConfiguration configuration)
     {
@@ -25,6 +23,7 @@ public class OpenAiClient : IAsistenteIaClient
 
         var modeloConfig = configuration["OpenAi:Model"];
         _modelo = string.IsNullOrWhiteSpace(modeloConfig) ? ModeloPorDefecto : modeloConfig.Trim();
+        _configurado = !string.IsNullOrWhiteSpace(configuration["OpenAi:ApiKey"]);
     }
 
     public Task<string> GenerarRespuestaAsync(string prompt, string systemInstruction) =>
@@ -60,6 +59,11 @@ public class OpenAiClient : IAsistenteIaClient
 
     private async Task<string> EnviarAsync(List<OpenAiMessage> messages, string systemInstruction, bool jsonMode)
     {
+        if (!_configurado)
+        {
+            throw new ServicioExternoException("El asistente de IA no está configurado en el servidor.");
+        }
+
         var client = _httpClientFactory.CreateClient("OpenAiClient");
 
         var todosLosMensajes = new List<OpenAiMessage>
@@ -85,12 +89,21 @@ public class OpenAiClient : IAsistenteIaClient
 
             if (response.IsSuccessStatusCode)
             {
-                var resultado = await response.Content.ReadFromJsonAsync<OpenAiResponse>();
+                OpenAiResponse? resultado;
+                try
+                {
+                    resultado = await response.Content.ReadFromJsonAsync<OpenAiResponse>();
+                }
+                catch (JsonException ex)
+                {
+                    throw new ServicioExternoException("El asistente de IA devolvió una respuesta inválida.", ex);
+                }
+
                 return resultado?.Choices?.FirstOrDefault()?.Message?.Content ?? string.Empty;
             }
 
-            var esTransitorio = response.StatusCode == HttpStatusCode.ServiceUnavailable ||
-                response.StatusCode == HttpStatusCode.TooManyRequests;
+            var esTransitorio = response.StatusCode == HttpStatusCode.TooManyRequests ||
+                (int)response.StatusCode >= 500;
 
             if (esTransitorio && intento < maxIntentos)
             {

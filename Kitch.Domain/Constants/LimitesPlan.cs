@@ -2,9 +2,6 @@ using Kitch.Domain.Entities;
 
 namespace Kitch.Domain.Constants;
 
-/// <summary>
-/// Límites del plan Básico vs Profesional (requisito TFI).
-/// </summary>
 public static class LimitesPlan
 {
     public const int MaxFavoritosBasico = 5;
@@ -14,12 +11,16 @@ public static class LimitesPlan
     public const int MaxSustitutosBasico = 1;
     public const int MaxPeticionesIaBasico = 8;
     public const int MaxPeticionesIaProfesional = 40;
+    public const int MaxFaltantesRecomendacion = 2;
 
     public const string MensajeDificultadPremium =
         "Las recetas difíciles son del plan Profesional. Con Básico podés usar Fácil e Intermedia. Pasate a Profesional para desbloquearlas.";
 
     public const string MensajePedidoDificilBasico =
         "Las recetas difíciles son del plan Profesional. Con Básico puedo armarte recetas Fácil o Intermedia. Pasate a Profesional para desbloquearlas.";
+
+    public const string MensajeRecetaGeneradaDificilBasico =
+        "La receta que salió es de nivel Profesional (por su tiempo, cantidad de pasos o técnicas), así que no te la muestro como si fuera Intermedia. Pedime algo más simple o pasate a Profesional para desbloquearla.";
 
     public const string MensajeLimiteIaBasico =
         "Llegaste al límite diario de consultas al asistente del plan Básico (8). Pasate a Profesional para tener más, o probá mañana.";
@@ -42,7 +43,4 @@ public static class LimitesPlan
     public static bool PuedeUsarDificultad(string? rol, DificultadReceta dificultad) =>
         RolUsuario.TieneAccesoPremium(rol) ||
         dificultad is DificultadReceta.Facil or DificultadReceta.Medio;
-
-    public static DificultadReceta AjustarDificultad(string? rol, DificultadReceta dificultad) =>
-        PuedeUsarDificultad(rol, dificultad) ? dificultad : DificultadReceta.Medio;
 }

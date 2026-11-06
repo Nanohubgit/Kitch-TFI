@@ -20,28 +20,31 @@ public class ListaCompraController : ApiControllerBase
     [HttpGet("mias")]
     public async Task<ActionResult<IEnumerable<ItemListaCompraResponseDto>>> GetMias()
     {
-        var usuarioId = GetUsuarioIdOrThrow();
-        var items = await _listaCompraService.GetByUsuarioIdAsync(usuarioId);
+        var items = await _listaCompraService.GetByUsuarioIdAsync(GetUsuarioIdOrThrow());
         return Ok(items);
+    }
+
+    [HttpGet("resumen")]
+    public async Task<ActionResult<ListaCompraResumenDto>> GetResumen()
+    {
+        var resumen = await _listaCompraService.GetResumenAsync(GetUsuarioIdOrThrow());
+        return Ok(resumen);
     }
 
     [HttpGet("faltantes")]
     public async Task<ActionResult<IEnumerable<ItemListaCompraResponseDto>>> GetFaltantes()
     {
-        var usuarioId = GetUsuarioIdOrThrow();
-        var faltantes = await _listaCompraService.SincronizarFaltantesAsync(usuarioId);
+        var faltantes = await _listaCompraService.SincronizarFaltantesAsync(GetUsuarioIdOrThrow());
         return Ok(faltantes);
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<ItemListaCompraResponseDto>> GetById(int id)
     {
-        var usuarioId = GetUsuarioIdOrThrow();
-        var item = await _listaCompraService.GetByIdAsync(id, usuarioId);
-
+        var item = await _listaCompraService.GetByIdAsync(id, GetUsuarioIdOrThrow());
         if (item is null)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Ítem de lista de compras no encontrado.");
         }
 
         return Ok(item);
@@ -50,9 +53,7 @@ public class ListaCompraController : ApiControllerBase
     [HttpPost]
     public async Task<ActionResult<ItemListaCompraResponseDto>> Create([FromBody] ItemListaCompraCreateDto item)
     {
-        var usuarioId = GetUsuarioIdOrThrow();
-        item.UsuarioId = usuarioId;
-
+        item.UsuarioId = GetUsuarioIdOrThrow();
         var createdItem = await _listaCompraService.CreateAsync(item);
         return CreatedAtAction(nameof(GetById), new { id = createdItem.Id }, createdItem);
     }
@@ -60,12 +61,10 @@ public class ListaCompraController : ApiControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] ItemListaCompraUpdateDto item)
     {
-        var usuarioId = GetUsuarioIdOrThrow();
-        var updated = await _listaCompraService.UpdateAsync(id, item, usuarioId);
-
+        var updated = await _listaCompraService.UpdateAsync(id, item, GetUsuarioIdOrThrow());
         if (!updated)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Ítem de lista de compras no encontrado.");
         }
 
         return NoContent();
@@ -74,12 +73,10 @@ public class ListaCompraController : ApiControllerBase
     [HttpPatch("{id:int}/comprado")]
     public async Task<IActionResult> MarcarComoComprado(int id)
     {
-        var usuarioId = GetUsuarioIdOrThrow();
-        var updated = await _listaCompraService.MarcarComoCompradoAsync(id, usuarioId);
-
+        var updated = await _listaCompraService.MarcarComoCompradoAsync(id, GetUsuarioIdOrThrow());
         if (!updated)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Ítem de lista de compras no encontrado.");
         }
 
         return NoContent();
@@ -88,12 +85,10 @@ public class ListaCompraController : ApiControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var usuarioId = GetUsuarioIdOrThrow();
-        var deleted = await _listaCompraService.DeleteAsync(id, usuarioId);
-
+        var deleted = await _listaCompraService.DeleteAsync(id, GetUsuarioIdOrThrow());
         if (!deleted)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Ítem de lista de compras no encontrado.");
         }
 
         return NoContent();

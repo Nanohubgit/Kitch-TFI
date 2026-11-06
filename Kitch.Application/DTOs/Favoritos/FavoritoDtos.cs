@@ -19,4 +19,14 @@ public class FavoritoResponseDto
 
     public string UsuarioEmail { get; set; } = string.Empty;
     public string RecetaTitulo { get; set; } = string.Empty;
+    public string RecetaCategoria { get; set; } = "general";
+    public string RecetaDificultad { get; set; } = string.Empty;
+    public int RecetaTiempoPreparacionMinutos { get; set; }
+    public bool BloqueadaPorPlan { get; set; }
+}
+
+public class ToggleFavoritoResponseDto
+{
+    public bool EsFavorito { get; set; }
+    public string Message { get; set; } = string.Empty;
 }

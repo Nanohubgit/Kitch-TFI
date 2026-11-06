@@ -16,7 +16,13 @@ public class IngredienteNormalizerService : IIngredienteNormalizerService
         "nachos",
         "ravioles",
         "especias",
-        "pastas"
+        "pastas",
+        "anis",
+        "ananas",
+        "cous",
+        "couscous",
+        "hummus",
+        "humus"
     };
 
     public string Normalizar(string? nombre)
@@ -66,12 +72,24 @@ public class IngredienteNormalizerService : IIngredienteNormalizerService
             return palabra;
         }
 
-        if (palabra.EndsWith("ces", StringComparison.Ordinal) && palabra.Length > 4)
+        if (palabra.EndsWith("ces", StringComparison.Ordinal) && palabra.Length > 4 && "aeiou".Contains(palabra[^4]))
         {
             return palabra[..^3] + "z";
         }
 
-        if (palabra.EndsWith('s') && !palabra.EndsWith("ss", StringComparison.Ordinal))
+        if (palabra.EndsWith("es", StringComparison.Ordinal) && palabra.Length > 4)
+        {
+            var raiz = palabra[..^2];
+            var ultima = raiz[^1];
+            var anterior = raiz[^2];
+            if ("nlrdj".Contains(ultima) && "aeiou".Contains(anterior))
+            {
+                return raiz;
+            }
+        }
+
+        if (palabra.EndsWith('s') && !palabra.EndsWith("ss", StringComparison.Ordinal) &&
+            !palabra.EndsWith("us", StringComparison.Ordinal))
         {
             return palabra[..^1];
         }

@@ -20,18 +20,18 @@ public class IngredientesController : ApiControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<IngredienteResponseDto>>> GetAll()
     {
-        var ingredientes = await _ingredienteService.GetAllAsync();
+        var ingredientes = await _ingredienteService.GetAllAsync(GetUsuarioIdOrThrow());
         return Ok(ingredientes);
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<IngredienteResponseDto>> GetById(int id)
     {
-        var ingrediente = await _ingredienteService.GetByIdAsync(id);
+        var ingrediente = await _ingredienteService.GetByIdAsync(id, GetUsuarioIdOrThrow());
 
         if (ingrediente is null)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Ingrediente no encontrado.");
         }
 
         return Ok(ingrediente);
@@ -53,7 +53,7 @@ public class IngredientesController : ApiControllerBase
 
         if (!updated)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Ingrediente no encontrado.");
         }
 
         return NoContent();
@@ -67,7 +67,7 @@ public class IngredientesController : ApiControllerBase
 
         if (!deleted)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Ingrediente no encontrado.");
         }
 
         return NoContent();

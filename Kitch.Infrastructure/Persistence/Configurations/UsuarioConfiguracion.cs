@@ -20,7 +20,6 @@ namespace Kitch.Infrastructure.Persistence.Configurations
                 .IsRequired()
                 .HasMaxLength(100);
 
-            // Identificador único legible: obligatorio a nivel de DB (+ índice único).
             entity.Property(x => x.NombreUsuario)
                 .IsRequired()
                 .HasMaxLength(50);
@@ -41,14 +40,11 @@ namespace Kitch.Infrastructure.Persistence.Configurations
                 .IsRequired()
                 .HasMaxLength(256);
 
-            // SHA-256 en hex = 64 caracteres. Nullable: sin reset pendiente.
             entity.Property(x => x.PasswordResetTokenHash)
                 .HasMaxLength(64);
 
-            // UTC en aplicación; columna opcional hasta que haya un forgot activo.
             entity.Property(x => x.PasswordResetTokenExpiresAt);
 
-            // Código 2FA: se persiste el hash SHA-256 (hex, 64 chars), no el dígito en claro.
             entity.Property(x => x.TwoFactorCode)
                 .HasMaxLength(64);
 
@@ -64,7 +60,6 @@ namespace Kitch.Infrastructure.Persistence.Configurations
             entity.HasIndex(x => x.Email)
                 .IsUnique();
 
-            // Búsqueda O(1) al resetear: se busca por hash del token, no por scan completo.
             entity.HasIndex(x => x.PasswordResetTokenHash);
 
             entity.Property(x => x.FechaCuotaIaUtc);

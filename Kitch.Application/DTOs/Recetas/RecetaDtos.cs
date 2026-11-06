@@ -5,8 +5,10 @@ namespace Kitch.Application.DTOs.Recetas;
 
 public class IngredienteRecetaCreateDto
 {
-    [Required]
     public int IngredienteId { get; set; }
+
+    [MaxLength(100)]
+    public string? NombreIngrediente { get; set; }
 
     [Range(0.01, double.MaxValue)]
     public decimal Cantidad { get; set; }
@@ -77,6 +79,7 @@ public class RecetaUpdateDto : RecetaCreateDto
 public class RecetaResponseDto
 {
     public int Id { get; set; }
+    public int? UsuarioId { get; set; }
     public string Titulo { get; set; } = string.Empty;
     public int CaloriasEstimadas { get; set; }
     public string Descripcion { get; set; } = string.Empty;

@@ -4,10 +4,6 @@ using Kitch.Application.Interfaces;
 
 namespace Kitch.Application.Services;
 
-/// <summary>
-/// Fachada de Alacena sobre el inventario existente (StockUsuario).
-/// No duplica reglas: reutiliza IStockUsuarioService.
-/// </summary>
 public class AlacenaService : IAlacenaService
 {
     private readonly IStockUsuarioService _stockUsuarioService;
@@ -67,7 +63,8 @@ public class AlacenaService : IAlacenaService
             Cantidad = request.Cantidad,
             UnidadMedida = string.IsNullOrWhiteSpace(request.UnidadMedida)
                 ? existente.UnidadMedida
-                : request.UnidadMedida.Trim()
+                : request.UnidadMedida.Trim(),
+            FechaCaducidad = request.FechaCaducidad ?? existente.FechaCaducidad
         }, usuarioId);
 
         if (!actualizado)

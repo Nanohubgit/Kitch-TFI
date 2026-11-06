@@ -7,7 +7,9 @@ using Kitch.Application.Interfaces;
 using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Infrastructure.Persistence;
+using Kitch.Application.Exceptions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 
@@ -18,25 +20,29 @@ public class AuthService : IAuthService
     private const int PasswordResetTokenBytes = 32;
     private const int PasswordResetExpirationMinutes = 30;
     private const int TwoFactorCodeExpirationMinutes = 5;
+    private const int MaxIntentosDosFactores = 5;
 
     private readonly KitchDbContext _context;
     private readonly IConfiguration _configuration;
     private readonly IEmailService _emailService;
     private readonly ISuscripcionVigenciaService _suscripcionVigencia;
+    private readonly IMemoryCache _cache;
 
     public AuthService(
         KitchDbContext context,
         IConfiguration configuration,
         IEmailService emailService,
-        ISuscripcionVigenciaService suscripcionVigencia)
+        ISuscripcionVigenciaService suscripcionVigencia,
+        IMemoryCache cache)
     {
         _context = context;
         _configuration = configuration;
         _emailService = emailService;
         _suscripcionVigencia = suscripcionVigencia;
+        _cache = cache;
     }
 
-    public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
+    public async Task<Login2FaResponseDto> RegisterAsync(RegisterRequest request)
     {
         if (request is null)
         {
@@ -67,7 +73,6 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("El email ya se encuentra registrado.");
         }
 
-        // Unicidad de handle: el índice único en DB es red de seguridad; este chequeo da error de negocio claro.
         if (await NombreUsuarioExisteAsync(nombreUsuario))
         {
             throw new InvalidOperationException("El nombre de usuario ya está en uso.");
@@ -88,7 +93,18 @@ public class AuthService : IAuthService
         await _context.Usuarios.AddAsync(usuario);
         await _context.SaveChangesAsync();
 
-        return CreateAuthResponse(usuario);
+        try
+        {
+            return await EnviarCodigoDosFactoresAsync(
+                usuario,
+                "Cuenta creada. Ingresá el código de 6 dígitos enviado a tu correo para iniciar sesión.");
+        }
+        catch (ServicioExternoException)
+        {
+            _context.Usuarios.Remove(usuario);
+            await _context.SaveChangesAsync();
+            throw;
+        }
     }
 
     private async Task<bool> NombreUsuarioExisteAsync(string nombreUsuario)
@@ -129,15 +145,18 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("El usuario se encuentra inactivo.");
         }
 
-        // Primer factor OK. No se emite JWT hasta POST /api/auth/verify-2fa.
-        // Código numérico 000000–999999 con CSPRNG (no Random.Next).
-        var codigoPlano = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+        return await EnviarCodigoDosFactoresAsync(
+            usuario,
+            "Credenciales correctas. Ingresá el código de 6 dígitos enviado a tu correo.");
+    }
 
-        // Guardamos SHA-256 del código (misma idea que el token de reset), no el dígito en claro.
+    private async Task<Login2FaResponseDto> EnviarCodigoDosFactoresAsync(Usuario usuario, string mensaje)
+    {
+        var codigoPlano = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
         usuario.TwoFactorCode = HashTokenSha256(codigoPlano);
         usuario.TwoFactorCodeExpiresAt = DateTime.UtcNow.AddMinutes(TwoFactorCodeExpirationMinutes);
-
         await _context.SaveChangesAsync();
+        _cache.Remove(ClaveIntentosDosFactores(usuario.Email));
 
         var body =
             "Tu código de verificación para ingresar a Alacena Virtual / Kitch es:\n\n" +
@@ -154,7 +173,7 @@ public class AuthService : IAuthService
             RequiresTwoFactor = true,
             Email = usuario.Email,
             EmailEnmascarado = EnmascararEmail(usuario.Email),
-            Mensaje = "Credenciales correctas. Ingresá el código de 6 dígitos enviado a tu correo."
+            Mensaje = mensaje
         };
     }
 
@@ -183,17 +202,35 @@ public class AuthService : IAuthService
 
         var codigoHash = HashTokenSha256(codigo);
 
-        // Mensaje único: no filtrar si falló email, código o expiración.
         if (usuario is null ||
             string.IsNullOrEmpty(usuario.TwoFactorCode) ||
             usuario.TwoFactorCodeExpiresAt is null ||
-            usuario.TwoFactorCodeExpiresAt <= DateTime.UtcNow ||
-            !FixedTimeEquals(usuario.TwoFactorCode, codigoHash))
+            usuario.TwoFactorCodeExpiresAt <= DateTime.UtcNow)
         {
             throw new InvalidOperationException("Código inválido o expirado. Solicitá un nuevo código iniciando sesión otra vez.");
         }
 
-        // Un solo uso: limpiar OTP antes de emitir sesión.
+        if (!FixedTimeEquals(usuario.TwoFactorCode, codigoHash))
+        {
+            var claveIntentos = ClaveIntentosDosFactores(usuario.Email);
+            var intentos = _cache.TryGetValue(claveIntentos, out int previos) ? previos + 1 : 1;
+
+            if (intentos >= MaxIntentosDosFactores)
+            {
+                usuario.TwoFactorCode = null;
+                usuario.TwoFactorCodeExpiresAt = null;
+                await _context.SaveChangesAsync();
+                _cache.Remove(claveIntentos);
+                throw new InvalidOperationException(
+                    "Superaste la cantidad de intentos permitidos. Iniciá sesión otra vez para recibir un código nuevo.");
+            }
+
+            _cache.Set(claveIntentos, intentos, TimeSpan.FromMinutes(TwoFactorCodeExpirationMinutes));
+            throw new InvalidOperationException(
+                $"Código incorrecto. Te quedan {MaxIntentosDosFactores - intentos} intentos.");
+        }
+
+        _cache.Remove(ClaveIntentosDosFactores(usuario.Email));
         usuario.TwoFactorCode = null;
         usuario.TwoFactorCodeExpiresAt = null;
         await _suscripcionVigencia.AsegurarRolVigenteAsync(usuario);
@@ -244,11 +281,8 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("El nombre de usuario es obligatorio.");
         }
 
-        var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.Id == usuarioId);
-        if (usuario is null)
-        {
-            throw new InvalidOperationException("Usuario no encontrado.");
-        }
+        var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.Id == usuarioId)
+            ?? throw new KeyNotFoundException("Usuario no encontrado.");
 
         if (!string.Equals(usuario.NombreUsuario, nombreUsuario, StringComparison.Ordinal) &&
             await NombreUsuarioExisteAsync(nombreUsuario))
@@ -268,7 +302,6 @@ public class AuthService : IAuthService
     {
         var ahora = DateTime.UtcNow;
 
-        // Suscripción propia activa con FechaFin vigente (o sin fin = premium abierto).
         var suscripcionActivaHasta = await _context.Suscripciones
             .AsNoTracking()
             .Where(s => s.UsuarioId == usuario.Id && s.Activa)
@@ -286,7 +319,7 @@ public class AuthService : IAuthService
             Apellido = usuario.Apellido,
             Rol = usuario.Rol,
             SuscripcionActivaHasta = suscripcionActivaHasta,
-            PeticionesIaDelDia = usuario.FechaCuotaIaUtc?.Date == DateTime.UtcNow.Date
+            PeticionesIaDelDia = usuario.FechaCuotaIaUtc?.Date == FechaLocal.Hoy()
                 ? usuario.PeticionesIaDelDia
                 : 0,
             LimitePeticionesIa = PedidoRecetaPremium.TopeDiario(usuario.Rol),
@@ -300,9 +333,9 @@ public class AuthService : IAuthService
             u.Email == usuarioOMail || u.NombreUsuario == usuarioOMail);
     }
 
-    /// <summary>
-    /// Comparación en tiempo constante para hashes hex (evita timing attacks triviales).
-    /// </summary>
+    private static string ClaveIntentosDosFactores(string email) =>
+        $"2fa-intentos:{email.Trim().ToLowerInvariant()}";
+
     private static bool FixedTimeEquals(string storedHash, string providedHash)
     {
         var a = Encoding.UTF8.GetBytes(storedHash);
@@ -310,9 +343,6 @@ public class AuthService : IAuthService
         return a.Length == b.Length && CryptographicOperations.FixedTimeEquals(a, b);
     }
 
-    /// <summary>
-    /// Enmascara un email para la UI: a***z@dominio.com (sin filtrar el dominio completo de más).
-    /// </summary>
     private static string EnmascararEmail(string email)
     {
         if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
@@ -359,32 +389,68 @@ public class AuthService : IAuthService
         var email = request.Email?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(email))
         {
-            // Respuesta genérica: no revelamos si el email existe o el formato falló "por seguridad de enumeración".
             return;
         }
 
         var usuario = await _context.Usuarios
             .FirstOrDefaultAsync(u => u.Email == email && u.Activo);
 
-        // Si no hay usuario (o está inactivo), salimos en silencio: misma "forma" de respuesta al exterior.
         if (usuario is null)
         {
             return;
         }
 
-        // 1) Token plano: 32 bytes de CSPRNG (256 bits). Imposible de adivinar por fuerza bruta práctica.
+        await EnviarTokenRecuperacionAsync(usuario);
+    }
+
+    public async Task EnviarRecuperacionPasswordAsync(int usuarioId)
+    {
+        var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.Id == usuarioId)
+            ?? throw new KeyNotFoundException("Usuario no encontrado.");
+
+        if (!usuario.Activo)
+        {
+            throw new InvalidOperationException("El usuario está bloqueado. Desbloquealo antes de enviar la recuperación de contraseña.");
+        }
+
+        await EnviarTokenRecuperacionAsync(usuario);
+    }
+
+    public async Task<Verify2FaResponseDto> RefrescarSesionAsync(int usuarioId)
+    {
+        var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.Id == usuarioId);
+        if (usuario is null || !usuario.Activo)
+        {
+            throw new UnauthorizedAccessException("Tu sesión ya no es válida. Iniciá sesión nuevamente.");
+        }
+
+        await _suscripcionVigencia.AsegurarRolVigenteAsync(usuario);
+        await _context.SaveChangesAsync();
+
+        var expiresAt = DateTime.UtcNow.AddMinutes(GetJwtExpiresInMinutes());
+
+        return new Verify2FaResponseDto
+        {
+            Token = GenerateJwtToken(usuario, expiresAt),
+            Mensaje = "Sesión renovada",
+            ExpiresAt = expiresAt,
+            Email = usuario.Email,
+            NombreUsuario = usuario.NombreUsuario,
+            Rol = usuario.Rol
+        };
+    }
+
+    private async Task EnviarTokenRecuperacionAsync(Usuario usuario)
+    {
         var tokenBytes = RandomNumberGenerator.GetBytes(PasswordResetTokenBytes);
 
-        // 2) Codificación Base64Url: apta para URLs/email sin '+' '/' '=' que rompen links.
         var tokenPlano = ToBase64Url(tokenBytes);
 
-        // 3) En DB solo el SHA-256 del token (hex). Si filtran la DB, no obtienen el token del mail.
         usuario.PasswordResetTokenHash = HashTokenSha256(tokenPlano);
         usuario.PasswordResetTokenExpiresAt = DateTime.UtcNow.AddMinutes(PasswordResetExpirationMinutes);
 
         await _context.SaveChangesAsync();
 
-        // 4) El token PLANo solo viaja por email (canal que controla el dueño de la casilla).
         var body =
             "Recibimos una solicitud para restablecer tu contraseña en Alacena Virtual / Kitch.\n\n" +
             $"Usá este token (válido {PasswordResetExpirationMinutes} minutos):\n\n" +
@@ -412,18 +478,16 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("Token y nueva contraseña son obligatorios.");
         }
 
-        if (nuevaPassword.Length < 6)
+        if (nuevaPassword.Length < 8)
         {
-            throw new InvalidOperationException("La nueva contraseña debe tener al menos 6 caracteres.");
+            throw new InvalidOperationException("La nueva contraseña debe tener al menos 8 caracteres.");
         }
 
-        // Mismo algoritmo que al guardar: hashear lo que llegó del cliente y buscar por huella.
         var tokenHash = HashTokenSha256(tokenPlano);
 
         var usuario = await _context.Usuarios
             .FirstOrDefaultAsync(u => u.PasswordResetTokenHash == tokenHash);
 
-        // Mensaje único: no distinguir "token inexistente" vs "expirado" (menos superficie de ataque).
         if (usuario is null ||
             usuario.PasswordResetTokenExpiresAt is null ||
             usuario.PasswordResetTokenExpiresAt <= DateTime.UtcNow ||
@@ -432,21 +496,14 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("Token inválido o expirado.");
         }
 
-        // Misma lógica de Register: BCrypt del password humano (con sal), no SHA-256.
         usuario.PasswordHash = BCrypt.Net.BCrypt.HashPassword(nuevaPassword);
 
-        // Un solo uso: invalidar el token inmediatamente tras el cambio.
         usuario.PasswordResetTokenHash = null;
         usuario.PasswordResetTokenExpiresAt = null;
 
         await _context.SaveChangesAsync();
     }
 
-    /// <summary>
-    /// SHA-256 del token en texto → hex minúsculas.
-    /// Ideal para tokens de alta entropía: barato de calcular y no reversible en la práctica.
-    /// No usamos BCrypt aquí: el secreto ya es aleatorio de 256 bits; BCrypt es para passwords humanas débiles.
-    /// </summary>
     private static string HashTokenSha256(string tokenPlano)
     {
         var bytes = Encoding.UTF8.GetBytes(tokenPlano);
@@ -454,33 +511,12 @@ public class AuthService : IAuthService
         return Convert.ToHexString(hash);
     }
 
-    /// <summary>
-    /// Base64 estándar con alfabeto URL-safe y sin padding (=).
-    /// </summary>
     private static string ToBase64Url(byte[] data)
     {
         return Convert.ToBase64String(data)
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');
-    }
-
-    private AuthResponse CreateAuthResponse(Usuario usuario)
-    {
-        var expiresAt = DateTime.UtcNow.AddMinutes(GetJwtExpiresInMinutes());
-        var token = GenerateJwtToken(usuario, expiresAt);
-
-        return new AuthResponse
-        {
-            Token = token,
-            ExpiresAt = expiresAt,
-            Nombre = usuario.Nombre,
-            Apellido = usuario.Apellido,
-            NombreUsuario = usuario.NombreUsuario,
-            Email = usuario.Email,
-            PreferenciaDietetica = usuario.PreferenciaDietetica,
-            Rol = usuario.Rol
-        };
     }
 
     private string GenerateJwtToken(Usuario usuario, DateTime expiresAt)

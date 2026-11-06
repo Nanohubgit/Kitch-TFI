@@ -1,10 +1,12 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using Kitch.Presentation.Extensions;
 using Kitch.Presentation.Filters;
 using Kitch.Presentation.Middleware;
 using Kitch.Application;
 using Kitch.Infrastructure;
 using Kitch.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,10 +15,8 @@ using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers(options =>
-{
-    options.Filters.Add<AsegurarRolVigenteFilter>();
-})
+builder.Services.AddControllers()
+.AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
 .ConfigureApiBehaviorOptions(options =>
 {
     options.InvalidModelStateResponseFactory = context =>
@@ -120,13 +120,16 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             OnChallenge = async context =>
             {
                 context.HandleResponse();
+                var bloqueado = context.HttpContext.Items.ContainsKey(RolVigenteClaimsTransformation.ItemUsuarioBloqueado);
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 context.Response.ContentType = "application/problem+json";
                 await context.Response.WriteAsJsonAsync(new ProblemDetails
                 {
                     Status = StatusCodes.Status401Unauthorized,
                     Title = "Tenés que iniciar sesión",
-                    Detail = "Tenés que iniciar sesión para acceder a este recurso.",
+                    Detail = bloqueado
+                        ? "Tu cuenta está bloqueada o ya no existe. Contactá a un administrador."
+                        : "Tenés que iniciar sesión para acceder a este recurso.",
                     Instance = context.Request.Path
                 });
             },
@@ -137,8 +140,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 await context.Response.WriteAsJsonAsync(new ProblemDetails
                 {
                     Status = StatusCodes.Status403Forbidden,
-                    Title = "Plan insuficiente",
-                    Detail = "No tenés permiso para esta acción. Si acabás de pasar a Profesional, cerrá sesión y volvé a entrar para que se actualice tu plan.",
+                    Title = "Sin permiso",
+                    Detail = "No tenés permiso para esta acción con tu plan o rol actual.",
                     Instance = context.Request.Path
                 });
             }
@@ -146,14 +149,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IClaimsTransformation, RolVigenteClaimsTransformation>();
 
 var app = builder.Build();
 
 await app.MigrateDatabaseAsync();
+await app.NormalizarIngredientesAsync();
 await app.SeedAdminUserAsync();
 
-app.UseSwagger();
-app.UseSwaggerUI();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.UseCors();
 

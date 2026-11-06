@@ -18,86 +18,56 @@ public class FavoritosController : ApiControllerBase
     }
 
     [HttpGet("mias")]
-    public async Task<ActionResult<IEnumerable<FavoritoResponseDto>>> GetMias()
+    public async Task<ActionResult<IEnumerable<FavoritoResponseDto>>> GetMias([FromQuery] string? categoria)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
+        var favoritos = await _favoritoService.GetByUsuarioIdAsync(GetUsuarioIdOrThrow());
+        if (!string.IsNullOrWhiteSpace(categoria))
         {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
+            var clave = categoria.Trim().ToLowerInvariant();
+            favoritos = favoritos.Where(favorito => favorito.RecetaCategoria == clave);
         }
 
-        var favoritos = await _favoritoService.GetByUsuarioIdAsync(usuarioId);
         return Ok(favoritos);
     }
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<FavoritoResponseDto>> GetById(int id)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        var favorito = await _favoritoService.GetByIdAsync(id, usuarioId);
+        var favorito = await _favoritoService.GetByIdAsync(id, GetUsuarioIdOrThrow());
         if (favorito is null)
         {
-            return NotFound(new { message = "Favorito no encontrado." });
+            throw new KeyNotFoundException("Favorito no encontrado.");
         }
 
         return Ok(favorito);
     }
 
     [HttpPost("toggle")]
-    public async Task<IActionResult> ToggleFavorito([FromQuery] int recetaId)
+    public async Task<ActionResult<ToggleFavoritoResponseDto>> ToggleFavorito([FromQuery] int recetaId)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
+        var esFavorito = await _favoritoService.ToggleFavoritoAsync(GetUsuarioIdOrThrow(), recetaId);
+        return Ok(new ToggleFavoritoResponseDto
         {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        try
-        {
-            var esFavorito = await _favoritoService.ToggleFavoritoAsync(usuarioId, recetaId);
-            return Ok(new { esFavorito, message = esFavorito ? "Agregado a favoritos." : "Quitado de favoritos." });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequestMessage(ex.Message);
-        }
+            EsFavorito = esFavorito,
+            Message = esFavorito ? "Agregado a favoritos." : "Quitado de favoritos."
+        });
     }
 
     [HttpPost]
     public async Task<ActionResult<FavoritoResponseDto>> AddFavorito([FromBody] FavoritoCreateDto favorito)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        favorito.UsuarioId = usuarioId;
-
-        try
-        {
-            var createdFavorito = await _favoritoService.AddFavoritoAsync(favorito);
-            return CreatedAtAction(nameof(GetById), new { id = createdFavorito.Id }, createdFavorito);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequestMessage(ex.Message);
-        }
+        favorito.UsuarioId = GetUsuarioIdOrThrow();
+        var createdFavorito = await _favoritoService.AddFavoritoAsync(favorito);
+        return CreatedAtAction(nameof(GetById), new { id = createdFavorito.Id }, createdFavorito);
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return UnauthorizedMessage("No se pudo identificar al usuario a partir del token.");
-        }
-
-        var deleted = await _favoritoService.DeleteAsync(id, usuarioId);
+        var deleted = await _favoritoService.DeleteAsync(id, GetUsuarioIdOrThrow());
         if (!deleted)
         {
-            return NotFound(new { message = "Favorito no encontrado." });
+            throw new KeyNotFoundException("Favorito no encontrado.");
         }
 
         return NoContent();
