@@ -8,10 +8,6 @@ using Kitch.Domain.Interfaces;
 
 namespace Kitch.Application.Services;
 
-/// <summary>
-/// Orquesta el upgrade Básico → Profesional: valida estado, cobra vía pasarela
-/// y, si el pago es exitoso, registra contrato/pago y actualiza el rol.
-/// </summary>
 public class SuscripcionService : ISuscripcionService
 {
     private const string MensajeAdminConsulta =
@@ -20,24 +16,29 @@ public class SuscripcionService : ISuscripcionService
     private const string MensajeHistorialSoloLectura =
         "El historial de pagos, contratos y suscripciones es de solo lectura. No se puede modificar ni eliminar.";
 
+    private const int MaxTransaccionId = 50;
+
     private readonly IRepository<Suscripcion> _repository;
     private readonly IRepository<ContratoSub> _contratoRepository;
     private readonly IRepository<Pago> _pagoRepository;
     private readonly IRepository<Usuario> _usuarioRepository;
     private readonly IPaymentGatewayService _paymentGateway;
+    private readonly IUnidadDeTrabajo _unidadDeTrabajo;
 
     public SuscripcionService(
         IRepository<Suscripcion> repository,
         IRepository<ContratoSub> contratoRepository,
         IRepository<Pago> pagoRepository,
         IRepository<Usuario> usuarioRepository,
-        IPaymentGatewayService paymentGateway)
+        IPaymentGatewayService paymentGateway,
+        IUnidadDeTrabajo unidadDeTrabajo)
     {
         _repository = repository;
         _contratoRepository = contratoRepository;
         _pagoRepository = pagoRepository;
         _usuarioRepository = usuarioRepository;
         _paymentGateway = paymentGateway;
+        _unidadDeTrabajo = unidadDeTrabajo;
     }
 
     public async Task<IEnumerable<SuscripcionResponseDto>> GetAllAsync(int solicitanteId)
@@ -70,78 +71,14 @@ public class SuscripcionService : ISuscripcionService
         return suscripcion.ToResponseDto();
     }
 
-    public async Task<SuscripcionResponseDto> CreateAsync(SuscripcionCreateDto suscripcion, int solicitanteId)
-    {
-        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
+    public Task<SuscripcionResponseDto> CreateAsync(SuscripcionCreateDto suscripcion, int solicitanteId) =>
+        throw new ForbiddenException(MensajeHistorialSoloLectura);
 
-        if (suscripcion.Activa && await _repository.AnyAsync(existing =>
-                existing.UsuarioId == suscripcion.UsuarioId && existing.Activa))
-        {
-            throw new InvalidOperationException("El usuario ya tiene una suscripcion activa.");
-        }
+    public Task<bool> UpdateAsync(int id, SuscripcionUpdateDto suscripcion, int solicitanteId) =>
+        throw new ForbiddenException(MensajeHistorialSoloLectura);
 
-        ValidateFechas(suscripcion.FechaInicio, suscripcion.FechaFin);
-
-        var entity = new Suscripcion
-        {
-            UsuarioId = suscripcion.UsuarioId,
-            FechaInicio = suscripcion.FechaInicio,
-            FechaFin = suscripcion.FechaFin,
-            Activa = suscripcion.Activa,
-            Tipo = suscripcion.Tipo.Trim()
-        };
-
-        var created = await _repository.AddAsync(entity);
-        return created.ToResponseDto();
-    }
-
-    public async Task<bool> UpdateAsync(int id, SuscripcionUpdateDto suscripcion, int solicitanteId)
-    {
-        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
-
-        var existingSuscripcion = await _repository.GetByIdAsync(id);
-
-        if (existingSuscripcion is null)
-        {
-            return false;
-        }
-
-        if (suscripcion.Activa && await _repository.AnyAsync(existing =>
-                existing.Id != id &&
-                existing.UsuarioId == suscripcion.UsuarioId &&
-                existing.Activa))
-        {
-            throw new InvalidOperationException("El usuario ya tiene una suscripcion activa.");
-        }
-
-        ValidateFechas(suscripcion.FechaInicio, suscripcion.FechaFin);
-
-        existingSuscripcion.UsuarioId = suscripcion.UsuarioId;
-        existingSuscripcion.FechaInicio = suscripcion.FechaInicio;
-        existingSuscripcion.FechaFin = suscripcion.FechaFin;
-        existingSuscripcion.Activa = suscripcion.Activa;
-        existingSuscripcion.Tipo = suscripcion.Tipo.Trim();
-
-        await _repository.UpdateAsync(existingSuscripcion);
-
-        return true;
-    }
-
-    public async Task<bool> DeleteAsync(int id, int solicitanteId)
-    {
-        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
-
-        var suscripcion = await _repository.GetByIdAsync(id);
-
-        if (suscripcion is null)
-        {
-            return false;
-        }
-
-        await _repository.DeleteAsync(suscripcion);
-
-        return true;
-    }
+    public Task<bool> DeleteAsync(int id, int solicitanteId) =>
+        throw new ForbiddenException(MensajeHistorialSoloLectura);
 
     private async Task ValidarPermisosAdminAsync(int usuarioId, string mensaje)
     {
@@ -157,31 +94,17 @@ public class SuscripcionService : ISuscripcionService
         }
     }
 
-    private static void ValidateFechas(DateTime fechaInicio, DateTime? fechaFin)
-    {
-        if (fechaFin.HasValue && fechaFin.Value <= fechaInicio)
-        {
-            throw new InvalidOperationException("La fecha de fin debe ser posterior a la fecha de inicio.");
-        }
-    }
-
     public async Task<IniciarPagoResponseDto> ContratarAsync(int usuarioId, ContratarSuscripcionRequest? request)
     {
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
             ?? throw new InvalidOperationException("El usuario no existe.");
 
-        if (usuario.Rol == RolUsuario.Profesional)
+        if (usuario.Rol == RolUsuario.Admin)
         {
-            throw new InvalidOperationException("El usuario ya posee el rol Profesional.");
+            throw new InvalidOperationException("Las cuentas administradoras no necesitan suscripción.");
         }
 
-        var tieneContratoActivo = await _contratoRepository.AnyAsync(contrato =>
-            contrato.UsuarioId == usuarioId && contrato.Estado == EstadoContratoSub.Activo);
-
-        if (tieneContratoActivo)
-        {
-            throw new InvalidOperationException("El usuario ya tiene una suscripción activa.");
-        }
+        var esRenovacion = usuario.Rol == RolUsuario.Profesional;
 
         var tipo = string.IsNullOrWhiteSpace(request?.Tipo)
             ? PrecioSuscripcion.TipoProfesional
@@ -193,7 +116,9 @@ public class SuscripcionService : ISuscripcionService
             Monto = PrecioSuscripcion.ProfesionalArs,
             MetodoPago = request?.MetodoPago ?? MetodoPago.TarjetaCredito,
             EmailUsuario = usuario.Email,
-            Descripcion = $"Suscripción {tipo} - Alacena Virtual"
+            Descripcion = esRenovacion
+                ? $"Renovación suscripción {tipo} - Alacena Virtual"
+                : $"Suscripción {tipo} - Alacena Virtual"
         });
 
         return new IniciarPagoResponseDto
@@ -202,7 +127,72 @@ public class SuscripcionService : ISuscripcionService
             PreferenceId = checkout.PreferenceId,
             Monto = PrecioSuscripcion.ProfesionalArs,
             Moneda = PrecioSuscripcion.MonedaArs,
-            Mensaje = "Redirigí al usuario a InitPoint para completar el pago. El rol se actualiza solo cuando Mercado Pago confirma por webhook."
+            Mensaje = esRenovacion
+                ? "Redirigí al usuario a InitPoint para pagar la renovación. Cuando Mercado Pago confirme el pago, se suma un mes a partir del vencimiento actual."
+                : "Redirigí al usuario a InitPoint para completar el pago. El rol se actualiza cuando Mercado Pago confirma el pago (webhook o POST /api/Suscripciones/confirmar-pago)."
+        };
+    }
+
+    public async Task<EstadoPagoResponseDto> ConfirmarPagoAsync(int usuarioId, string paymentId)
+    {
+        var id = paymentId?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            throw new ArgumentException("Indicá el id del pago de Mercado Pago.");
+        }
+
+        var cobro = await _paymentGateway.ConsultarPagoAsync(id)
+            ?? throw new KeyNotFoundException("No encontramos ese pago en Mercado Pago.");
+
+        if (!int.TryParse(cobro.ExternalReference, out var duenioId) || duenioId != usuarioId)
+        {
+            throw new ForbiddenException("Ese pago no corresponde a tu cuenta.");
+        }
+
+        var status = cobro.Status.Trim().ToLowerInvariant();
+        var rechazado = status is "rejected" or "cancelled" or "refunded" or "charged_back";
+        var pendiente = status is "pending" or "in_process" or "authorized" or "in_mediation";
+
+        if (cobro.Aprobado)
+        {
+            await AplicarCobroAsync(cobro, id);
+        }
+
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
+            ?? throw new UnauthorizedAccessException();
+        var transaccionId = ObtenerTransaccionId(cobro, id);
+        var pagoRegistrado = cobro.Aprobado &&
+            await _pagoRepository.AnyAsync(pago => pago.TransaccionId == transaccionId && pago.UsuarioId == usuarioId);
+        var esProfesional = usuario.Rol == RolUsuario.Profesional;
+        var profesionalHasta = esProfesional ? await ObtenerFinVigenteAsync(usuarioId) : null;
+
+        var mensaje = cobro.Aprobado
+            ? esProfesional && pagoRegistrado
+                ? $"Pago aprobado. Sos Profesional hasta {FormatearFecha(profesionalHasta)}. Renová tu sesión con POST /api/Auth/refresh para usar los beneficios."
+                : pagoRegistrado
+                    ? "Este pago ya se usó para una suscripción anterior que ya venció. Para volver a Profesional, hacé un pago nuevo."
+                    : usuario.Rol == RolUsuario.Admin
+                        ? "Las cuentas administradoras no necesitan suscripción."
+                        : !usuario.Activo
+                            ? "Tu cuenta está bloqueada. Contactá a un administrador."
+                            : "El pago figura aprobado pero el monto no coincide con el plan Profesional. Contactá a soporte."
+            : rechazado
+                ? "El pago fue rechazado o cancelado. Tu plan no cambió; podés intentarlo de nuevo con otro medio de pago."
+                : pendiente
+                    ? "El pago todavía está pendiente de acreditación. Cuando Mercado Pago lo apruebe, se actualiza tu plan."
+                    : $"Estado del pago: {cobro.Status}.";
+
+        return new EstadoPagoResponseDto
+        {
+            PaymentId = id,
+            Status = cobro.Status,
+            Aprobado = cobro.Aprobado,
+            Rechazado = rechazado,
+            Pendiente = pendiente,
+            RolActual = usuario.Rol,
+            RequiereRefrescarSesion = cobro.Aprobado && esProfesional && pagoRegistrado,
+            ProfesionalHasta = profesionalHasta,
+            Mensaje = mensaje
         };
     }
 
@@ -214,23 +204,130 @@ public class SuscripcionService : ISuscripcionService
             return;
         }
 
+        await AplicarCobroAsync(cobro, paymentId);
+    }
+
+    private async Task AplicarCobroAsync(PaymentNotificationResult cobro, string paymentId)
+    {
         if (!int.TryParse(cobro.ExternalReference, out var usuarioId))
         {
             throw new InvalidOperationException("La notificación no incluye un UsuarioId válido en ExternalReference.");
         }
 
+        var transaccionId = ObtenerTransaccionId(cobro, paymentId);
+
+        try
+        {
+            await _unidadDeTrabajo.EjecutarAsync(async () =>
+            {
+                await _unidadDeTrabajo.BloquearRecursoAsync($"kitch:pagos:usuario:{usuarioId}");
+                await AplicarPagoAprobadoAsync(cobro, usuarioId, transaccionId);
+            });
+        }
+        catch (ConflictException)
+        {
+            if (!await _pagoRepository.AnyAsync(pago => pago.TransaccionId == transaccionId))
+            {
+                throw;
+            }
+        }
+    }
+
+    private async Task AplicarPagoAprobadoAsync(PaymentNotificationResult cobro, int usuarioId, string transaccionId)
+    {
+        if (await _pagoRepository.AnyAsync(pago => pago.TransaccionId == transaccionId))
+        {
+            return;
+        }
+
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
             ?? throw new InvalidOperationException($"No existe el usuario {usuarioId} indicado por la pasarela.");
 
-        if (usuario.Rol == RolUsuario.Profesional &&
-            await _contratoRepository.AnyAsync(contrato =>
-                contrato.UsuarioId == usuarioId && contrato.Estado == EstadoContratoSub.Activo))
+        if (usuario.Rol == RolUsuario.Admin || !usuario.Activo)
+        {
+            return;
+        }
+
+        var monto = cobro.Monto > 0 ? cobro.Monto : 0m;
+        if (Math.Abs(monto - PrecioSuscripcion.ProfesionalArs) > 1m)
         {
             return;
         }
 
         var ahora = DateTime.UtcNow;
-        var monto = cobro.Monto > 0 ? cobro.Monto : PrecioSuscripcion.ProfesionalArs;
+        var contrato = usuario.Rol == RolUsuario.Profesional
+            ? await ExtenderSuscripcionVigenteAsync(usuarioId, monto, ahora)
+            : null;
+
+        contrato ??= await CrearSuscripcionNuevaAsync(usuarioId, monto, ahora);
+
+        await _pagoRepository.AddAsync(new Pago
+        {
+            UsuarioId = usuarioId,
+            ContratoSubId = contrato.Id,
+            FechaPago = ahora,
+            Monto = monto,
+            MetodoPago = MetodoPago.TarjetaCredito,
+            EstadoPago = EstadoPago.Aprobado,
+            TransaccionId = transaccionId
+        });
+
+        if (usuario.Rol != RolUsuario.Profesional)
+        {
+            usuario.Rol = RolUsuario.Profesional;
+            await _usuarioRepository.UpdateAsync(usuario);
+        }
+    }
+
+    private async Task<ContratoSub?> ExtenderSuscripcionVigenteAsync(int usuarioId, decimal monto, DateTime ahora)
+    {
+        var suscripcion = (await _repository.FindAsync(item =>
+                item.UsuarioId == usuarioId && item.Activa && (item.FechaFin == null || item.FechaFin > ahora)))
+            .OrderByDescending(item => item.FechaFin ?? DateTime.MaxValue)
+            .FirstOrDefault();
+
+        if (suscripcion is null)
+        {
+            return null;
+        }
+
+        var contrato = (await _contratoRepository.FindAsync(item =>
+                item.SuscripcionId == suscripcion.Id && item.Estado == EstadoContratoSub.Activo))
+            .FirstOrDefault();
+
+        if (contrato is null)
+        {
+            return null;
+        }
+
+        var nuevoFin = (suscripcion.FechaFin ?? ahora).AddMonths(1);
+        suscripcion.FechaFin = nuevoFin;
+        await _repository.UpdateAsync(suscripcion);
+
+        contrato.FechaFin = nuevoFin;
+        contrato.Monto += monto;
+        await _contratoRepository.UpdateAsync(contrato);
+
+        return contrato;
+    }
+
+    private async Task<ContratoSub> CrearSuscripcionNuevaAsync(int usuarioId, decimal monto, DateTime ahora)
+    {
+        var anteriores = await _repository.FindAsync(suscripcion =>
+            suscripcion.UsuarioId == usuarioId && suscripcion.Activa);
+        foreach (var anterior in anteriores)
+        {
+            anterior.Activa = false;
+            await _repository.UpdateAsync(anterior);
+        }
+
+        var contratosActivos = await _contratoRepository.FindAsync(contrato =>
+            contrato.UsuarioId == usuarioId && contrato.Estado == EstadoContratoSub.Activo);
+        foreach (var contratoActivo in contratosActivos)
+        {
+            contratoActivo.Estado = EstadoContratoSub.Vencido;
+            await _contratoRepository.UpdateAsync(contratoActivo);
+        }
 
         var suscripcion = await _repository.AddAsync(new Suscripcion
         {
@@ -241,7 +338,7 @@ public class SuscripcionService : ISuscripcionService
             Activa = true
         });
 
-        var contrato = await _contratoRepository.AddAsync(new ContratoSub
+        return await _contratoRepository.AddAsync(new ContratoSub
         {
             UsuarioId = usuarioId,
             SuscripcionId = suscripcion.Id,
@@ -251,18 +348,32 @@ public class SuscripcionService : ISuscripcionService
             Monto = monto,
             Estado = EstadoContratoSub.Activo
         });
+    }
 
-        await _pagoRepository.AddAsync(new Pago
+    private async Task<DateTime?> ObtenerFinVigenteAsync(int usuarioId)
+    {
+        var ahora = DateTime.UtcNow;
+        var vigentes = await _repository.FindAsync(suscripcion =>
+            suscripcion.UsuarioId == usuarioId && suscripcion.Activa &&
+            (suscripcion.FechaFin == null || suscripcion.FechaFin > ahora));
+        return vigentes.Select(suscripcion => suscripcion.FechaFin).Max();
+    }
+
+    private static string FormatearFecha(DateTime? fechaUtc)
+    {
+        if (fechaUtc is null)
         {
-            UsuarioId = usuarioId,
-            ContratoSubId = contrato.Id,
-            FechaPago = ahora,
-            Monto = monto,
-            MetodoPago = MetodoPago.TarjetaCredito,
-            EstadoPago = EstadoPago.Aprobado
-        });
+            return "nuevo aviso";
+        }
 
-        usuario.Rol = RolUsuario.Profesional;
-        await _usuarioRepository.UpdateAsync(usuario);
+        return "el " + FechaLocal.DesdeUtc(fechaUtc.Value).ToString("dd/MM/yyyy");
+    }
+
+    private static string ObtenerTransaccionId(PaymentNotificationResult cobro, string paymentId)
+    {
+        var transaccionId = string.IsNullOrWhiteSpace(cobro.TransaccionId)
+            ? paymentId.Trim()
+            : cobro.TransaccionId.Trim();
+        return transaccionId.Length > MaxTransaccionId ? transaccionId[..MaxTransaccionId] : transaccionId;
     }
 }

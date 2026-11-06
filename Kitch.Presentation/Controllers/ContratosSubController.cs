@@ -41,13 +41,12 @@ public class ContratosSubController : ApiControllerBase
 
         if (contrato is null)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Contrato no encontrado.");
         }
 
         return Ok(contrato);
     }
 
-    /// <summary>Solo administrador. El historial de contratos del usuario es de solo lectura.</summary>
     [HttpPost]
     public async Task<ActionResult<ContratoSubResponseDto>> Create([FromBody] ContratoSubCreateDto contratoSub)
     {
@@ -56,7 +55,6 @@ public class ContratosSubController : ApiControllerBase
         return CreatedAtAction(nameof(GetById), new { id = createdContratoSub.Id }, createdContratoSub);
     }
 
-    /// <summary>Solo administrador. El usuario no puede editar ni borrar su historial.</summary>
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] ContratoSubUpdateDto contratoSub)
     {
@@ -65,13 +63,12 @@ public class ContratosSubController : ApiControllerBase
 
         if (!updated)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Contrato no encontrado.");
         }
 
         return NoContent();
     }
 
-    /// <summary>Solo administrador. El usuario no puede borrar su historial de contratos.</summary>
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
@@ -80,7 +77,7 @@ public class ContratosSubController : ApiControllerBase
 
         if (!deleted)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Contrato no encontrado.");
         }
 
         return NoContent();

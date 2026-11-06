@@ -5,10 +5,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Kitch.Infrastructure.Migrations
 {
-    /// <inheritdoc />
     public partial class SyncUsuarioAuthAnd2FA : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<string>(
@@ -65,7 +63,6 @@ namespace Kitch.Infrastructure.Migrations
                 column: "PasswordResetTokenHash");
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropIndex(

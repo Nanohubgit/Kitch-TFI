@@ -5,16 +5,33 @@ using Kitch.Application.Mappings;
 using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Kitch.Application.Services;
 
 public class UsuarioService : IUsuarioService
 {
     private readonly IRepository<Usuario> _repository;
+    private readonly IRepository<Pago> _pagoRepository;
+    private readonly IRepository<ContratoSub> _contratoRepository;
+    private readonly IRepository<Receta> _recetaRepository;
+    private readonly IMemoryCache _cache;
+    private readonly IUnidadDeTrabajo _unidadDeTrabajo;
 
-    public UsuarioService(IRepository<Usuario> repository)
+    public UsuarioService(
+        IRepository<Usuario> repository,
+        IRepository<Pago> pagoRepository,
+        IRepository<ContratoSub> contratoRepository,
+        IRepository<Receta> recetaRepository,
+        IMemoryCache cache,
+        IUnidadDeTrabajo unidadDeTrabajo)
     {
+        _unidadDeTrabajo = unidadDeTrabajo;
         _repository = repository;
+        _pagoRepository = pagoRepository;
+        _contratoRepository = contratoRepository;
+        _recetaRepository = recetaRepository;
+        _cache = cache;
     }
 
     public async Task<IEnumerable<UsuarioResponseDto>> GetAllAsync(int solicitanteId)
@@ -85,6 +102,16 @@ public class UsuarioService : IUsuarioService
             return false;
         }
 
+        if (existingUsuario.Rol == RolUsuario.Admin && id != solicitanteId)
+        {
+            throw new ForbiddenException("No se pueden modificar los datos de otro administrador.");
+        }
+
+        if (!usuario.Activo && existingUsuario.Activo && (id == solicitanteId || existingUsuario.Rol == RolUsuario.Admin))
+        {
+            throw new InvalidOperationException("No se puede desactivar una cuenta de administrador.");
+        }
+
         var email = usuario.Email.Trim();
 
         if (await _repository.AnyAsync(existing => existing.Id != id && existing.Email == email))
@@ -96,6 +123,13 @@ public class UsuarioService : IUsuarioService
         existingUsuario.Apellido = usuario.Apellido.Trim();
         existingUsuario.Email = email;
         existingUsuario.Activo = usuario.Activo;
+        if (!usuario.Activo)
+        {
+            existingUsuario.TwoFactorCode = null;
+            existingUsuario.TwoFactorCodeExpiresAt = null;
+            existingUsuario.PasswordResetTokenHash = null;
+            existingUsuario.PasswordResetTokenExpiresAt = null;
+        }
 
         await _repository.UpdateAsync(existingUsuario);
 
@@ -113,14 +147,18 @@ public class UsuarioService : IUsuarioService
 
         var email = perfil.Email.Trim();
 
-        if (await _repository.AnyAsync(existing => existing.Id != usuarioId && existing.Email == email))
+        if (!string.Equals(existingUsuario.Email, email, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException("El email ya se encuentra registrado.");
+            throw new InvalidOperationException(
+                "El email no se puede cambiar desde el perfil porque es el que recibe los códigos de verificación.");
         }
 
         existingUsuario.Nombre = perfil.Nombre.Trim();
         existingUsuario.Apellido = perfil.Apellido.Trim();
-        existingUsuario.Email = email;
+        if (!string.IsNullOrWhiteSpace(perfil.PreferenciaDietetica))
+        {
+            existingUsuario.PreferenciaDietetica = perfil.PreferenciaDietetica.Trim();
+        }
 
         await _repository.UpdateAsync(existingUsuario);
 
@@ -143,6 +181,29 @@ public class UsuarioService : IUsuarioService
         if (usuario is null)
         {
             return false;
+        }
+
+        if (rol == usuario.Rol)
+        {
+            return true;
+        }
+
+        if (rol == RolUsuario.Admin && usuario.Rol != RolUsuario.Admin)
+        {
+            throw new ForbiddenException(
+                "El rol Admin no se asigna por esta vía. Queda reservado a las cuentas internas del sistema.");
+        }
+
+        if (rol == RolUsuario.Profesional)
+        {
+            throw new ForbiddenException(
+                "El plan Profesional solo se obtiene con un pago aprobado en Mercado Pago. No se puede asignar manualmente.");
+        }
+
+        if (usuario.Rol == RolUsuario.Profesional)
+        {
+            throw new ForbiddenException(
+                "No se puede quitar un plan Profesional pagado. Vence solo al terminar el período; si hay un problema con la cuenta, bloqueala.");
         }
 
         if (usuarioId == adminEjecutorId && rol != RolUsuario.Admin)
@@ -179,13 +240,30 @@ public class UsuarioService : IUsuarioService
             throw new InvalidOperationException("No podés eliminar tu propia cuenta de administrador.");
         }
 
-        if (usuario.Rol == RolUsuario.Admin && !await ExisteOtroAdminActivoAsync(id))
+        if (usuario.Rol == RolUsuario.Admin)
         {
-            throw new InvalidOperationException(
-                "No se puede eliminar al último administrador activo del sistema.");
+            throw new ForbiddenException("No se puede eliminar una cuenta de administrador.");
         }
 
-        await _repository.DeleteAsync(usuario);
+        if (await _pagoRepository.AnyAsync(pago => pago.UsuarioId == id) ||
+            await _contratoRepository.AnyAsync(contrato => contrato.UsuarioId == id))
+        {
+            throw new ConflictException(
+                "El usuario tiene pagos o contratos registrados y el historial no se puede borrar. Bloqueá la cuenta en lugar de eliminarla.");
+        }
+
+        await _unidadDeTrabajo.EjecutarAsync(async () =>
+        {
+            var recetas = await _recetaRepository.FindAsync(receta => receta.UsuarioId == id);
+            foreach (var receta in recetas)
+            {
+                await _recetaRepository.DeleteAsync(receta);
+            }
+
+            await _repository.DeleteAsync(usuario);
+        });
+
+        _cache.Remove(RecetaService.CacheCatalogoKey);
 
         return true;
     }

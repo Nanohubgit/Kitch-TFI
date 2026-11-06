@@ -1,6 +1,5 @@
-using Kitch.Application.DTOs.Recetas;
+﻿using Kitch.Application.DTOs.Recetas;
 using Kitch.Application.Interfaces;
-using Kitch.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -25,20 +24,33 @@ public class RecetasController : ApiControllerBase
         return Ok(recetas);
     }
 
+    [HttpGet("categorias")]
+    public ActionResult<IReadOnlyList<string>> GetCategorias()
+    {
+        return Ok(_recetaService.GetCategorias());
+    }
+
+    [HttpGet("categoria/{categoria}")]
+    public async Task<ActionResult<IEnumerable<RecetaResponseDto>>> GetByCategoria(string categoria)
+    {
+        var recetas = await _recetaService.GetByCategoriaAsync(categoria, GetUsuarioIdOrThrow());
+        return Ok(recetas);
+    }
+
     [HttpGet("{id:int}")]
     public async Task<ActionResult<RecetaResponseDto>> GetById(int id)
     {
         var receta = await _recetaService.GetByIdAsync(id, GetUsuarioIdOrThrow());
         if (receta is null)
         {
-            return NotFound(new { message = "Receta no encontrada." });
+            throw new KeyNotFoundException("Receta no encontrada.");
         }
 
         return Ok(receta);
     }
 
     [HttpGet("dificultad/{dificultad}")]
-    public async Task<ActionResult<IEnumerable<RecetaResponseDto>>> GetByDificultad(DificultadReceta dificultad)
+    public async Task<ActionResult<IEnumerable<RecetaResponseDto>>> GetByDificultad(string dificultad)
     {
         var recetas = await _recetaService.GetByDificultadAsync(dificultad, GetUsuarioIdOrThrow());
         return Ok(recetas);
@@ -57,7 +69,7 @@ public class RecetasController : ApiControllerBase
         var updated = await _recetaService.UpdateAsync(id, receta, GetUsuarioIdOrThrow());
         if (!updated)
         {
-            return NotFound(new { message = "Receta no encontrada." });
+            throw new KeyNotFoundException("Receta no encontrada.");
         }
 
         return NoContent();
@@ -66,11 +78,10 @@ public class RecetasController : ApiControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var adminId = GetUsuarioIdOrThrow();
-        var deleted = await _recetaService.DeleteAsync(id, adminId);
+        var deleted = await _recetaService.DeleteAsync(id, GetUsuarioIdOrThrow());
         if (!deleted)
         {
-            return NotFound(new { message = "Receta no encontrada." });
+            throw new KeyNotFoundException("Receta no encontrada.");
         }
 
         return NoContent();

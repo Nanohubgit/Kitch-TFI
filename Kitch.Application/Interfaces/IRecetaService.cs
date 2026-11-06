@@ -1,5 +1,4 @@
 using Kitch.Application.DTOs.Recetas;
-using Kitch.Domain.Entities;
 
 namespace Kitch.Application.Interfaces;
 
@@ -10,5 +9,7 @@ public interface IRecetaService
     Task<RecetaResponseDto> CreateAsync(RecetaCreateDto receta, int usuarioId);
     Task<bool> UpdateAsync(int id, RecetaUpdateDto receta, int usuarioId);
     Task<bool> DeleteAsync(int id, int solicitanteId);
-    Task<IEnumerable<RecetaResponseDto>> GetByDificultadAsync(DificultadReceta dificultad, int usuarioId);
+    Task<IEnumerable<RecetaResponseDto>> GetByDificultadAsync(string dificultad, int usuarioId);
+    Task<IEnumerable<RecetaResponseDto>> GetByCategoriaAsync(string categoria, int usuarioId);
+    IReadOnlyList<string> GetCategorias();
 }

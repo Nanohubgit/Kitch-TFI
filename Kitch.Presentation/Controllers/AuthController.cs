@@ -18,97 +18,55 @@ public class AuthController : ApiControllerBase
 
     [HttpPost("register")]
     [AllowAnonymous]
-    public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request)
+    public async Task<ActionResult<Login2FaResponseDto>> Register([FromBody] RegisterRequest request)
     {
-        try
-        {
-            var response = await _authService.RegisterAsync(request);
-            return Ok(response);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
+        var response = await _authService.RegisterAsync(request);
+        return Ok(response);
     }
 
-    /// <summary>
-    /// Primer factor. Nunca emite JWT: envía el código 2FA al correo.
-    /// </summary>
     [HttpPost("login")]
     [AllowAnonymous]
     public async Task<ActionResult<Login2FaResponseDto>> Login([FromBody] LoginRequest request)
     {
-        try
-        {
-            var response = await _authService.LoginAsync(request);
-            return Ok(response);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            return Unauthorized(new { message = ex.Message });
-        }
+        var response = await _authService.LoginAsync(request);
+        return Ok(response);
     }
 
-    /// <summary>
-    /// Segundo factor: valida el código de 6 dígitos y emite el JWT definitivo.
-    /// </summary>
     [HttpPost("verify-2fa")]
     [AllowAnonymous]
     public async Task<ActionResult<Verify2FaResponseDto>> Verify2Fa([FromBody] Verify2FaRequestDto request)
     {
-        try
-        {
-            var response = await _authService.Verify2FaAsync(request);
-            return Ok(response);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
+        var response = await _authService.Verify2FaAsync(request);
+        return Ok(response);
     }
 
-    /// <summary>
-    /// Perfil del usuario autenticado (panel / navbar). Requiere Bearer JWT.
-    /// </summary>
+    [HttpPost("refresh")]
+    [Authorize]
+    public async Task<ActionResult<Verify2FaResponseDto>> Refresh()
+    {
+        var response = await _authService.RefrescarSesionAsync(GetUsuarioIdOrThrow());
+        return Ok(response);
+    }
+
     [HttpGet("perfil")]
     [Authorize]
     public async Task<ActionResult<PerfilUsuarioResponseDto>> GetPerfil()
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized(new { message = "No se pudo identificar al usuario a partir del token." });
-        }
-
-        var perfil = await _authService.GetPerfilAsync(usuarioId);
+        var perfil = await _authService.GetPerfilAsync(GetUsuarioIdOrThrow());
         if (perfil is null)
         {
-            return NotFound(new { message = "Usuario no encontrado." });
+            throw new KeyNotFoundException("Usuario no encontrado.");
         }
 
         return Ok(perfil);
     }
 
-    /// <summary>
-    /// Actualiza NombreUsuario y PreferenciaDietetica. Requiere Bearer JWT.
-    /// </summary>
     [HttpPut("perfil")]
     [Authorize]
     public async Task<ActionResult<PerfilUsuarioResponseDto>> EditarPerfil([FromBody] EditarPerfilRequestDto request)
     {
-        if (!TryGetUsuarioId(out var usuarioId))
-        {
-            return Unauthorized(new { message = "No se pudo identificar al usuario a partir del token." });
-        }
-
-        try
-        {
-            var perfil = await _authService.EditarPerfilAsync(usuarioId, request);
-            return Ok(perfil);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
+        var perfil = await _authService.EditarPerfilAsync(GetUsuarioIdOrThrow(), request);
+        return Ok(perfil);
     }
 
     [HttpGet("email-existe")]
@@ -119,30 +77,25 @@ public class AuthController : ApiControllerBase
         return Ok(exists);
     }
 
-    /// <summary>
-    /// Inicia la recuperación de contraseña. Siempre responde 200 OK con mensaje genérico
-    /// (no revela si el email está registrado).
-    /// </summary>
     [HttpPost("forgot-password")]
     [AllowAnonymous]
-    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequestDto request)
+    public async Task<ActionResult<MensajeResponseDto>> ForgotPassword([FromBody] ForgotPasswordRequestDto request)
     {
         await _authService.ForgotPasswordAsync(request);
-
-        return Ok(new
+        return Ok(new MensajeResponseDto
         {
-            message = "Si el correo está registrado, enviamos instrucciones para restablecer la contraseña."
+            Message = "Si el correo está registrado, enviamos instrucciones para restablecer la contraseña."
         });
     }
 
-    /// <summary>
-    /// Completa el restablecimiento con el token del email y la nueva contraseña.
-    /// </summary>
     [HttpPost("reset-password")]
     [AllowAnonymous]
-    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequestDto request)
+    public async Task<ActionResult<MensajeResponseDto>> ResetPassword([FromBody] ResetPasswordRequestDto request)
     {
         await _authService.ResetPasswordAsync(request);
-        return Ok(new { message = "La contraseña se actualizó correctamente." });
+        return Ok(new MensajeResponseDto
+        {
+            Message = "La contraseña se actualizó correctamente."
+        });
     }
 }

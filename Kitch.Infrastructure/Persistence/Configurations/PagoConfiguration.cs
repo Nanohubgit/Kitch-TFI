@@ -44,7 +44,14 @@ namespace Kitch.Infrastructure.Persistence.Configurations
                 .IsRequired()
                 .HasConversion<string>()
                 .HasMaxLength(20);
-            
+
+            entity.Property(pago => pago.TransaccionId)
+                .HasMaxLength(50);
+
+            entity.HasIndex(pago => pago.TransaccionId)
+                .IsUnique()
+                .HasFilter("[TransaccionId] IS NOT NULL");
+
             entity.HasIndex(pago => pago.UsuarioId);
             entity.HasIndex(pago => pago.ContratoSubId);
             entity.HasIndex(pago => pago.FechaPago);

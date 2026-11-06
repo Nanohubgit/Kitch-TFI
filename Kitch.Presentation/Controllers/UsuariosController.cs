@@ -33,7 +33,7 @@ public class UsuariosController : ApiControllerBase
 
         if (usuario is null)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Usuario no encontrado.");
         }
 
         return Ok(usuario);
@@ -55,7 +55,7 @@ public class UsuariosController : ApiControllerBase
 
         if (!updated)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Usuario no encontrado.");
         }
 
         return NoContent();
@@ -69,7 +69,7 @@ public class UsuariosController : ApiControllerBase
 
         if (!actualizado)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Usuario no encontrado.");
         }
 
         return NoContent();
@@ -83,7 +83,7 @@ public class UsuariosController : ApiControllerBase
 
         if (!deleted)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Usuario no encontrado.");
         }
 
         return NoContent();

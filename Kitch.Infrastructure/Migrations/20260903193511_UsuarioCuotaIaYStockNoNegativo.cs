@@ -5,10 +5,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Kitch.Infrastructure.Migrations
 {
-    /// <inheritdoc />
     public partial class UsuarioCuotaIaYStockNoNegativo : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<DateTime>(
@@ -39,7 +37,6 @@ namespace Kitch.Infrastructure.Migrations
                 sql: "[Cantidad] >= 0");
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropCheckConstraint(

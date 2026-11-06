@@ -38,6 +38,13 @@ namespace Kitch.Infrastructure.Persistence.Configurations
                 .IsRequired()
                 .HasMaxLength(50)
                 .HasDefaultValue("general");
+
+            entity.HasOne(receta => receta.Usuario)
+                .WithMany()
+                .HasForeignKey(receta => receta.UsuarioId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(receta => receta.UsuarioId);
         }
     }
 }

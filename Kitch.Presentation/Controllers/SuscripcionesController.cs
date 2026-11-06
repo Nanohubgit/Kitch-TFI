@@ -13,17 +13,16 @@ namespace Kitch.Presentation.Controllers;
 public class SuscripcionesController : ApiControllerBase
 {
     private readonly ISuscripcionService _suscripcionService;
+    private readonly IPaymentGatewayService _paymentGateway;
 
-    public SuscripcionesController(ISuscripcionService suscripcionService)
+    public SuscripcionesController(ISuscripcionService suscripcionService, IPaymentGatewayService paymentGateway)
     {
         _suscripcionService = suscripcionService;
+        _paymentGateway = paymentGateway;
     }
 
-    /// <summary>
-    /// Inicia Checkout Pro. Devuelve InitPoint. El rol NO se cambia acá.
-    /// </summary>
     [HttpPost("contratar")]
-    [Authorize(Roles = RolUsuario.Basico)]
+    [Authorize(Roles = RolUsuario.Basico + "," + RolUsuario.Profesional)]
     public async Task<ActionResult<IniciarPagoResponseDto>> Contratar(
         [FromBody] ContratarSuscripcionRequest? request)
     {
@@ -32,21 +31,33 @@ public class SuscripcionesController : ApiControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// Webhook público de Mercado Pago. Único camino que promueve a Profesional.
-    /// </summary>
+    [HttpPost("confirmar-pago")]
+    public async Task<ActionResult<EstadoPagoResponseDto>> ConfirmarPago([FromBody] ConfirmarPagoRequestDto request)
+    {
+        var resultado = await _suscripcionService.ConfirmarPagoAsync(GetUsuarioIdOrThrow(), request.PaymentId);
+        return Ok(resultado);
+    }
+
     [AllowAnonymous]
     [HttpPost("webhook")]
     public async Task<IActionResult> Webhook(
         [FromQuery] string? type,
         [FromQuery] string? topic,
         [FromQuery] string? id,
+        [FromQuery(Name = "data.id")] string? dataId,
+        [FromHeader(Name = "x-signature")] string? signature,
+        [FromHeader(Name = "x-request-id")] string? requestId,
         [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] PasarelaWebhookRequest? body)
     {
-        var paymentId = ExtraerPaymentId(type, topic, id, body);
+        var paymentId = ExtraerPaymentId(type, topic, string.IsNullOrWhiteSpace(dataId) ? id : dataId, body);
         if (string.IsNullOrWhiteSpace(paymentId))
         {
             return Ok();
+        }
+
+        if (!_paymentGateway.FirmaWebhookValida(signature, requestId, paymentId))
+        {
+            throw new UnauthorizedAccessException("La notificación de Mercado Pago no es válida.");
         }
 
         await _suscripcionService.ProcesarNotificacionPagoAsync(paymentId);
@@ -61,9 +72,6 @@ public class SuscripcionesController : ApiControllerBase
         return Ok(suscripciones);
     }
 
-    /// <summary>
-    /// Historial propio: solo lectura. El usuario no puede editar ni borrar suscripciones.
-    /// </summary>
     [HttpGet("mias")]
     public async Task<ActionResult<IEnumerable<SuscripcionResponseDto>>> GetMias()
     {
@@ -79,56 +87,41 @@ public class SuscripcionesController : ApiControllerBase
         var suscripcion = await _suscripcionService.GetByIdAsync(id, solicitanteId);
         if (suscripcion is null)
         {
-            return NotFound(new { message = "Suscripción no encontrada." });
+            throw new KeyNotFoundException("Suscripción no encontrada.");
         }
 
         return Ok(suscripcion);
     }
 
-    /// <summary>Solo administrador. El historial de suscripciones del usuario es de solo lectura.</summary>
     [HttpPost]
+    [Authorize(Roles = RolUsuario.Admin)]
     public async Task<ActionResult<SuscripcionResponseDto>> Create([FromBody] SuscripcionCreateDto suscripcion)
     {
-        try
-        {
-            var adminId = GetUsuarioIdOrThrow();
-            var createdSuscripcion = await _suscripcionService.CreateAsync(suscripcion, adminId);
-            return CreatedAtAction(nameof(GetById), new { id = createdSuscripcion.Id }, createdSuscripcion);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequestMessage(ex.Message);
-        }
+        var createdSuscripcion = await _suscripcionService.CreateAsync(suscripcion, GetUsuarioIdOrThrow());
+        return CreatedAtAction(nameof(GetById), new { id = createdSuscripcion.Id }, createdSuscripcion);
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Roles = RolUsuario.Admin)]
     public async Task<IActionResult> Update(int id, [FromBody] SuscripcionUpdateDto suscripcion)
     {
-        try
+        var updated = await _suscripcionService.UpdateAsync(id, suscripcion, GetUsuarioIdOrThrow());
+        if (!updated)
         {
-            var adminId = GetUsuarioIdOrThrow();
-            var updated = await _suscripcionService.UpdateAsync(id, suscripcion, adminId);
-            if (!updated)
-            {
-                return NotFound(new { message = "Suscripción no encontrada." });
-            }
+            throw new KeyNotFoundException("Suscripción no encontrada.");
+        }
 
-            return NoContent();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequestMessage(ex.Message);
-        }
+        return NoContent();
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Roles = RolUsuario.Admin)]
     public async Task<IActionResult> Delete(int id)
     {
-        var adminId = GetUsuarioIdOrThrow();
-        var deleted = await _suscripcionService.DeleteAsync(id, adminId);
+        var deleted = await _suscripcionService.DeleteAsync(id, GetUsuarioIdOrThrow());
         if (!deleted)
         {
-            return NotFound(new { message = "Suscripción no encontrada." });
+            throw new KeyNotFoundException("Suscripción no encontrada.");
         }
 
         return NoContent();
@@ -149,11 +142,11 @@ public class SuscripcionesController : ApiControllerBase
             return null;
         }
 
-        if (!string.IsNullOrWhiteSpace(body?.Data?.Id))
+        if (!string.IsNullOrWhiteSpace(id))
         {
-            return body.Data.Id.Trim();
+            return id.Trim();
         }
 
-        return string.IsNullOrWhiteSpace(id) ? null : id.Trim();
+        return string.IsNullOrWhiteSpace(body?.Data?.Id) ? null : body.Data.Id.Trim();
     }
 }

@@ -40,9 +40,13 @@ public class SustitutoService : ISustitutoService
             sustituto => sustituto.IngredienteOriginal,
             sustituto => sustituto.IngredienteSustituto);
 
-        var dtos = sustitutos.Select(sustituto => sustituto.ToResponseDto()).ToList();
-
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        var dtos = sustitutos
+            .Where(sustituto => usuario?.Rol == RolUsuario.Admin ||
+                RestriccionDietetica.PermiteIngrediente(usuario?.PreferenciaDietetica, sustituto.IngredienteSustituto?.Nombre))
+            .Select(sustituto => sustituto.ToResponseDto())
+            .ToList();
+
         if (usuario is not null && !RolUsuario.TieneAccesoPremium(usuario.Rol)
             && dtos.Count > LimitesPlan.MaxSustitutosBasico)
         {

@@ -57,71 +57,14 @@ public class ContratoSubService : IContratoSubService
         return contrato.ToResponseDto();
     }
 
-    public async Task<ContratoSubResponseDto> CreateAsync(ContratoSubCreateDto contratoSub, int solicitanteId)
-    {
-        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
+    public Task<ContratoSubResponseDto> CreateAsync(ContratoSubCreateDto contratoSub, int solicitanteId) =>
+        throw new ForbiddenException(MensajeHistorialSoloLectura);
 
-        ValidateFechas(contratoSub.FechaInicio, contratoSub.FechaFin);
+    public Task<bool> UpdateAsync(int id, ContratoSubUpdateDto contratoSub, int solicitanteId) =>
+        throw new ForbiddenException(MensajeHistorialSoloLectura);
 
-        if (await _repository.AnyAsync(existing =>
-                existing.UsuarioId == contratoSub.UsuarioId && existing.Estado == EstadoContratoSub.Activo))
-        {
-            throw new InvalidOperationException("El usuario ya tiene un contrato activo.");
-        }
-
-        var entity = new ContratoSub
-        {
-            UsuarioId = contratoSub.UsuarioId,
-            SuscripcionId = contratoSub.SuscripcionId,
-            FechaContratacion = DateTime.UtcNow,
-            FechaInicio = contratoSub.FechaInicio,
-            FechaFin = contratoSub.FechaFin,
-            Monto = contratoSub.Monto,
-            Estado = EstadoContratoSub.Pendiente
-        };
-
-        var created = await _repository.AddAsync(entity);
-        return created.ToResponseDto();
-    }
-
-    public async Task<bool> UpdateAsync(int id, ContratoSubUpdateDto contratoSub, int solicitanteId)
-    {
-        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
-
-        var existingContratoSub = await _repository.GetByIdAsync(id);
-
-        if (existingContratoSub is null)
-        {
-            return false;
-        }
-
-        ValidateFechas(contratoSub.FechaInicio, contratoSub.FechaFin);
-
-        existingContratoSub.FechaInicio = contratoSub.FechaInicio;
-        existingContratoSub.FechaFin = contratoSub.FechaFin;
-        existingContratoSub.Monto = contratoSub.Monto;
-        existingContratoSub.Estado = contratoSub.Estado;
-
-        await _repository.UpdateAsync(existingContratoSub);
-
-        return true;
-    }
-
-    public async Task<bool> DeleteAsync(int id, int solicitanteId)
-    {
-        await ValidarPermisosAdminAsync(solicitanteId, MensajeHistorialSoloLectura);
-
-        var contratoSub = await _repository.GetByIdAsync(id);
-
-        if (contratoSub is null)
-        {
-            return false;
-        }
-
-        await _repository.DeleteAsync(contratoSub);
-
-        return true;
-    }
+    public Task<bool> DeleteAsync(int id, int solicitanteId) =>
+        throw new ForbiddenException(MensajeHistorialSoloLectura);
 
     private async Task ValidarPermisosAdminAsync(int usuarioId, string mensaje)
     {
@@ -134,14 +77,6 @@ public class ContratoSubService : IContratoSubService
         if (usuario.Rol != RolUsuario.Admin)
         {
             throw new ForbiddenException(mensaje);
-        }
-    }
-
-    private static void ValidateFechas(DateTime fechaInicio, DateTime fechaFin)
-    {
-        if (fechaFin <= fechaInicio)
-        {
-            throw new InvalidOperationException("La fecha de fin debe ser posterior a la fecha de inicio.");
         }
     }
 }

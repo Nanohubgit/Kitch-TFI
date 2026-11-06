@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Kitch.Application.Common;
 using Kitch.Application.DTOs.Favoritos;
 using Kitch.Application.DTOs.RecetaIa;
 using Kitch.Application.Exceptions;
@@ -7,6 +8,7 @@ using Kitch.Application.Interfaces;
 using Kitch.Domain.Constants;
 using Kitch.Domain.Entities;
 using Kitch.Domain.Interfaces;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Kitch.Application.Services;
 
@@ -26,10 +28,23 @@ public class RecetaIaService : IRecetaIaService
         "Si no encaja con claridad, usá \"general\". " +
         "El tiempo y las porciones deben ser mayores a cero, y tiene que haber al menos un ingrediente y un paso.";
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
+    public static readonly string InstruccionPlanBasico =
+        "PLAN BASICO: la dificultad SOLO puede ser \"Facil\" o \"Medio\" y el plato tiene que serlo de verdad: " +
+        $"como máximo {ComplejidadReceta.PasosSugeridosBasico} pasos, {ComplejidadReceta.IngredientesSugeridosBasico} ingredientes " +
+        $"y {ComplejidadReceta.MinutosSugeridosBasico} minutos, sin técnicas avanzadas (sous vide, templado, masa madre, laminado, flambeado, esferificación). " +
+        "NUNCA etiquetes como \"Medio\" un plato que en realidad es difícil.";
+
+    private const int MaxTitulo = 200;
+    private const int MaxDescripcion = 1000;
+    private const int MaxPaso = 1000;
+    private const int MaxUnidad = 50;
+    private const int MaxNombreIngrediente = 100;
+    private const int MaxMinutos = 1440;
+    private const int MaxPorciones = 100;
+    private const int MaxCalorias = 20000;
+    private const decimal MaxCantidad = 99999m;
+
+    private static readonly JsonSerializerOptions JsonOptions = JsonIa.Opciones;
 
     private readonly IAsistenteIaClient _asistenteIa;
     private readonly IRepository<StockUsuario> _stockRepository;
@@ -39,6 +54,8 @@ public class RecetaIaService : IRecetaIaService
     private readonly IFavoritoService _favoritoService;
     private readonly IIngredienteNormalizerService _normalizer;
     private readonly ICuotaIaService _cuotaIa;
+    private readonly IMemoryCache _cache;
+    private readonly IUnidadDeTrabajo _unidadDeTrabajo;
 
     public RecetaIaService(
         IAsistenteIaClient asistenteIa,
@@ -48,8 +65,11 @@ public class RecetaIaService : IRecetaIaService
         IRepository<Usuario> usuarioRepository,
         IFavoritoService favoritoService,
         IIngredienteNormalizerService normalizer,
-        ICuotaIaService cuotaIa)
+        ICuotaIaService cuotaIa,
+        IMemoryCache cache,
+        IUnidadDeTrabajo unidadDeTrabajo)
     {
+        _unidadDeTrabajo = unidadDeTrabajo;
         _asistenteIa = asistenteIa;
         _stockRepository = stockRepository;
         _ingredienteRepository = ingredienteRepository;
@@ -58,6 +78,7 @@ public class RecetaIaService : IRecetaIaService
         _favoritoService = favoritoService;
         _normalizer = normalizer;
         _cuotaIa = cuotaIa;
+        _cache = cache;
     }
 
     public async Task<RecetaGeneradaDto> GenerarRecetaAsync(int usuarioId, string? preferencias)
@@ -70,6 +91,19 @@ public class RecetaIaService : IRecetaIaService
 
         await _cuotaIa.ConsumirAsync(usuarioId);
 
+        try
+        {
+            return await GenerarConCuotaConsumidaAsync(usuarioId, usuario, preferencias);
+        }
+        catch
+        {
+            await _cuotaIa.DevolverAsync(usuarioId);
+            throw;
+        }
+    }
+
+    private async Task<RecetaGeneradaDto> GenerarConCuotaConsumidaAsync(int usuarioId, Usuario? usuario, string? preferencias)
+    {
         var stock = await _stockRepository.FindWithIncludesAsync(
             item => item.UsuarioId == usuarioId && item.Cantidad > 0,
             item => item.Ingrediente);
@@ -95,10 +129,10 @@ public class RecetaIaService : IRecetaIaService
         var restriccion = RestriccionDieteticaPrompt.ParaSystemPrompt(usuario?.PreferenciaDietetica);
         var systemInstruction = restriccion + " " + InstruccionGeneracion;
 
-        if (!RolUsuario.TieneAccesoPremium(usuario?.Rol))
+        var esBasico = !RolUsuario.TieneAccesoPremium(usuario?.Rol);
+        if (esBasico)
         {
-            systemInstruction +=
-                " PLAN BASICO: dificultad SOLO puede ser \"Facil\" o \"Medio\". NUNCA uses \"Dificil\".";
+            systemInstruction += " " + InstruccionPlanBasico;
         }
 
         if (!string.IsNullOrWhiteSpace(preferencias))
@@ -111,9 +145,38 @@ public class RecetaIaService : IRecetaIaService
         prompt.AppendLine($"Preferencia dietética persistida del usuario: {usuario?.PreferenciaDietetica ?? "Ninguna"}.");
         prompt.AppendLine("Respetá esa restricción en la receta. No incluyas ingredientes prohibidos.");
 
-        var json = await _asistenteIa.GenerarRespuestaJsonAsync(prompt.ToString(), systemInstruction);
+        var receta = await PedirRecetaAsync(prompt.ToString(), systemInstruction);
+        var dificultad = NormalizarDificultad(receta);
 
+        if (esBasico && !LimitesPlan.PuedeUsarDificultad(usuario?.Rol, dificultad))
+        {
+            prompt.AppendLine();
+            prompt.AppendLine(
+                $"La receta anterior (\"{receta.Titulo}\") resultó de nivel Difícil. Generá OTRA receta claramente más simple: " +
+                $"como máximo {ComplejidadReceta.PasosSugeridosBasico} pasos, {ComplejidadReceta.IngredientesSugeridosBasico} ingredientes " +
+                $"y {ComplejidadReceta.MinutosSugeridosBasico} minutos, sin técnicas avanzadas.");
+
+            receta = await PedirRecetaAsync(prompt.ToString(), systemInstruction);
+            dificultad = NormalizarDificultad(receta);
+
+            if (!LimitesPlan.PuedeUsarDificultad(usuario?.Rol, dificultad))
+            {
+                throw new ForbiddenException(LimitesPlan.MensajeRecetaGeneradaDificilBasico);
+            }
+        }
+
+        return receta;
+    }
+
+    private async Task<RecetaGeneradaDto> PedirRecetaAsync(string prompt, string systemInstruction)
+    {
+        var json = await _asistenteIa.GenerarRespuestaJsonAsync(prompt, systemInstruction);
         var receta = DeserializarReceta(json);
+        if (receta is not null)
+        {
+            receta.Ingredientes ??= [];
+            receta.Pasos ??= [];
+        }
 
         if (receta is null || string.IsNullOrWhiteSpace(receta.Titulo) || receta.Ingredientes.Count == 0)
         {
@@ -121,24 +184,36 @@ public class RecetaIaService : IRecetaIaService
                 "La IA no devolvió una receta válida. Intentá nuevamente o cargá más ingredientes en tu alacena.");
         }
 
-        receta.Categoria = CategoriasReceta.Normalizar(receta.Categoria);
-        AjustarDificultadAlPlan(receta, usuario?.Rol);
         return receta;
     }
 
     public async Task<RecetaGuardadaResponse> GuardarRecetaAsync(int usuarioId, RecetaGeneradaDto receta)
+    {
+        var resultado = await _unidadDeTrabajo.EjecutarAsync(() => GuardarRecetaEnTransaccionAsync(usuarioId, receta));
+        _cache.Remove(RecetaService.CacheCatalogoKey);
+        return resultado;
+    }
+
+    private async Task<RecetaGuardadaResponse> GuardarRecetaEnTransaccionAsync(int usuarioId, RecetaGeneradaDto receta)
     {
         if (receta is null)
         {
             throw new InvalidOperationException("No se recibió la receta a guardar.");
         }
 
+        receta.Ingredientes ??= [];
+        receta.Pasos ??= [];
+
         await _favoritoService.AsegurarCupoFavoritosAsync(usuarioId);
 
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
-        AjustarDificultadAlPlan(receta, usuario?.Rol);
+        var dificultad = NormalizarDificultad(receta);
+        if (!LimitesPlan.PuedeUsarDificultad(usuario?.Rol, dificultad))
+        {
+            throw new ForbiddenException(LimitesPlan.MensajeDificultadPremium);
+        }
 
-        var titulo = GenerarTituloPorDefecto(receta.Titulo, receta.Ingredientes);
+        var titulo = Recortar(GenerarTituloPorDefecto(receta.Titulo, receta.Ingredientes), MaxTitulo);
 
         var ingredientesValidos = receta.Ingredientes
             .Where(ingrediente => !string.IsNullOrWhiteSpace(ingrediente.Nombre))
@@ -174,10 +249,10 @@ public class RecetaIaService : IRecetaIaService
             ingredientesReceta.Add(new IngredienteReceta
             {
                 IngredienteId = ingredienteId,
-                Cantidad = ingrediente.Cantidad,
+                Cantidad = AjustarCantidad(ingrediente.Cantidad),
                 UnidadMedida = string.IsNullOrWhiteSpace(ingrediente.UnidadMedida)
-                    ? "u"
-                    : ingrediente.UnidadMedida.Trim()
+                    ? UnidadesMedida.Unidad
+                    : Recortar(ingrediente.UnidadMedida, MaxUnidad)
             });
         }
 
@@ -185,19 +260,20 @@ public class RecetaIaService : IRecetaIaService
             .Select((paso, indice) => new PreparacionReceta
             {
                 NumeroPaso = indice + 1,
-                DescripcionPaso = paso.Trim()
+                DescripcionPaso = Recortar(paso, MaxPaso)
             })
             .ToList();
 
         var nuevaReceta = new Receta
         {
             Titulo = titulo,
-            Descripcion = receta.Descripcion?.Trim() ?? string.Empty,
-            TiempoPreparacionMinutos = receta.TiempoPreparacionMinutos > 0 ? receta.TiempoPreparacionMinutos : 1,
-            Porciones = receta.Porciones > 0 ? receta.Porciones : 1,
-            CaloriasEstimadas = receta.CaloriasEstimadas < 0 ? 0 : receta.CaloriasEstimadas,
-            Dificultad = ParsearDificultad(receta.Dificultad),
+            Descripcion = Recortar(receta.Descripcion, MaxDescripcion),
+            TiempoPreparacionMinutos = Math.Clamp(receta.TiempoPreparacionMinutos, 1, MaxMinutos),
+            Porciones = Math.Clamp(receta.Porciones, 1, MaxPorciones),
+            CaloriasEstimadas = Math.Clamp(receta.CaloriasEstimadas, 0, MaxCalorias),
+            Dificultad = dificultad,
             Categoria = CategoriasReceta.Normalizar(receta.Categoria),
+            UsuarioId = usuarioId,
             IngredientesReceta = ingredientesReceta,
             Preparaciones = pasos
         };
@@ -245,9 +321,18 @@ public class RecetaIaService : IRecetaIaService
         }
     }
 
+    private static string Recortar(string? texto, int maximo)
+    {
+        var limpio = texto?.Trim() ?? string.Empty;
+        return limpio.Length <= maximo ? limpio : limpio[..maximo].TrimEnd();
+    }
+
+    private static decimal AjustarCantidad(decimal cantidad) =>
+        cantidad <= 0 ? 1m : Math.Min(Math.Round(cantidad, 2), MaxCantidad);
+
     private async Task<int> ObtenerOCrearIngredienteAsync(string nombre)
     {
-        var nombreNormalizado = _normalizer.Normalizar(nombre);
+        var nombreNormalizado = Recortar(_normalizer.Normalizar(nombre), MaxNombreIngrediente);
         var existente = await _ingredienteRepository.FirstOrDefaultAsync(
             ingrediente => ingrediente.Nombre == nombreNormalizado);
 
@@ -285,35 +370,32 @@ public class RecetaIaService : IRecetaIaService
             : "Receta sin título";
     }
 
-    public static void AjustarDificultadAlPlan(RecetaGeneradaDto receta, string? rol)
+    public static DificultadReceta NormalizarDificultad(RecetaGeneradaDto receta)
     {
         receta.Categoria = CategoriasReceta.Normalizar(receta.Categoria);
-        receta.Dificultad = LimitesPlan.AjustarDificultad(rol, ParsearDificultad(receta.Dificultad)).ToString();
-    }
 
-    private static DificultadReceta ParsearDificultad(string? dificultad)
-    {
-        return Enum.TryParse<DificultadReceta>(dificultad?.Trim(), ignoreCase: true, out var resultado)
-            ? resultado
-            : DificultadReceta.Medio;
+        var pasos = receta.Pasos.Where(paso => !string.IsNullOrWhiteSpace(paso)).ToList();
+        var ingredientes = receta.Ingredientes.Count(ingrediente => !string.IsNullOrWhiteSpace(ingrediente.Nombre));
+        var textos = new List<string?> { receta.Titulo, receta.Descripcion };
+        textos.AddRange(pasos);
+
+        var efectiva = ComplejidadReceta.Efectiva(
+            ComplejidadReceta.Parsear(receta.Dificultad),
+            receta.TiempoPreparacionMinutos,
+            pasos.Count,
+            ingredientes,
+            textos);
+
+        receta.Dificultad = efectiva.ToString();
+        return efectiva;
     }
 
     private static RecetaGeneradaDto? DeserializarReceta(string json)
     {
-        if (string.IsNullOrWhiteSpace(json))
+        var limpio = JsonIa.LimpiarBloqueCodigo(json);
+        if (limpio.Length == 0)
         {
             return null;
-        }
-
-        var limpio = json.Trim();
-        if (limpio.StartsWith("```"))
-        {
-            limpio = limpio.Trim('`');
-            var saltoLinea = limpio.IndexOf('\n');
-            if (saltoLinea >= 0 && limpio[..saltoLinea].Contains("json", StringComparison.OrdinalIgnoreCase))
-            {
-                limpio = limpio[(saltoLinea + 1)..];
-            }
         }
 
         try

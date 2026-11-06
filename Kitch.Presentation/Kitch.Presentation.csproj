@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Kitch.Application\Kitch.Application.csproj" />
     <ProjectReference Include="..\Kitch.Infrastructure\Kitch.Infrastructure.csproj" />
   </ItemGroup>
 

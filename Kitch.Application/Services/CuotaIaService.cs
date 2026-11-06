@@ -20,7 +20,7 @@ public class CuotaIaService : ICuotaIaService
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
             ?? throw new UnauthorizedAccessException("El usuario no existe.");
 
-        var hoy = DateTime.UtcNow.Date;
+        var hoy = FechaLocal.Hoy();
         if (usuario.FechaCuotaIaUtc?.Date != hoy)
         {
             usuario.FechaCuotaIaUtc = hoy;
@@ -34,6 +34,20 @@ public class CuotaIaService : ICuotaIaService
         }
 
         usuario.PeticionesIaDelDia++;
+        await _usuarioRepository.UpdateAsync(usuario);
+    }
+
+    public async Task DevolverAsync(int usuarioId)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
+        if (usuario is null ||
+            usuario.FechaCuotaIaUtc?.Date != FechaLocal.Hoy() ||
+            usuario.PeticionesIaDelDia <= 0)
+        {
+            return;
+        }
+
+        usuario.PeticionesIaDelDia--;
         await _usuarioRepository.UpdateAsync(usuario);
     }
 }

@@ -12,4 +12,8 @@ public class MetricasPlataformaDto
     public int ContratosActivos { get; set; }
     public int PagosAprobados { get; set; }
     public decimal IngresosTotales { get; set; }
+    public int PeticionesIaHoy { get; set; }
+    public int UsuariosEnTopeIa { get; set; }
+    public int LimiteIaBasico { get; set; }
+    public int LimiteIaProfesional { get; set; }
 }

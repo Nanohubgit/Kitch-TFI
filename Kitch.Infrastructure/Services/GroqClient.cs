@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Kitch.Application.Exceptions;
 using Kitch.Domain.Interfaces;
 using Microsoft.Extensions.Configuration;
 
@@ -14,13 +15,15 @@ public class GroqClient : IAsistenteIaClient
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _modelo;
+    private readonly bool _configurado;
 
     public GroqClient(IHttpClientFactory httpClientFactory, IConfiguration configuration)
     {
         _httpClientFactory = httpClientFactory;
 
         var modeloConfig = configuration["Groq:Model"];
-        _modelo = string.IsNullOrWhiteSpace(modeloConfig) ? ModeloPorDefecto : modeloConfig;
+        _modelo = string.IsNullOrWhiteSpace(modeloConfig) ? ModeloPorDefecto : modeloConfig.Trim();
+        _configurado = !string.IsNullOrWhiteSpace(configuration["Groq:ApiKey"]);
     }
 
     public Task<string> GenerarRespuestaAsync(string prompt, string systemInstruction) =>
@@ -56,6 +59,11 @@ public class GroqClient : IAsistenteIaClient
 
     private async Task<string> EnviarAsync(List<GroqMessage> messages, string systemInstruction, bool jsonMode)
     {
+        if (!_configurado)
+        {
+            throw new ServicioExternoException("El asistente de IA no está configurado en el servidor.");
+        }
+
         var client = _httpClientFactory.CreateClient("GroqClient");
 
         var todosLosMensajes = new List<GroqMessage>
@@ -81,7 +89,15 @@ public class GroqClient : IAsistenteIaClient
 
             if (response.IsSuccessStatusCode)
             {
-                var resultado = await response.Content.ReadFromJsonAsync<GroqResponse>();
+                GroqResponse? resultado;
+                try
+                {
+                    resultado = await response.Content.ReadFromJsonAsync<GroqResponse>();
+                }
+                catch (JsonException ex)
+                {
+                    throw new ServicioExternoException("El asistente de IA devolvió una respuesta inválida.", ex);
+                }
 
                 var textoLimpio = resultado?
                     .Choices?
@@ -92,8 +108,8 @@ public class GroqClient : IAsistenteIaClient
                 return textoLimpio ?? string.Empty;
             }
 
-            var esTransitorio = response.StatusCode == HttpStatusCode.ServiceUnavailable ||
-                response.StatusCode == HttpStatusCode.TooManyRequests;
+            var esTransitorio = response.StatusCode == HttpStatusCode.TooManyRequests ||
+                (int)response.StatusCode >= 500;
 
             if (esTransitorio && intento < maxIntentos)
             {

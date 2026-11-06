@@ -13,6 +13,7 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+        services.AddScoped<IUnidadDeTrabajo, UnidadDeTrabajo>();
 
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IEmailService, SmtpEmailService>();
@@ -39,8 +40,9 @@ public static class DependencyInjection
         services.AddHttpClient("GroqClient", (serviceProvider, client) =>
         {
             var config = serviceProvider.GetRequiredService<IConfiguration>();
-            var apiKey = config["Groq:ApiKey"];
+            var apiKey = config["Groq:ApiKey"]?.Trim();
             client.BaseAddress = new Uri("https://api.groq.com/");
+            client.Timeout = TimeSpan.FromSeconds(90);
             client.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
         });
@@ -48,8 +50,9 @@ public static class DependencyInjection
         services.AddHttpClient("OpenAiClient", (serviceProvider, client) =>
         {
             var config = serviceProvider.GetRequiredService<IConfiguration>();
-            var apiKey = config["OpenAi:ApiKey"];
+            var apiKey = config["OpenAi:ApiKey"]?.Trim();
             client.BaseAddress = new Uri("https://api.openai.com/");
+            client.Timeout = TimeSpan.FromSeconds(90);
             client.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
         });

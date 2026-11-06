@@ -9,6 +9,7 @@ namespace Kitch.Domain.Entities
         public decimal Monto { get; set; }
         public EstadoPago EstadoPago { get; set; } = EstadoPago.Pendiente;
         public MetodoPago MetodoPago { get; set; } = MetodoPago.NoEspecificado;
+        public string? TransaccionId { get; set; }
 
         public Usuario Usuario { get; set; } = null!;
         public ContratoSub ContratoSub { get; set; } = null!;

@@ -8,6 +8,7 @@ namespace Kitch.Domain.Entities
         public bool EstaComprado { get; set; } = false;
         public string UnidadMedida { get; set; } = string.Empty;
         public int? IngredienteId { get; set; }
+        public bool GeneradoPorPlan { get; set; }
 
         public int UsuarioId { get; set; }
 

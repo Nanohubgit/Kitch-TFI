@@ -4,10 +4,8 @@
 
 namespace Kitch.Infrastructure.Migrations
 {
-    /// <inheritdoc />
     public partial class RecetaCategoria : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<string>(
@@ -19,7 +17,6 @@ namespace Kitch.Infrastructure.Migrations
                 defaultValue: "general");
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(

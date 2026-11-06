@@ -2,9 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Kitch.Application.DTOs.Auth;
 
-/// <summary>
-/// Edición de perfil desde la UI: solo handle y preferencia dietética.
-/// </summary>
 public class EditarPerfilRequestDto
 {
     [Required(ErrorMessage = "El nombre de usuario es obligatorio.")]

@@ -29,6 +29,9 @@ namespace Kitch.Infrastructure.Persistence.Configurations
             entity.Property(itemListaCompra => itemListaCompra.UsuarioId)
                 .IsRequired();
 
+            entity.Property(itemListaCompra => itemListaCompra.GeneradoPorPlan)
+                .IsRequired();
+
             entity.HasOne(itemListaCompra => itemListaCompra.Usuario)
                 .WithMany()
                 .HasForeignKey(itemListaCompra => itemListaCompra.UsuarioId)

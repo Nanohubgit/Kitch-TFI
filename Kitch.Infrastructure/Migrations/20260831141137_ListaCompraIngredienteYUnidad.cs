@@ -4,10 +4,8 @@
 
 namespace Kitch.Infrastructure.Migrations
 {
-    /// <inheritdoc />
     public partial class ListaCompraIngredienteYUnidad : Migration
     {
-        /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<int>(
@@ -38,7 +36,6 @@ namespace Kitch.Infrastructure.Migrations
                 onDelete: ReferentialAction.SetNull);
         }
 
-        /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropForeignKey(

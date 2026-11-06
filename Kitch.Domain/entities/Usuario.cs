@@ -6,64 +6,29 @@ namespace Kitch.Domain.Entities
         public string Nombre { get; set; } = string.Empty;
         public string Apellido { get; set; } = string.Empty;
 
-        /// <summary>
-        /// Identificador público único para login/mención (distinto del email y del nombre real).
-        /// </summary>
         public string NombreUsuario { get; set; } = string.Empty;
 
         public string Email { get; set; } = string.Empty;
 
-        /// <summary>
-        /// Preferencia o restricción dietética del usuario (ej: "Ninguna", "Vegano", "Celiaco").
-        /// </summary>
         public string PreferenciaDietetica { get; set; } = "Ninguna";
 
-        /// <summary>
-        /// Hash BCrypt de la contraseña del usuario. Nunca se almacena la contraseña en texto plano.
-        /// </summary>
         public string PasswordHash { get; set; } = string.Empty;
 
         public bool Activo { get; set; } = true;
         public string Rol { get; set; } = "Basico";
 
-        /// <summary>
-        /// Hash del token de recuperación de contraseña (nullable: sin reset pendiente).
-        /// Seguridad: se guarda el HASH y no el token en texto plano. Si la base de datos se filtra,
-        /// un atacante no puede reutilizar los tokens de los emails: no dispone del valor original
-        /// que viaja por correo. Al validar el reset se hashea el token recibido y se compara con este valor.
-        /// </summary>
         public string? PasswordResetTokenHash { get; set; }
 
-        /// <summary>
-        /// Fecha/hora UTC hasta la cual el token de recuperación es válido (nullable: sin reset pendiente).
-        /// Tokens expirados se rechazan aunque el hash coincida, limitando la ventana de ataque.
-        /// </summary>
         public DateTime? PasswordResetTokenExpiresAt { get; set; }
 
-        /// <summary>
-        /// Código OTP de 2FA. Se almacena como hash SHA-256 (hex), nunca el código en texto plano.
-        /// Null = no hay desafío 2FA pendiente.
-        /// </summary>
         public string? TwoFactorCode { get; set; }
 
-        /// <summary>
-        /// UTC: vencimiento del código 2FA (típicamente 5 minutos). Null = sin desafío pendiente.
-        /// </summary>
         public DateTime? TwoFactorCodeExpiresAt { get; set; }
 
-        /// <summary>
-        /// Día UTC al que corresponde <see cref="PeticionesIaDelDia"/>. Null = nunca usó el asistente.
-        /// </summary>
         public DateTime? FechaCuotaIaUtc { get; set; }
 
-        /// <summary>
-        /// Peticiones al asistente de IA consumidas en <see cref="FechaCuotaIaUtc"/>.
-        /// </summary>
         public int PeticionesIaDelDia { get; set; }
 
-        /// <summary>
-        /// Última receta generada por el chat (JSON), para sobrevivir restart e instancias de Azure.
-        /// </summary>
         public string? UltimaRecetaIaJson { get; set; }
     }
 }

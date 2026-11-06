@@ -20,12 +20,10 @@ public class PerfilController : ApiControllerBase
     [HttpGet("me")]
     public async Task<ActionResult<UsuarioResponseDto>> GetMe()
     {
-        var usuarioId = GetUsuarioIdOrThrow();
-        var usuario = await _usuarioService.GetByIdAsync(usuarioId);
-
+        var usuario = await _usuarioService.GetByIdAsync(GetUsuarioIdOrThrow());
         if (usuario is null)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Usuario no encontrado.");
         }
 
         return Ok(usuario);
@@ -34,12 +32,10 @@ public class PerfilController : ApiControllerBase
     [HttpPut("me")]
     public async Task<IActionResult> UpdateMe([FromBody] ActualizarPerfilDto perfil)
     {
-        var usuarioId = GetUsuarioIdOrThrow();
-        var actualizado = await _usuarioService.ActualizarPerfilAsync(usuarioId, perfil);
-
+        var actualizado = await _usuarioService.ActualizarPerfilAsync(GetUsuarioIdOrThrow(), perfil);
         if (!actualizado)
         {
-            return NotFound();
+            throw new KeyNotFoundException("Usuario no encontrado.");
         }
 
         return NoContent();

@@ -1,8 +1,5 @@
 namespace Kitch.Application.DTOs.Suscripciones;
 
-/// <summary>
-/// Respuesta del inicio de checkout. El frontend lee <see cref="InitPoint"/> y redirige.
-/// </summary>
 public class IniciarPagoResponseDto
 {
     public string InitPoint { get; set; } = string.Empty;

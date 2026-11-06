@@ -1,8 +1,5 @@
 namespace Kitch.Application.DTOs.Auth;
 
-/// <summary>
-/// Respuesta del verify-2fa: JWT listo para que el front lo guarde y use en Authorization.
-/// </summary>
 public class Verify2FaResponseDto
 {
     public string Token { get; set; } = string.Empty;

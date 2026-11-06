@@ -1,3 +1,4 @@
+using Kitch.Application.DTOs.ListaCompra;
 using Kitch.Application.DTOs.Preparacion;
 using Kitch.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -21,8 +22,20 @@ public class PreparacionController : ApiControllerBase
     public async Task<ActionResult<PrevisualizarPorcionesResponseDto>> PrevisualizarPorciones(
         [FromBody] PrevisualizarPorcionesRequestDto request)
     {
+        request.UsuarioId = GetUsuarioIdOrThrow();
         var response = await _preparacionService.PrevisualizarRecalculoPorcionesAsync(request);
         return Ok(response);
+    }
+
+    [HttpPost("agregar-faltantes")]
+    public async Task<ActionResult<IEnumerable<ItemListaCompraResponseDto>>> AgregarFaltantes(
+        [FromBody] AgregarFaltantesPorcionesRequestDto request)
+    {
+        var items = await _preparacionService.AgregarFaltantesPorcionesAsync(
+            GetUsuarioIdOrThrow(),
+            request.RecetaId,
+            request.NuevasPorciones);
+        return Ok(items);
     }
 
     [HttpPost("previsualizar-descuento-stock")]
@@ -35,10 +48,33 @@ public class PreparacionController : ApiControllerBase
     }
 
     [HttpPost("descontar-stock")]
-    public async Task<IActionResult> DescontarStock([FromBody] ConfirmarDescuentoStockRequestDto request)
+    public async Task<ActionResult<DescuentoStockResultadoDto>> DescontarStock(
+        [FromBody] ConfirmarDescuentoStockRequestDto request)
     {
-        var usuarioId = GetUsuarioIdOrThrow();
-        await _preparacionService.DescontarIngredientesAsync(usuarioId, request.RecetaId, request.PorcionesCocinadas);
-        return Ok(new { mensaje = "Stock actualizado correctamente. ¡Buen provecho!" });
+        var resultado = await _preparacionService.DescontarIngredientesAsync(
+            GetUsuarioIdOrThrow(),
+            request.RecetaId,
+            request.PorcionesCocinadas,
+            request.CantidadesUtilizadas);
+        return Ok(resultado);
+    }
+
+    [HttpPost("descontar-stock-parcial")]
+    public async Task<ActionResult<DescuentoStockResultadoDto>> DescontarStockParcial(
+        [FromBody] ConfirmarDescuentoStockRequestDto request)
+    {
+        var resultado = await _preparacionService.DescontarIngredientesParcialAsync(
+            GetUsuarioIdOrThrow(),
+            request.RecetaId,
+            request.PorcionesCocinadas);
+        return Ok(resultado);
+    }
+
+    [HttpPost("aplicar-sustituto")]
+    public async Task<ActionResult<AplicarSustitutoResponseDto>> AplicarSustituto(
+        [FromBody] AplicarSustitutoRequestDto request)
+    {
+        var resultado = await _preparacionService.AplicarSustitutoAsync(GetUsuarioIdOrThrow(), request);
+        return Ok(resultado);
     }
 }

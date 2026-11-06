@@ -15,6 +15,8 @@ public class ComidaPlanificadaCreateDto
 
     [Required, MaxLength(50)]
     public string Turno { get; set; } = string.Empty;
+
+    public bool ReemplazarSiConflicto { get; set; }
 }
 
 public class ComidaPlanificadaUpdateDto : ComidaPlanificadaCreateDto
@@ -31,6 +33,8 @@ public class AgendarRecetaRequestDto
 
     [Required, MaxLength(50)]
     public string Turno { get; set; } = string.Empty;
+
+    public bool ReemplazarSiConflicto { get; set; }
 }
 
 public class ComidaPlanificadaResponseDto
@@ -40,6 +44,10 @@ public class ComidaPlanificadaResponseDto
     public string RecetaTitulo { get; set; } = string.Empty;
     public DateTime FechaAsignada { get; set; }
     public string Turno { get; set; } = string.Empty;
+    public List<string> IngredientesAgregadosALista { get; set; } = [];
+    public bool TeniaTodoEnAlacena { get; set; }
+    public bool ReemplazoRealizado { get; set; }
+    public string MensajeLista { get; set; } = string.Empty;
 }
 
 public class PlanificacionResultadoDto
