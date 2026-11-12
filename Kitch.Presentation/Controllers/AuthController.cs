@@ -40,6 +40,25 @@ public class AuthController : ApiControllerBase
         return Ok(response);
     }
 
+    [HttpPost("resend-2fa")]
+    [AllowAnonymous]
+    public async Task<ActionResult<Login2FaResponseDto>> Resend2Fa([FromBody] ReenviarCodigoRequestDto request)
+    {
+        var response = await _authService.ReenviarCodigoDosFactoresAsync(request);
+        return Ok(response);
+    }
+
+    [HttpPut("cambiar-password")]
+    [Authorize]
+    public async Task<ActionResult<MensajeResponseDto>> CambiarPassword([FromBody] CambiarPasswordRequestDto request)
+    {
+        await _authService.CambiarPasswordAsync(GetUsuarioIdOrThrow(), request);
+        return Ok(new MensajeResponseDto
+        {
+            Message = "Tu contraseña se actualizó correctamente."
+        });
+    }
+
     [HttpPost("refresh")]
     [Authorize]
     public async Task<ActionResult<Verify2FaResponseDto>> Refresh()

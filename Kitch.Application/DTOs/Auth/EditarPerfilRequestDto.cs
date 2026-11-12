@@ -14,4 +14,10 @@ public class EditarPerfilRequestDto
     [Required(ErrorMessage = "La preferencia dietética es obligatoria.")]
     [MaxLength(50)]
     public string PreferenciaDietetica { get; set; } = "Ninguna";
+
+    [MaxLength(50, ErrorMessage = "El nombre no puede superar 50 caracteres.")]
+    public string? Nombre { get; set; }
+
+    [MaxLength(50, ErrorMessage = "El apellido no puede superar 50 caracteres.")]
+    public string? Apellido { get; set; }
 }

@@ -14,4 +14,6 @@ public interface IAuthService
     Task ResetPasswordAsync(ResetPasswordRequestDto request);
     Task<Verify2FaResponseDto> RefrescarSesionAsync(int usuarioId);
     Task EnviarRecuperacionPasswordAsync(int usuarioId);
+    Task<Login2FaResponseDto> ReenviarCodigoDosFactoresAsync(ReenviarCodigoRequestDto request);
+    Task CambiarPasswordAsync(int usuarioId, CambiarPasswordRequestDto request);
 }

@@ -1,4 +1,4 @@
-using Kitch.Application.Common;
+﻿using Kitch.Application.Common;
 using Kitch.Application.DTOs.Favoritos;
 using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
@@ -35,7 +35,7 @@ public class FavoritoService : IFavoritoService
 
         return favoritos
             .Where(favorito => favorito.Receta is not null &&
-                AccesoReceta.Permitido(favorito.Receta, usuarioId, usuario?.Rol))
+                AccesoReceta.PuedeVer(favorito.Receta, usuarioId, usuario?.Rol))
             .Select(favorito =>
             {
                 var dto = favorito.ToResponseDto();
@@ -60,7 +60,7 @@ public class FavoritoService : IFavoritoService
         }
 
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
-        if (favorito.Receta is null || !AccesoReceta.Permitido(favorito.Receta, usuarioId, usuario?.Rol))
+        if (favorito.Receta is null || !AccesoReceta.PuedeVer(favorito.Receta, usuarioId, usuario?.Rol))
         {
             return null;
         }
@@ -159,7 +159,7 @@ public class FavoritoService : IFavoritoService
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
             ?? throw new InvalidOperationException("El usuario no existe.");
 
-        if (!AccesoReceta.Permitido(receta, usuarioId, usuario.Rol))
+        if (!AccesoReceta.PuedeVer(receta, usuarioId, usuario.Rol))
         {
             throw new KeyNotFoundException(AccesoReceta.MensajeNoEncontrada);
         }

@@ -1,7 +1,4 @@
-using System.Collections.Generic;
-using System.Threading.Tasks;
-
-namespace Kitch.Domain.Interfaces;
+namespace Kitch.Application.Interfaces;
 
 public interface IAsistenteIaClient
 {

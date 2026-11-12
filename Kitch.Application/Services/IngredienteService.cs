@@ -67,7 +67,7 @@ public class IngredienteService : IIngredienteService
     public async Task<HashSet<int>> ObtenerIdsAccesiblesAsync(int usuarioId)
     {
         var enStock = await _stockRepository.FindAsync(stock => stock.UsuarioId == usuarioId);
-        var enRecetas = await _ingredienteRecetaRepository.FindAsync(item => item.Receta.UsuarioId == usuarioId);
+        var enRecetas = await _ingredienteRecetaRepository.FindAsync(item => item.Receta.UsuarioId == null || item.Receta.UsuarioId == usuarioId);
         var enLista = await _itemListaRepository.FindAsync(item => item.UsuarioId == usuarioId && item.IngredienteId != null);
 
         var ids = enStock.Select(stock => stock.IngredienteId).ToHashSet();

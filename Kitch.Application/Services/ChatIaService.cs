@@ -1,6 +1,4 @@
-using System.Globalization;
-using System.Net;
-using System.Net.Http;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -211,7 +209,7 @@ public class ChatIaService : IChatIaService
         {
             json = await _asistenteIa.GenerarRespuestaConversacionAsync(mensajes, systemInstruction, jsonMode: true);
         }
-        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+        catch (ServicioIaException ex) when (ex.Motivo == MotivoFallaIa.Saturado)
         {
             await _cuotaIa.DevolverAsync(usuarioId);
             return new ChatRespuestaDto
@@ -221,7 +219,7 @@ public class ChatIaService : IChatIaService
                     "(se alcanzó el límite de uso de la API de IA). Esperá unos segundos y volvé a intentar."
             };
         }
-        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable)
+        catch (ServicioIaException ex) when (ex.Motivo == MotivoFallaIa.NoDisponible)
         {
             await _cuotaIa.DevolverAsync(usuarioId);
             return new ChatRespuestaDto
@@ -231,7 +229,7 @@ public class ChatIaService : IChatIaService
                     "Esperá unos segundos y volvé a intentar."
             };
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or TimeoutException or ServicioExternoException)
+        catch (ServicioExternoException)
         {
             await _cuotaIa.DevolverAsync(usuarioId);
             return new ChatRespuestaDto
@@ -580,7 +578,7 @@ public class ChatIaService : IChatIaService
         {
             sustitutos = (await _sustitucionService.BuscarSustitutosAsync(usuarioId, ingrediente.Id)).ToList();
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or ServicioExternoException)
+        catch (ServicioExternoException)
         {
             return new ChatRespuestaDto
             {
@@ -646,7 +644,7 @@ public class ChatIaService : IChatIaService
 
         return favoritos
             .Where(favorito => favorito.Receta is not null &&
-                AccesoReceta.Permitido(favorito.Receta, usuarioId, usuario?.Rol))
+                AccesoReceta.PuedeVer(favorito.Receta, usuarioId, usuario?.Rol))
             .ToList();
     }
 

@@ -6,6 +6,7 @@ public class PaymentGatewayRequest
 {
     public int UsuarioId { get; set; }
     public decimal Monto { get; set; }
+    public string Moneda { get; set; } = string.Empty;
     public MetodoPago MetodoPago { get; set; }
     public string Descripcion { get; set; } = string.Empty;
     public string EmailUsuario { get; set; } = string.Empty;
@@ -31,4 +32,12 @@ public class PaymentNotificationResult
     public string? ExternalReference { get; set; }
     public string? TransaccionId { get; set; }
     public decimal Monto { get; set; }
+    public MetodoPago MetodoPago { get; set; } = MetodoPago.NoEspecificado;
+}
+
+public class PlanSuscripcionResponseDto
+{
+    public string Tipo { get; set; } = string.Empty;
+    public decimal Monto { get; set; }
+    public string Moneda { get; set; } = string.Empty;
 }

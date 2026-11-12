@@ -21,6 +21,9 @@ public class SuscripcionesController : ApiControllerBase
         _paymentGateway = paymentGateway;
     }
 
+    [HttpGet("plan")]
+    public ActionResult<PlanSuscripcionResponseDto> GetPlan() => Ok(_suscripcionService.GetPlan());
+
     [HttpPost("contratar")]
     [Authorize(Roles = RolUsuario.Basico + "," + RolUsuario.Profesional)]
     public async Task<ActionResult<IniciarPagoResponseDto>> Contratar(

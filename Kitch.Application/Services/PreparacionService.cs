@@ -44,8 +44,9 @@ public class PreparacionService : IPreparacionService
 
         var factor = (decimal)request.NuevasPorciones / PorcionesBase(receta);
         var stockPorIngrediente = await ObtenerStockPorIngredienteAsync(request.UsuarioId);
+        var ingredientesEfectivos = await ResolverIngredientesEfectivosAsync(request.UsuarioId, receta, request.Sustituciones);
 
-        var ingredientes = receta.IngredientesReceta
+        var ingredientes = ingredientesEfectivos
             .Select(ingrediente =>
             {
                 var ajustada = Math.Round(ingrediente.Cantidad * factor, 2);
@@ -58,7 +59,7 @@ public class PreparacionService : IPreparacionService
                 return new IngredienteAjustadoDto
                 {
                     IngredienteId = ingrediente.IngredienteId,
-                    Nombre = ingrediente.Ingrediente?.Nombre ?? $"#{ingrediente.IngredienteId}",
+                    Nombre = ingrediente.Nombre,
                     CantidadOriginal = ingrediente.Cantidad,
                     CantidadAjustada = ajustada,
                     UnidadMedida = ingrediente.UnidadMedida,
@@ -88,23 +89,26 @@ public class PreparacionService : IPreparacionService
     public Task<IEnumerable<ItemListaCompraResponseDto>> AgregarFaltantesPorcionesAsync(
         int usuarioId,
         int recetaId,
-        int porciones) =>
+        int porciones,
+        IReadOnlyList<SustitucionAplicadaDto>? sustituciones = null) =>
         _unidadDeTrabajo.EjecutarAsync(async () =>
         {
             await BloquearStockAsync(usuarioId);
-            return await AgregarFaltantesEnTransaccionAsync(usuarioId, recetaId, porciones);
+            return await AgregarFaltantesEnTransaccionAsync(usuarioId, recetaId, porciones, sustituciones);
         });
 
     private async Task<IEnumerable<ItemListaCompraResponseDto>> AgregarFaltantesEnTransaccionAsync(
         int usuarioId,
         int recetaId,
-        int porciones)
+        int porciones,
+        IReadOnlyList<SustitucionAplicadaDto>? sustituciones)
     {
         var preview = await PrevisualizarRecalculoPorcionesAsync(new PrevisualizarPorcionesRequestDto
         {
             UsuarioId = usuarioId,
             RecetaId = recetaId,
-            NuevasPorciones = porciones
+            NuevasPorciones = porciones,
+            Sustituciones = (sustituciones ?? []).ToList()
         });
 
         foreach (var faltante in preview.IngredientesFaltantes)
@@ -129,12 +133,13 @@ public class PreparacionService : IPreparacionService
 
         var factor = (decimal)request.PorcionesCocinadas / PorcionesBase(receta);
         var stockPorIngrediente = await ObtenerStockPorIngredienteAsync(request.UsuarioId);
+        var ingredientesEfectivos = await ResolverIngredientesEfectivosAsync(request.UsuarioId, receta, request.Sustituciones);
 
         return new PrevisualizarDescuentoStockResponseDto
         {
             Receta = receta.Titulo,
             PorcionesCocinadas = request.PorcionesCocinadas,
-            Ingredientes = receta.IngredientesReceta
+            Ingredientes = ingredientesEfectivos
                 .Select(ingrediente =>
                 {
                     stockPorIngrediente.TryGetValue(ingrediente.IngredienteId, out var stock);
@@ -144,7 +149,7 @@ public class PreparacionService : IPreparacionService
                     return new IngredienteDescuentoDto
                     {
                         IngredienteId = ingrediente.IngredienteId,
-                        Nombre = ingrediente.Ingrediente?.Nombre ?? $"#{ingrediente.IngredienteId}",
+                        Nombre = ingrediente.Nombre,
                         CantidadDisponible = compatible ? disponible : stock?.Cantidad ?? 0m,
                         CantidadNecesaria = necesaria,
                         CantidadPosterior = compatible ? Math.Max(0, Math.Round(disponible - necesaria, 2)) : stock?.Cantidad ?? 0m,
@@ -162,22 +167,26 @@ public class PreparacionService : IPreparacionService
         int usuarioId,
         int recetaId,
         int porciones,
-        IReadOnlyList<CantidadUtilizadaDto>? cantidadesUtilizadas = null) =>
+        IReadOnlyList<CantidadUtilizadaDto>? cantidadesUtilizadas = null,
+        IReadOnlyList<SustitucionAplicadaDto>? sustituciones = null) =>
         _unidadDeTrabajo.EjecutarAsync(async () =>
         {
             await BloquearStockAsync(usuarioId);
-            return await DescontarIngredientesEnTransaccionAsync(usuarioId, recetaId, porciones, cantidadesUtilizadas);
+            return await DescontarIngredientesEnTransaccionAsync(
+                usuarioId, recetaId, porciones, cantidadesUtilizadas, sustituciones);
         });
 
     private async Task<DescuentoStockResultadoDto> DescontarIngredientesEnTransaccionAsync(
         int usuarioId,
         int recetaId,
         int porciones,
-        IReadOnlyList<CantidadUtilizadaDto>? cantidadesUtilizadas)
+        IReadOnlyList<CantidadUtilizadaDto>? cantidadesUtilizadas,
+        IReadOnlyList<SustitucionAplicadaDto>? sustituciones)
     {
         ValidarPorciones(porciones);
 
         var receta = await GetRecetaConIngredientesAsync(recetaId, usuarioId);
+        var ingredientesEfectivos = await ResolverIngredientesEfectivosAsync(usuarioId, receta, sustituciones);
         var factor = (decimal)porciones / PorcionesBase(receta);
         var personalizado = (cantidadesUtilizadas ?? [])
             .Where(item => item.IngredienteId > 0)
@@ -188,7 +197,7 @@ public class PreparacionService : IPreparacionService
         var descuentos = new List<(StockUsuario Stock, decimal CantidadStock, decimal CantidadReceta, string Nombre, string Unidad)>();
         var resultado = new DescuentoStockResultadoDto { Receta = receta.Titulo };
 
-        foreach (var ingrediente in receta.IngredientesReceta)
+        foreach (var ingrediente in ingredientesEfectivos)
         {
             var cantidadADescontar = personalizado.TryGetValue(ingrediente.IngredienteId, out var usada)
                 ? usada
@@ -199,7 +208,7 @@ public class PreparacionService : IPreparacionService
                 continue;
             }
 
-            var nombre = ingrediente.Ingrediente?.Nombre ?? $"#{ingrediente.IngredienteId}";
+            var nombre = ingrediente.Nombre;
 
             if (!stockPorIngrediente.TryGetValue(ingrediente.IngredienteId, out var stock))
             {
@@ -300,26 +309,77 @@ public class PreparacionService : IPreparacionService
         };
     }
 
-    public Task<DescuentoStockResultadoDto> DescontarIngredientesParcialAsync(int usuarioId, int recetaId, int porciones) =>
+    public Task<DescuentoStockResultadoDto> DescontarIngredientesParcialAsync(
+        int usuarioId,
+        int recetaId,
+        int porciones,
+        IReadOnlyList<SustitucionAplicadaDto>? sustituciones = null) =>
         _unidadDeTrabajo.EjecutarAsync(async () =>
         {
             await BloquearStockAsync(usuarioId);
-            return await DescontarParcialEnTransaccionAsync(usuarioId, recetaId, porciones);
+            return await DescontarParcialEnTransaccionAsync(usuarioId, recetaId, porciones, sustituciones);
         });
+
+    private sealed record IngredienteEfectivo(int IngredienteId, string Nombre, decimal Cantidad, string UnidadMedida);
+
+    private async Task<List<IngredienteEfectivo>> ResolverIngredientesEfectivosAsync(
+        int usuarioId,
+        Receta receta,
+        IReadOnlyList<SustitucionAplicadaDto>? sustituciones)
+    {
+        var porOriginal = new Dictionary<int, IngredienteEfectivo>();
+
+        foreach (var sustitucion in (sustituciones ?? [])
+                     .Where(item => item.IngredienteOriginalId > 0 && item.IngredienteSustitutoId > 0)
+                     .GroupBy(item => item.IngredienteOriginalId)
+                     .Select(grupo => grupo.Last()))
+        {
+            var original = receta.IngredientesReceta
+                .FirstOrDefault(item => item.IngredienteId == sustitucion.IngredienteOriginalId)
+                ?? throw new InvalidOperationException("Uno de los ingredientes reemplazados no forma parte de la receta.");
+
+            var elegido = (await _sustitucionService.BuscarSustitutosAsync(usuarioId, sustitucion.IngredienteOriginalId))
+                .FirstOrDefault(item => item.IngredienteId == sustitucion.IngredienteSustitutoId)
+                ?? throw new InvalidOperationException(
+                    $"El reemplazo elegido para {original.Ingrediente?.Nombre ?? "un ingrediente"} ya no está disponible.");
+
+            var factorEquivalencia = elegido.FactorEquivalencia <= 0 ? 1m : elegido.FactorEquivalencia;
+            porOriginal[original.IngredienteId] = new IngredienteEfectivo(
+                elegido.IngredienteId,
+                elegido.Nombre,
+                Math.Round(original.Cantidad * factorEquivalencia, 2),
+                original.UnidadMedida);
+        }
+
+        return receta.IngredientesReceta
+            .Select(item => porOriginal.TryGetValue(item.IngredienteId, out var sustituto)
+                ? sustituto
+                : new IngredienteEfectivo(
+                    item.IngredienteId,
+                    item.Ingrediente?.Nombre ?? $"#{item.IngredienteId}",
+                    item.Cantidad,
+                    item.UnidadMedida))
+            .ToList();
+    }
 
     private Task BloquearStockAsync(int usuarioId) =>
         _unidadDeTrabajo.BloquearRecursoAsync($"kitch:stock:usuario:{usuarioId}");
 
-    private async Task<DescuentoStockResultadoDto> DescontarParcialEnTransaccionAsync(int usuarioId, int recetaId, int porciones)
+    private async Task<DescuentoStockResultadoDto> DescontarParcialEnTransaccionAsync(
+        int usuarioId,
+        int recetaId,
+        int porciones,
+        IReadOnlyList<SustitucionAplicadaDto>? sustituciones)
     {
         var receta = await GetRecetaConIngredientesAsync(recetaId, usuarioId);
+        var ingredientesEfectivos = await ResolverIngredientesEfectivosAsync(usuarioId, receta, sustituciones);
         var porcionesEfectivas = porciones > 0 ? Math.Min(porciones, MaxPorciones) : PorcionesBase(receta);
         var factor = (decimal)porcionesEfectivas / PorcionesBase(receta);
 
         var stockPorIngrediente = await ObtenerStockPorIngredienteAsync(usuarioId);
         var resultado = new DescuentoStockResultadoDto { Receta = receta.Titulo };
 
-        foreach (var ingrediente in receta.IngredientesReceta)
+        foreach (var ingrediente in ingredientesEfectivos)
         {
             var cantidadNecesaria = Math.Round(ingrediente.Cantidad * factor, 2);
             if (cantidadNecesaria <= 0)
@@ -327,7 +387,7 @@ public class PreparacionService : IPreparacionService
                 continue;
             }
 
-            var nombre = ingrediente.Ingrediente?.Nombre ?? $"#{ingrediente.IngredienteId}";
+            var nombre = ingrediente.Nombre;
             stockPorIngrediente.TryGetValue(ingrediente.IngredienteId, out var stock);
 
             if (stock is not null && stock.Cantidad > 0 &&
@@ -410,7 +470,7 @@ public class PreparacionService : IPreparacionService
             ?? throw new KeyNotFoundException(AccesoReceta.MensajeNoEncontrada);
 
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
-        if (!AccesoReceta.Permitido(receta, usuarioId, usuario?.Rol))
+        if (!AccesoReceta.PuedeVer(receta, usuarioId, usuario?.Rol))
         {
             throw new KeyNotFoundException(AccesoReceta.MensajeNoEncontrada);
         }
