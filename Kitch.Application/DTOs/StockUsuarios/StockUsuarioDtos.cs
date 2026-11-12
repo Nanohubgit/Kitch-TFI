@@ -18,6 +18,9 @@ public class StockUsuarioCreateDto
     public string UnidadMedida { get; set; } = string.Empty;
 
     public DateTime? FechaCaducidad { get; set; }
+
+    [MaxLength(50)]
+    public string? Categoria { get; set; }
 }
 
 public class StockUsuarioUpdateDto
@@ -38,4 +41,7 @@ public class StockUsuarioResponseDto
     public decimal Cantidad { get; set; }
     public string UnidadMedida { get; set; } = string.Empty;
     public DateTime? FechaCaducidad { get; set; }
+    public string Categoria { get; set; } = CategoriaPorDefecto;
+
+    public const string CategoriaPorDefecto = "Varios";
 }

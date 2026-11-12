@@ -25,7 +25,16 @@ public class SmtpEmailService : IEmailService
         _logger = logger;
     }
 
-    public async Task SendEmailAsync(string to, string subject, string body)
+    public Task SendEmailAsync(string to, string subject, string body) =>
+        EnviarAsync(to, subject, new TextPart("plain") { Text = body });
+
+    public Task SendEmailAsync(string to, string subject, string textBody, string htmlBody)
+    {
+        var builder = new BodyBuilder { TextBody = textBody, HtmlBody = htmlBody };
+        return EnviarAsync(to, subject, builder.ToMessageBody());
+    }
+
+    private async Task EnviarAsync(string to, string subject, MimeEntity body)
     {
         var host = _configuration["EmailSettings:Host"]?.Trim();
         if (string.IsNullOrWhiteSpace(host))
@@ -58,7 +67,7 @@ public class SmtpEmailService : IEmailService
             : MailboxAddress.Parse(RemitentePorDefecto));
         message.To.Add(destinatario);
         message.Subject = subject;
-        message.Body = new TextPart("plain") { Text = body };
+        message.Body = body;
 
         using var client = new SmtpClient { Timeout = TimeoutMilisegundos };
 

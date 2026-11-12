@@ -12,6 +12,8 @@ public class PrevisualizarPorcionesRequestDto
 
     [Range(1, int.MaxValue)]
     public int NuevasPorciones { get; set; }
+
+    public List<SustitucionAplicadaDto> Sustituciones { get; set; } = new();
 }
 
 public class IngredienteAjustadoDto
@@ -49,6 +51,8 @@ public class PrevisualizarDescuentoStockRequestDto
 
     [Range(1, int.MaxValue)]
     public int PorcionesCocinadas { get; set; }
+
+    public List<SustitucionAplicadaDto> Sustituciones { get; set; } = new();
 }
 
 public class ConfirmarDescuentoStockRequestDto
@@ -60,6 +64,17 @@ public class ConfirmarDescuentoStockRequestDto
     public int PorcionesCocinadas { get; set; }
 
     public List<CantidadUtilizadaDto> CantidadesUtilizadas { get; set; } = new();
+
+    public List<SustitucionAplicadaDto> Sustituciones { get; set; } = new();
+}
+
+public class SustitucionAplicadaDto
+{
+    [Required]
+    public int IngredienteOriginalId { get; set; }
+
+    [Required]
+    public int IngredienteSustitutoId { get; set; }
 }
 
 public class CantidadUtilizadaDto
@@ -78,6 +93,8 @@ public class AgregarFaltantesPorcionesRequestDto
 
     [Range(1, int.MaxValue)]
     public int NuevasPorciones { get; set; }
+
+    public List<SustitucionAplicadaDto> Sustituciones { get; set; } = new();
 }
 
 public class AplicarSustitutoRequestDto

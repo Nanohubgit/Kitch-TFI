@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -21,25 +22,31 @@ public class AuthService : IAuthService
     private const int PasswordResetExpirationMinutes = 30;
     private const int TwoFactorCodeExpirationMinutes = 5;
     private const int MaxIntentosDosFactores = 5;
+    private const int EsperaReenvioSegundos = 60;
+    private const int LongitudMinimaPassword = 8;
+    private const string FrontendBaseUrlPorDefecto = "http://localhost:5173";
 
     private readonly KitchDbContext _context;
     private readonly IConfiguration _configuration;
     private readonly IEmailService _emailService;
     private readonly ISuscripcionVigenciaService _suscripcionVigencia;
     private readonly IMemoryCache _cache;
+    private readonly IPasswordHasher _passwordHasher;
 
     public AuthService(
         KitchDbContext context,
         IConfiguration configuration,
         IEmailService emailService,
         ISuscripcionVigenciaService suscripcionVigencia,
-        IMemoryCache cache)
+        IMemoryCache cache,
+        IPasswordHasher passwordHasher)
     {
         _context = context;
         _configuration = configuration;
         _emailService = emailService;
         _suscripcionVigencia = suscripcionVigencia;
         _cache = cache;
+        _passwordHasher = passwordHasher;
     }
 
     public async Task<Login2FaResponseDto> RegisterAsync(RegisterRequest request)
@@ -85,7 +92,7 @@ public class AuthService : IAuthService
             NombreUsuario = nombreUsuario,
             Email = email,
             PreferenciaDietetica = preferenciaDietetica,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+            PasswordHash = _passwordHasher.Hash(password),
             Activo = true,
             Rol = RolUsuario.Basico
         };
@@ -135,7 +142,7 @@ public class AuthService : IAuthService
 
         var usuario = await FindUsuarioPorIdentificadorAsync(usuarioOMail);
 
-        if (usuario is null || !BCrypt.Net.BCrypt.Verify(password, usuario.PasswordHash))
+        if (usuario is null || !_passwordHasher.Verificar(password, usuario.PasswordHash))
         {
             throw new UnauthorizedAccessException("Usuario/email o contraseña inválidos.");
         }
@@ -157,6 +164,7 @@ public class AuthService : IAuthService
         usuario.TwoFactorCodeExpiresAt = DateTime.UtcNow.AddMinutes(TwoFactorCodeExpirationMinutes);
         await _context.SaveChangesAsync();
         _cache.Remove(ClaveIntentosDosFactores(usuario.Email));
+        _cache.Set(ClaveReenvioDosFactores(usuario.Email), true, TimeSpan.FromSeconds(EsperaReenvioSegundos));
 
         var body =
             "Tu código de verificación para ingresar a Alacena Virtual / Kitch es:\n\n" +
@@ -207,7 +215,7 @@ public class AuthService : IAuthService
             usuario.TwoFactorCodeExpiresAt is null ||
             usuario.TwoFactorCodeExpiresAt <= DateTime.UtcNow)
         {
-            throw new InvalidOperationException("Código inválido o expirado. Solicitá un nuevo código iniciando sesión otra vez.");
+            throw new InvalidOperationException("Código inválido o expirado. Pedí uno nuevo con \"Reenviar código\".");
         }
 
         if (!FixedTimeEquals(usuario.TwoFactorCode, codigoHash))
@@ -292,6 +300,17 @@ public class AuthService : IAuthService
 
         usuario.NombreUsuario = nombreUsuario;
         usuario.PreferenciaDietetica = preferencia;
+
+        if (!string.IsNullOrWhiteSpace(request.Nombre))
+        {
+            usuario.Nombre = request.Nombre.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Apellido))
+        {
+            usuario.Apellido = request.Apellido.Trim();
+        }
+
         await _suscripcionVigencia.AsegurarRolVigenteAsync(usuario);
         await _context.SaveChangesAsync();
 
@@ -335,6 +354,80 @@ public class AuthService : IAuthService
 
     private static string ClaveIntentosDosFactores(string email) =>
         $"2fa-intentos:{email.Trim().ToLowerInvariant()}";
+
+    private static string ClaveReenvioDosFactores(string email) =>
+        $"2fa-reenvio:{email.Trim().ToLowerInvariant()}";
+
+    public async Task<Login2FaResponseDto> ReenviarCodigoDosFactoresAsync(ReenviarCodigoRequestDto request)
+    {
+        var email = request?.Email?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            throw new InvalidOperationException("El email es obligatorio.");
+        }
+
+        var claveReenvio = ClaveReenvioDosFactores(email);
+        if (_cache.TryGetValue(claveReenvio, out _))
+        {
+            throw new InvalidOperationException(
+                $"Esperá {EsperaReenvioSegundos} segundos entre cada pedido de código.");
+        }
+
+        _cache.Set(claveReenvio, true, TimeSpan.FromSeconds(EsperaReenvioSegundos));
+
+        const string mensaje = "Si hay una verificación pendiente, te enviamos un código nuevo a tu correo.";
+
+        var usuario = await _context.Usuarios
+            .FirstOrDefaultAsync(u => u.Email == email && u.Activo && u.TwoFactorCode != null);
+
+        if (usuario is null)
+        {
+            return new Login2FaResponseDto
+            {
+                RequiresTwoFactor = true,
+                Email = email,
+                EmailEnmascarado = EnmascararEmail(email),
+                Mensaje = mensaje
+            };
+        }
+
+        return await EnviarCodigoDosFactoresAsync(usuario, mensaje);
+    }
+
+    public async Task CambiarPasswordAsync(int usuarioId, CambiarPasswordRequestDto request)
+    {
+        var actual = request?.PasswordActual ?? string.Empty;
+        var nueva = request?.NuevaPassword ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(actual) || string.IsNullOrWhiteSpace(nueva))
+        {
+            throw new InvalidOperationException("La contraseña actual y la nueva son obligatorias.");
+        }
+
+        if (nueva.Length < LongitudMinimaPassword)
+        {
+            throw new InvalidOperationException(
+                $"La nueva contraseña debe tener al menos {LongitudMinimaPassword} caracteres.");
+        }
+
+        var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.Id == usuarioId && u.Activo)
+            ?? throw new UnauthorizedAccessException("Tu sesión ya no es válida. Iniciá sesión nuevamente.");
+
+        if (!_passwordHasher.Verificar(actual, usuario.PasswordHash))
+        {
+            throw new InvalidOperationException("La contraseña actual es incorrecta.");
+        }
+
+        if (_passwordHasher.Verificar(nueva, usuario.PasswordHash))
+        {
+            throw new InvalidOperationException("La nueva contraseña debe ser distinta de la actual.");
+        }
+
+        usuario.PasswordHash = _passwordHasher.Hash(nueva);
+        usuario.PasswordResetTokenHash = null;
+        usuario.PasswordResetTokenExpiresAt = null;
+        await _context.SaveChangesAsync();
+    }
 
     private static bool FixedTimeEquals(string storedHash, string providedHash)
     {
@@ -451,16 +544,39 @@ public class AuthService : IAuthService
 
         await _context.SaveChangesAsync();
 
-        var body =
+        var enlace = ConstruirEnlaceRecuperacion(tokenPlano, usuario.Email);
+
+        var textBody =
             "Recibimos una solicitud para restablecer tu contraseña en Alacena Virtual / Kitch.\n\n" +
-            $"Usá este token (válido {PasswordResetExpirationMinutes} minutos):\n\n" +
-            $"{tokenPlano}\n\n" +
+            $"Abrí este enlace para elegir una nueva contraseña (válido {PasswordResetExpirationMinutes} minutos):\n\n" +
+            $"{enlace}\n\n" +
+            $"Si el enlace no funciona, ingresá este token en la pantalla de restablecimiento:\n\n{tokenPlano}\n\n" +
             "Si no pediste este cambio, ignorá este correo.";
 
+        var enlaceHtml = WebUtility.HtmlEncode(enlace);
+        var htmlBody =
+            "<p>Recibimos una solicitud para restablecer tu contraseña en <strong>Alacena Virtual / Kitch</strong>.</p>" +
+            $"<p><a href=\"{enlaceHtml}\">Restablecer mi contraseña</a> (válido {PasswordResetExpirationMinutes} minutos).</p>" +
+            $"<p>Si el botón no funciona, copiá este enlace en tu navegador:<br>{enlaceHtml}</p>" +
+            $"<p>O ingresá este token en la pantalla de restablecimiento:<br><code>{WebUtility.HtmlEncode(tokenPlano)}</code></p>" +
+            "<p>Si no pediste este cambio, ignorá este correo.</p>";
+
         await _emailService.SendEmailAsync(
-            to: usuario.Email,
-            subject: "Restablecé tu contraseña — Alacena Virtual",
-            body: body);
+            usuario.Email,
+            "Restablecé tu contraseña — Alacena Virtual",
+            textBody,
+            htmlBody);
+    }
+
+    private string ConstruirEnlaceRecuperacion(string tokenPlano, string email)
+    {
+        var baseUrl = _configuration["Frontend:BaseUrl"]?.Trim();
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            baseUrl = FrontendBaseUrlPorDefecto;
+        }
+
+        return $"{baseUrl.TrimEnd('/')}/reset-password?token={Uri.EscapeDataString(tokenPlano)}&email={Uri.EscapeDataString(email)}";
     }
 
     public async Task ResetPasswordAsync(ResetPasswordRequestDto request)
@@ -478,9 +594,10 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("Token y nueva contraseña son obligatorios.");
         }
 
-        if (nuevaPassword.Length < 8)
+        if (nuevaPassword.Length < LongitudMinimaPassword)
         {
-            throw new InvalidOperationException("La nueva contraseña debe tener al menos 8 caracteres.");
+            throw new InvalidOperationException(
+                $"La nueva contraseña debe tener al menos {LongitudMinimaPassword} caracteres.");
         }
 
         var tokenHash = HashTokenSha256(tokenPlano);
@@ -496,7 +613,7 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("Token inválido o expirado.");
         }
 
-        usuario.PasswordHash = BCrypt.Net.BCrypt.HashPassword(nuevaPassword);
+        usuario.PasswordHash = _passwordHasher.Hash(nuevaPassword);
 
         usuario.PasswordResetTokenHash = null;
         usuario.PasswordResetTokenExpiresAt = null;

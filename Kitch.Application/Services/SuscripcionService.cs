@@ -1,3 +1,4 @@
+using Kitch.Application.Common;
 using Kitch.Application.DTOs.Suscripciones;
 using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
@@ -24,6 +25,7 @@ public class SuscripcionService : ISuscripcionService
     private readonly IRepository<Usuario> _usuarioRepository;
     private readonly IPaymentGatewayService _paymentGateway;
     private readonly IUnidadDeTrabajo _unidadDeTrabajo;
+    private readonly PlanSuscripcionConfig _plan;
 
     public SuscripcionService(
         IRepository<Suscripcion> repository,
@@ -31,8 +33,10 @@ public class SuscripcionService : ISuscripcionService
         IRepository<Pago> pagoRepository,
         IRepository<Usuario> usuarioRepository,
         IPaymentGatewayService paymentGateway,
-        IUnidadDeTrabajo unidadDeTrabajo)
+        IUnidadDeTrabajo unidadDeTrabajo,
+        PlanSuscripcionConfig plan)
     {
+        _plan = plan;
         _repository = repository;
         _contratoRepository = contratoRepository;
         _pagoRepository = pagoRepository;
@@ -106,14 +110,13 @@ public class SuscripcionService : ISuscripcionService
 
         var esRenovacion = usuario.Rol == RolUsuario.Profesional;
 
-        var tipo = string.IsNullOrWhiteSpace(request?.Tipo)
-            ? PrecioSuscripcion.TipoProfesional
-            : request.Tipo.Trim();
+        var tipo = _plan.TipoProfesional;
 
         var checkout = await _paymentGateway.CrearPreferenciaAsync(new PaymentGatewayRequest
         {
             UsuarioId = usuarioId,
-            Monto = PrecioSuscripcion.ProfesionalArs,
+            Monto = _plan.PrecioProfesionalArs,
+            Moneda = _plan.Moneda,
             MetodoPago = request?.MetodoPago ?? MetodoPago.TarjetaCredito,
             EmailUsuario = usuario.Email,
             Descripcion = esRenovacion
@@ -125,13 +128,20 @@ public class SuscripcionService : ISuscripcionService
         {
             InitPoint = checkout.InitPoint,
             PreferenceId = checkout.PreferenceId,
-            Monto = PrecioSuscripcion.ProfesionalArs,
-            Moneda = PrecioSuscripcion.MonedaArs,
+            Monto = _plan.PrecioProfesionalArs,
+            Moneda = _plan.Moneda,
             Mensaje = esRenovacion
-                ? "Redirigí al usuario a InitPoint para pagar la renovación. Cuando Mercado Pago confirme el pago, se suma un mes a partir del vencimiento actual."
-                : "Redirigí al usuario a InitPoint para completar el pago. El rol se actualiza cuando Mercado Pago confirma el pago (webhook o POST /api/Suscripciones/confirmar-pago)."
+                ? "Te llevamos a Mercado Pago para renovar. Cuando se apruebe el pago sumamos un mes a tu vencimiento actual."
+                : "Te llevamos a Mercado Pago para completar el pago. Tu plan se actualiza apenas se apruebe."
         };
     }
+
+    public PlanSuscripcionResponseDto GetPlan() => new()
+    {
+        Tipo = _plan.TipoProfesional,
+        Monto = _plan.PrecioProfesionalArs,
+        Moneda = _plan.Moneda
+    };
 
     public async Task<EstadoPagoResponseDto> ConfirmarPagoAsync(int usuarioId, string paymentId)
     {
@@ -168,7 +178,7 @@ public class SuscripcionService : ISuscripcionService
 
         var mensaje = cobro.Aprobado
             ? esProfesional && pagoRegistrado
-                ? $"Pago aprobado. Sos Profesional hasta {FormatearFecha(profesionalHasta)}. Renová tu sesión con POST /api/Auth/refresh para usar los beneficios."
+                ? $"Pago aprobado. Sos Profesional hasta {FormatearFecha(profesionalHasta)}."
                 : pagoRegistrado
                     ? "Este pago ya se usó para una suscripción anterior que ya venció. Para volver a Profesional, hacé un pago nuevo."
                     : usuario.Rol == RolUsuario.Admin
@@ -249,7 +259,7 @@ public class SuscripcionService : ISuscripcionService
         }
 
         var monto = cobro.Monto > 0 ? cobro.Monto : 0m;
-        if (Math.Abs(monto - PrecioSuscripcion.ProfesionalArs) > 1m)
+        if (Math.Abs(monto - _plan.PrecioProfesionalArs) > 1m)
         {
             return;
         }
@@ -267,7 +277,7 @@ public class SuscripcionService : ISuscripcionService
             ContratoSubId = contrato.Id,
             FechaPago = ahora,
             Monto = monto,
-            MetodoPago = MetodoPago.TarjetaCredito,
+            MetodoPago = cobro.MetodoPago,
             EstadoPago = EstadoPago.Aprobado,
             TransaccionId = transaccionId
         });
@@ -332,7 +342,7 @@ public class SuscripcionService : ISuscripcionService
         var suscripcion = await _repository.AddAsync(new Suscripcion
         {
             UsuarioId = usuarioId,
-            Tipo = PrecioSuscripcion.TipoProfesional,
+            Tipo = _plan.TipoProfesional,
             FechaInicio = ahora,
             FechaFin = ahora.AddMonths(1),
             Activa = true

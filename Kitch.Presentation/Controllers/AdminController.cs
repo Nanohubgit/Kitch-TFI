@@ -62,7 +62,7 @@ public class AdminController : ApiControllerBase
         await _adminService.EnviarRecuperacionPasswordAsync(GetUsuarioIdOrThrow(), id);
         return Ok(new MensajeResponseDto
         {
-            Message = "Enviamos al usuario un correo con el token para restablecer su contraseña."
+            Message = "Enviamos al usuario un correo con el enlace para restablecer su contraseña."
         });
     }
 }

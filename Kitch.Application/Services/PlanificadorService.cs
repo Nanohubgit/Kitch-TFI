@@ -1,4 +1,4 @@
-using Kitch.Application.Common;
+﻿using Kitch.Application.Common;
 using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
@@ -104,6 +104,9 @@ public class PlanificadorService : IPlanificadorService
         });
     }
 
+    private static string MensajeConflicto(string turno, DateTime fecha) =>
+        $"Ya tienes una comida asignada para {turno} del {fecha:dd/MM}. ¿Deseas reemplazarla?";
+
     public Task<PlanificacionResultadoDto> PlanificarAsync(ComidaPlanificadaCreateDto comida) =>
         EnTransaccionAsync(comida.UsuarioId, () => PlanificarEnTransaccionAsync(comida));
 
@@ -126,8 +129,7 @@ public class PlanificadorService : IPlanificadorService
         {
             if (!comida.ReemplazarSiConflicto)
             {
-                throw new ConflictException(
-                    "Ya tenés una comida asignada en ese día y turno. ¿Querés reemplazarla?");
+                throw new ConflictException(MensajeConflicto(comida.Turno, comida.FechaAsignada));
             }
 
             await EliminarConflictoAsync(comida.UsuarioId, comida.FechaAsignada, comida.Turno);
@@ -199,7 +201,7 @@ public class PlanificadorService : IPlanificadorService
                 existing.FechaAsignada < fechaFin &&
                 existing.Turno == turno))
         {
-            throw new ConflictException("Ya existe una comida planificada para ese usuario, fecha y turno.");
+            throw new ConflictException(MensajeConflicto(turno, fecha));
         }
 
         var hoy = FechaLocal.Hoy();
@@ -296,7 +298,7 @@ public class PlanificadorService : IPlanificadorService
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
             ?? throw new InvalidOperationException("El usuario no existe.");
 
-        if (!AccesoReceta.Permitido(receta, usuarioId, usuario.Rol))
+        if (!AccesoReceta.PuedeVer(receta, usuarioId, usuario.Rol))
         {
             throw new KeyNotFoundException(AccesoReceta.MensajeNoEncontrada);
         }

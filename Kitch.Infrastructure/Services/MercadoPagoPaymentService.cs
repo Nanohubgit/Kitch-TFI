@@ -2,6 +2,7 @@ using Kitch.Application.DTOs.Suscripciones;
 using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Constants;
+using Kitch.Domain.Entities;
 using MercadoPago.Client;
 using MercadoPago.Client.Payment;
 using MercadoPago.Client.Preference;
@@ -43,7 +44,7 @@ public class MercadoPagoPaymentService : IPaymentGatewayService
         var opciones = CrearOpciones();
 
         var successUrl = ValorODefault(_configuration["MercadoPago:FrontSuccessUrl"], "http://localhost:5173/pago-exitoso");
-        var failureUrl = ValorODefault(_configuration["MercadoPago:FrontFailureUrl"], "http://localhost:5173/perfil");
+        var failureUrl = ValorODefault(_configuration["MercadoPago:FrontFailureUrl"], successUrl);
         var notificationUrl = _configuration["MercadoPago:NotificationUrl"]?.Trim();
 
         var preferenceRequest = new PreferenceRequest
@@ -56,7 +57,7 @@ public class MercadoPagoPaymentService : IPaymentGatewayService
                         ? "Suscripción Profesional — Alacena Virtual"
                         : request.Descripcion,
                     Quantity = 1,
-                    CurrencyId = PrecioSuscripcion.MonedaArs,
+                    CurrencyId = string.IsNullOrWhiteSpace(request.Moneda) ? PrecioSuscripcion.MonedaArs : request.Moneda,
                     UnitPrice = request.Monto > 0 ? request.Monto : PrecioSuscripcion.ProfesionalArs
                 }
             ],
@@ -149,9 +150,19 @@ public class MercadoPagoPaymentService : IPaymentGatewayService
             Status = status,
             ExternalReference = payment.ExternalReference,
             TransaccionId = payment.Id?.ToString(),
-            Monto = payment.TransactionAmount ?? 0
+            Monto = payment.TransactionAmount ?? 0,
+            MetodoPago = MapearMetodoPago(payment.PaymentTypeId)
         };
     }
+
+    private static MetodoPago MapearMetodoPago(string? tipo) => tipo?.Trim().ToLowerInvariant() switch
+    {
+        "credit_card" => MetodoPago.TarjetaCredito,
+        "debit_card" or "prepaid_card" => MetodoPago.TarjetaDebito,
+        "account_money" or "digital_wallet" or "digital_currency" => MetodoPago.BilleteraVirtual,
+        "bank_transfer" => MetodoPago.TransferenciaBancaria,
+        _ => MetodoPago.NoEspecificado
+    };
 
     public bool FirmaWebhookValida(string? firma, string? requestId, string paymentId)
     {

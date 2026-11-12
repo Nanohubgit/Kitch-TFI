@@ -34,7 +34,8 @@ public class PreparacionController : ApiControllerBase
         var items = await _preparacionService.AgregarFaltantesPorcionesAsync(
             GetUsuarioIdOrThrow(),
             request.RecetaId,
-            request.NuevasPorciones);
+            request.NuevasPorciones,
+            request.Sustituciones);
         return Ok(items);
     }
 
@@ -55,7 +56,8 @@ public class PreparacionController : ApiControllerBase
             GetUsuarioIdOrThrow(),
             request.RecetaId,
             request.PorcionesCocinadas,
-            request.CantidadesUtilizadas);
+            request.CantidadesUtilizadas,
+            request.Sustituciones);
         return Ok(resultado);
     }
 
@@ -66,7 +68,8 @@ public class PreparacionController : ApiControllerBase
         var resultado = await _preparacionService.DescontarIngredientesParcialAsync(
             GetUsuarioIdOrThrow(),
             request.RecetaId,
-            request.PorcionesCocinadas);
+            request.PorcionesCocinadas,
+            request.Sustituciones);
         return Ok(resultado);
     }
 

@@ -54,7 +54,7 @@ public class RecetaService : IRecetaService
     {
         var receta = await CargarRecetaCompletaAsync(id);
         var rol = await ObtenerRolAsync(usuarioId);
-        if (receta is null || !AccesoReceta.Permitido(receta, usuarioId, rol))
+        if (receta is null || !AccesoReceta.PuedeVer(receta, usuarioId, rol))
         {
             return null;
         }
@@ -101,9 +101,14 @@ public class RecetaService : IRecetaService
             ?? throw new UnauthorizedAccessException();
 
         var existente = await CargarRecetaCompletaAsync(id);
-        if (existente is null || !AccesoReceta.Permitido(existente, usuarioId, rol))
+        if (existente is null || !AccesoReceta.PuedeVer(existente, usuarioId, rol))
         {
             return false;
+        }
+
+        if (!AccesoReceta.PuedeEditar(existente, usuarioId, rol))
+        {
+            throw new ForbiddenException(AccesoReceta.MensajeSoloAutor);
         }
 
         ValidateReceta(receta);
@@ -181,9 +186,14 @@ public class RecetaService : IRecetaService
 
         var receta = await _repository.GetByIdAsync(id);
 
-        if (receta is null || !AccesoReceta.Permitido(receta, solicitanteId, rol))
+        if (receta is null || !AccesoReceta.PuedeVer(receta, solicitanteId, rol))
         {
             return false;
+        }
+
+        if (!AccesoReceta.PuedeEditar(receta, solicitanteId, rol))
+        {
+            throw new ForbiddenException(AccesoReceta.MensajeSoloAutor);
         }
 
         await _repository.DeleteAsync(receta);
@@ -236,7 +246,7 @@ public class RecetaService : IRecetaService
     public IReadOnlyList<string> GetCategorias() => CategoriasReceta.Permitidas;
 
     private static bool Visible(RecetaResponseDto receta, int usuarioId, string? rol) =>
-        (rol == RolUsuario.Admin || receta.UsuarioId == usuarioId) &&
+        AccesoReceta.PuedeVer(receta.UsuarioId, usuarioId, rol) &&
         LimitesPlan.PuedeUsarDificultad(rol, receta.Dificultad);
 
     private async Task ResolverIngredientesAsync(RecetaCreateDto receta)

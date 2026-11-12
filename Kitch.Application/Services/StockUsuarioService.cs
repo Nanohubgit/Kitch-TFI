@@ -54,9 +54,13 @@ public class StockUsuarioService : IStockUsuarioService
 
     private async Task<StockUsuarioResponseDto> CreateEnTransaccionAsync(StockUsuarioCreateDto stock)
     {
-        ValidateCantidad(stock.Cantidad);
+        if (stock.Cantidad <= 0)
+        {
+            throw new InvalidOperationException("La cantidad a agregar debe ser mayor a cero.");
+        }
 
         var ingredienteId = await ResolverIngredienteIdAsync(stock.IngredienteId, stock.NombreIngrediente);
+        await AsignarCategoriaAsync(ingredienteId, stock.Categoria);
 
         var stockExistente = await _repository.FirstOrDefaultAsync(existente =>
             existente.UsuarioId == stock.UsuarioId &&
@@ -137,13 +141,39 @@ public class StockUsuarioService : IStockUsuarioService
             var creado = await _ingredienteRepository.AddAsync(new Ingrediente
             {
                 Nombre = nombre,
-                Categoria = "Varios"
+                Categoria = StockUsuarioResponseDto.CategoriaPorDefecto
             });
 
             return creado.Id;
         }
 
         throw new InvalidOperationException("Debés indicar el ingrediente por id o por nombre.");
+    }
+
+    private async Task AsignarCategoriaAsync(int ingredienteId, string? categoria)
+    {
+        var limpia = categoria?.Trim() ?? string.Empty;
+        if (limpia.Length == 0 ||
+            string.Equals(limpia, StockUsuarioResponseDto.CategoriaPorDefecto, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var ingrediente = await _ingredienteRepository.GetByIdAsync(ingredienteId);
+        if (ingrediente is null)
+        {
+            return;
+        }
+
+        var actual = ingrediente.Categoria?.Trim();
+        if (!string.IsNullOrEmpty(actual) &&
+            !string.Equals(actual, StockUsuarioResponseDto.CategoriaPorDefecto, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        ingrediente.Categoria = limpia.Length > 50 ? limpia[..50] : limpia;
+        await _ingredienteRepository.UpdateAsync(ingrediente);
     }
 
     public Task<bool> UpdateAsync(int id, StockUsuarioUpdateDto stock, int usuarioId) =>

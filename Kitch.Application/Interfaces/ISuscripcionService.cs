@@ -13,6 +13,8 @@ public interface ISuscripcionService
 
     Task<IniciarPagoResponseDto> ContratarAsync(int usuarioId, ContratarSuscripcionRequest? request);
 
+    PlanSuscripcionResponseDto GetPlan();
+
     Task ProcesarNotificacionPagoAsync(string paymentId);
 
     Task<EstadoPagoResponseDto> ConfirmarPagoAsync(int usuarioId, string paymentId);

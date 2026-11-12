@@ -17,6 +17,7 @@ public class UsuarioService : IUsuarioService
     private readonly IRepository<Receta> _recetaRepository;
     private readonly IMemoryCache _cache;
     private readonly IUnidadDeTrabajo _unidadDeTrabajo;
+    private readonly IPasswordHasher _passwordHasher;
 
     public UsuarioService(
         IRepository<Usuario> repository,
@@ -24,9 +25,11 @@ public class UsuarioService : IUsuarioService
         IRepository<ContratoSub> contratoRepository,
         IRepository<Receta> recetaRepository,
         IMemoryCache cache,
-        IUnidadDeTrabajo unidadDeTrabajo)
+        IUnidadDeTrabajo unidadDeTrabajo,
+        IPasswordHasher passwordHasher)
     {
         _unidadDeTrabajo = unidadDeTrabajo;
+        _passwordHasher = passwordHasher;
         _repository = repository;
         _pagoRepository = pagoRepository;
         _contratoRepository = contratoRepository;
@@ -82,7 +85,7 @@ public class UsuarioService : IUsuarioService
             PreferenciaDietetica = string.IsNullOrWhiteSpace(usuario.PreferenciaDietetica)
                 ? "Ninguna"
                 : usuario.PreferenciaDietetica.Trim(),
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(usuario.Password),
+            PasswordHash = _passwordHasher.Hash(usuario.Password),
             Activo = true,
             Rol = RolUsuario.Basico
         };
