@@ -8,6 +8,15 @@ public class ConfirmarPagoRequestDto
     public string PaymentId { get; set; } = string.Empty;
 }
 
+public class VerificacionPagosResponseDto
+{
+    public int PagosAplicados { get; set; }
+    public string RolActual { get; set; } = string.Empty;
+    public bool RequiereRefrescarSesion { get; set; }
+    public DateTime? ProfesionalHasta { get; set; }
+    public string Mensaje { get; set; } = string.Empty;
+}
+
 public class EstadoPagoResponseDto
 {
     public string PaymentId { get; set; } = string.Empty;

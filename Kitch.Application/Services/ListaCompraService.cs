@@ -155,13 +155,15 @@ public class ListaCompraService : IListaCompraService
             existingItem.IngredienteId ??= await ResolverIngredientePorNombreAsync(existingItem.NombreArticulo);
         }
 
-        await _itemRepository.UpdateAsync(existingItem);
-
         if (pasaAComprado)
         {
             await SumarCompradoAlStockAsync(usuarioId, existingItem);
+            await _itemRepository.DeleteAsync(existingItem);
             await SincronizarFaltantesAsync(usuarioId);
+            return true;
         }
+
+        await _itemRepository.UpdateAsync(existingItem);
 
         return true;
     }
@@ -202,13 +204,13 @@ public class ListaCompraService : IListaCompraService
 
         if (item.EstaComprado)
         {
+            await _itemRepository.DeleteAsync(item);
             return true;
         }
 
-        item.EstaComprado = true;
         item.IngredienteId ??= await ResolverIngredientePorNombreAsync(item.NombreArticulo);
-        await _itemRepository.UpdateAsync(item);
         await SumarCompradoAlStockAsync(usuarioId, item);
+        await _itemRepository.DeleteAsync(item);
         await SincronizarFaltantesAsync(usuarioId);
 
         return true;

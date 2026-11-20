@@ -1,3 +1,5 @@
+using Kitch.Domain.Constants;
+
 namespace Kitch.Domain.Entities
 {
     public class Usuario
@@ -10,7 +12,7 @@ namespace Kitch.Domain.Entities
 
         public string Email { get; set; } = string.Empty;
 
-        public string PreferenciaDietetica { get; set; } = "Ninguna";
+        public string PreferenciaDietetica { get; set; } = PreferenciasDieteticas.Ninguna;
 
         public string PasswordHash { get; set; } = string.Empty;
 

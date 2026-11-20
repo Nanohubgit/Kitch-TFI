@@ -9,4 +9,8 @@ public class Login2FaResponseDto
     public string EmailEnmascarado { get; set; } = string.Empty;
 
     public string Mensaje { get; set; } = string.Empty;
+
+    public string? Token { get; set; }
+
+    public DateTime? ExpiresAt { get; set; }
 }

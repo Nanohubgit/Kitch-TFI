@@ -24,7 +24,6 @@ public class AuthService : IAuthService
     private const int MaxIntentosDosFactores = 5;
     private const int EsperaReenvioSegundos = 60;
     private const int LongitudMinimaPassword = 8;
-    private const string FrontendBaseUrlPorDefecto = "http://localhost:5173";
 
     private readonly KitchDbContext _context;
     private readonly IConfiguration _configuration;
@@ -152,9 +151,29 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("El usuario se encuentra inactivo.");
         }
 
+        if (usuario.Rol == RolUsuario.Admin)
+        {
+            return EmitirSesionAdmin(usuario);
+        }
+
         return await EnviarCodigoDosFactoresAsync(
             usuario,
             "Credenciales correctas. Ingresá el código de 6 dígitos enviado a tu correo.");
+    }
+
+    private Login2FaResponseDto EmitirSesionAdmin(Usuario usuario)
+    {
+        var expiresAt = DateTime.UtcNow.AddMinutes(GetJwtExpiresInMinutes());
+
+        return new Login2FaResponseDto
+        {
+            RequiresTwoFactor = false,
+            Email = usuario.Email,
+            EmailEnmascarado = EnmascararEmail(usuario.Email),
+            Mensaje = "Login exitoso",
+            Token = GenerateJwtToken(usuario, expiresAt),
+            ExpiresAt = expiresAt
+        };
     }
 
     private async Task<Login2FaResponseDto> EnviarCodigoDosFactoresAsync(Usuario usuario, string mensaje)
@@ -548,17 +567,14 @@ public class AuthService : IAuthService
 
         var textBody =
             "Recibimos una solicitud para restablecer tu contraseña en Alacena Virtual / Kitch.\n\n" +
-            $"Abrí este enlace para elegir una nueva contraseña (válido {PasswordResetExpirationMinutes} minutos):\n\n" +
-            $"{enlace}\n\n" +
-            $"Si el enlace no funciona, ingresá este token en la pantalla de restablecimiento:\n\n{tokenPlano}\n\n" +
+            $"Restablecer mi contraseña (válido {PasswordResetExpirationMinutes} minutos):\n{enlace}\n\n" +
             "Si no pediste este cambio, ignorá este correo.";
 
         var enlaceHtml = WebUtility.HtmlEncode(enlace);
         var htmlBody =
             "<p>Recibimos una solicitud para restablecer tu contraseña en <strong>Alacena Virtual / Kitch</strong>.</p>" +
-            $"<p><a href=\"{enlaceHtml}\">Restablecer mi contraseña</a> (válido {PasswordResetExpirationMinutes} minutos).</p>" +
-            $"<p>Si el botón no funciona, copiá este enlace en tu navegador:<br>{enlaceHtml}</p>" +
-            $"<p>O ingresá este token en la pantalla de restablecimiento:<br><code>{WebUtility.HtmlEncode(tokenPlano)}</code></p>" +
+            $"<p><a href=\"{enlaceHtml}\">Restablecer mi contraseña</a></p>" +
+            $"<p>El enlace es válido por {PasswordResetExpirationMinutes} minutos.</p>" +
             "<p>Si no pediste este cambio, ignorá este correo.</p>";
 
         await _emailService.SendEmailAsync(
@@ -570,10 +586,16 @@ public class AuthService : IAuthService
 
     private string ConstruirEnlaceRecuperacion(string tokenPlano, string email)
     {
-        var baseUrl = _configuration["Frontend:BaseUrl"]?.Trim();
+        var baseUrl = _configuration["FrontendUrl"]?.Trim();
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
-            baseUrl = FrontendBaseUrlPorDefecto;
+            baseUrl = _configuration["Frontend:BaseUrl"]?.Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            throw new InvalidOperationException(
+                "Definí 'FrontendUrl' o 'Frontend:BaseUrl' con la URL del frontend.");
         }
 
         return $"{baseUrl.TrimEnd('/')}/reset-password?token={Uri.EscapeDataString(tokenPlano)}&email={Uri.EscapeDataString(email)}";

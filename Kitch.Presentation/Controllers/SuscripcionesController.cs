@@ -41,6 +41,13 @@ public class SuscripcionesController : ApiControllerBase
         return Ok(resultado);
     }
 
+    [HttpPost("verificar-pagos")]
+    public async Task<ActionResult<VerificacionPagosResponseDto>> VerificarPagos()
+    {
+        var resultado = await _suscripcionService.VerificarPagosAsync(GetUsuarioIdOrThrow());
+        return Ok(resultado);
+    }
+
     [AllowAnonymous]
     [HttpPost("webhook")]
     public async Task<IActionResult> Webhook(

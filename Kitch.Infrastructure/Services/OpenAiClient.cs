@@ -6,6 +6,7 @@ public class OpenAiClient : ChatCompletionsClientBase
 {
     public const string NombreCliente = "OpenAiClient";
     public const string SeccionConfiguracion = "OpenAi";
+    public const string NombreProveedor = "OpenAI";
 
     public OpenAiClient(IHttpClientFactory httpClientFactory, IConfiguration configuration)
         : base(

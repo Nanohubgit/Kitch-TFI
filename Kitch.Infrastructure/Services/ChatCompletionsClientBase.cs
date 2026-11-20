@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -19,6 +20,7 @@ public abstract class ChatCompletionsClientBase : IAsistenteIaClient
     private readonly string _nombreCliente;
     private readonly string _endpoint;
     private readonly string _modelo;
+    private readonly double? _temperatura;
     private readonly bool _configurado;
 
     protected ChatCompletionsClientBase(
@@ -31,6 +33,9 @@ public abstract class ChatCompletionsClientBase : IAsistenteIaClient
         _nombreCliente = nombreCliente;
         _endpoint = endpoint;
         _modelo = seccion["Model"]?.Trim() ?? string.Empty;
+        _temperatura = double.TryParse(seccion["Temperature"], NumberStyles.Float, CultureInfo.InvariantCulture, out var temperatura)
+            ? temperatura
+            : null;
         _configurado =
             !string.IsNullOrWhiteSpace(seccion["ApiKey"]) &&
             !string.IsNullOrWhiteSpace(seccion["BaseUrl"]) &&
@@ -66,7 +71,7 @@ public abstract class ChatCompletionsClientBase : IAsistenteIaClient
     {
         if (!_configurado)
         {
-            throw new ServicioIaException(MotivoFallaIa.NoDisponible, "El asistente de IA no está configurado en el servidor.");
+            throw new ServicioIaException(MotivoFallaIa.NoConfigurado, "El asistente de IA no está configurado en el servidor.");
         }
 
         var client = _httpClientFactory.CreateClient(_nombreCliente);
@@ -77,6 +82,7 @@ public abstract class ChatCompletionsClientBase : IAsistenteIaClient
         var request = new ChatRequest
         {
             Model = _modelo,
+            Temperature = _temperatura,
             Messages = todosLosMensajes,
             ResponseFormat = jsonMode ? new ChatResponseFormat { Type = "json_object" } : null
         };
@@ -132,6 +138,10 @@ public abstract class ChatCompletionsClientBase : IAsistenteIaClient
     {
         [JsonPropertyName("model")]
         public string Model { get; set; } = string.Empty;
+
+        [JsonPropertyName("temperature")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public double? Temperature { get; set; }
 
         [JsonPropertyName("messages")]
         public List<ChatMessage> Messages { get; set; } = [];

@@ -37,6 +37,17 @@ internal static class RestriccionDieteticaPrompt
                 "No sugieras carne ni pescado. Huevo y lácteos están permitidos salvo que indique lo contrario.";
         }
 
+        if (clave.Contains("diabet", StringComparison.Ordinal))
+        {
+            return $"El usuario es Diabético (preferencia: {original}). " +
+                "No sugieras azúcar, miel, dulce de leche, mermelada, chocolate, gaseosa ni jarabes. " +
+                "Si pide algo dulce, torta o postre, tiene que ser un postre real sin azúcar " +
+                "(fruta al horno, compota sin azúcar, flan de huevo sin azúcar, avena con banana). " +
+                "PROHIBIDO disfrazar la alacena de postre: nada de galletas, budines o tortas de lentejas, " +
+                "garbanzos, arroz, polenta, papa o carne. Si en la alacena no hay fruta ni huevo, " +
+                "igual proponé el postre real y marcá esos ingredientes para comprar.";
+        }
+
         return $"El usuario indicó esta restricción o alergia dietética: {original}. " +
             "Respetala en TODA receta, ingrediente, sustitución y recomendación. " +
             "Si un plato la viola, no lo ofrezcas.";

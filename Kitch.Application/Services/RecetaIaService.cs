@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Json;
 using Kitch.Application.Common;
-using Kitch.Application.DTOs.Favoritos;
 using Kitch.Application.DTOs.RecetaIa;
 using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
@@ -19,7 +18,8 @@ public class RecetaIaService : IRecetaIaService
         "usando preferentemente los ingredientes que el usuario tiene en su alacena. " +
         "Podés sumar ingredientes básicos comunes (sal, agua, aceite) si hacen falta. " +
         "Respondé ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni markdown, con esta forma exacta: " +
-        "{\"titulo\": string, \"descripcion\": string, \"tiempoPreparacionMinutos\": number, " +
+        "{\"basesYaUsadas\": [string], \"platoClasico\": string, \"ingredientesDescartados\": [string], \"ingredientesAComprar\": [string], " +
+        "\"titulo\": string, \"descripcion\": string, \"tiempoPreparacionMinutos\": number, " +
         "\"porciones\": number, \"dificultad\": \"Facil\"|\"Medio\"|\"Dificil\", \"caloriasEstimadas\": number, " +
         "\"categoria\": \"pastas\"|\"carnes\"|\"pollo\"|\"ensaladas\"|\"sopas\"|\"pescados\"|\"pizzas\"|\"postres\"|\"tartas\"|\"guisos\"|\"general\", " +
         "\"ingredientes\": [{\"nombre\": string, \"cantidad\": number, \"unidadMedida\": string}], " +
@@ -51,11 +51,11 @@ public class RecetaIaService : IRecetaIaService
     private readonly IRepository<Ingrediente> _ingredienteRepository;
     private readonly IRepository<Receta> _recetaRepository;
     private readonly IRepository<Usuario> _usuarioRepository;
-    private readonly IFavoritoService _favoritoService;
     private readonly IIngredienteNormalizerService _normalizer;
     private readonly ICuotaIaService _cuotaIa;
     private readonly IMemoryCache _cache;
     private readonly IUnidadDeTrabajo _unidadDeTrabajo;
+    private readonly ModoPruebasConfig _modoPruebas;
 
     public RecetaIaService(
         IAsistenteIaClient asistenteIa,
@@ -63,19 +63,19 @@ public class RecetaIaService : IRecetaIaService
         IRepository<Ingrediente> ingredienteRepository,
         IRepository<Receta> recetaRepository,
         IRepository<Usuario> usuarioRepository,
-        IFavoritoService favoritoService,
         IIngredienteNormalizerService normalizer,
         ICuotaIaService cuotaIa,
         IMemoryCache cache,
-        IUnidadDeTrabajo unidadDeTrabajo)
+        IUnidadDeTrabajo unidadDeTrabajo,
+        ModoPruebasConfig modoPruebas)
     {
+        _modoPruebas = modoPruebas;
         _unidadDeTrabajo = unidadDeTrabajo;
         _asistenteIa = asistenteIa;
         _stockRepository = stockRepository;
         _ingredienteRepository = ingredienteRepository;
         _recetaRepository = recetaRepository;
         _usuarioRepository = usuarioRepository;
-        _favoritoService = favoritoService;
         _normalizer = normalizer;
         _cuotaIa = cuotaIa;
         _cache = cache;
@@ -127,7 +127,7 @@ public class RecetaIaService : IRecetaIaService
         }
 
         var restriccion = RestriccionDieteticaPrompt.ParaSystemPrompt(usuario?.PreferenciaDietetica);
-        var systemInstruction = restriccion + " " + InstruccionGeneracion;
+        var systemInstruction = restriccion + " " + InstruccionGeneracion + " " + RealismoRecetaPrompt.Instruccion;
 
         var esBasico = !RolUsuario.TieneAccesoPremium(usuario?.Rol);
         if (esBasico)
@@ -146,6 +146,7 @@ public class RecetaIaService : IRecetaIaService
         prompt.AppendLine("Respetá esa restricción en la receta. No incluyas ingredientes prohibidos.");
 
         var receta = await PedirRecetaAsync(prompt.ToString(), systemInstruction);
+        await GuardarEnHistorialAsync(usuarioId, receta);
         var dificultad = NormalizarDificultad(receta);
 
         if (esBasico && !LimitesPlan.PuedeUsarDificultad(usuario?.Rol, dificultad))
@@ -157,6 +158,7 @@ public class RecetaIaService : IRecetaIaService
                 $"y {ComplejidadReceta.MinutosSugeridosBasico} minutos, sin técnicas avanzadas.");
 
             receta = await PedirRecetaAsync(prompt.ToString(), systemInstruction);
+            await GuardarEnHistorialAsync(usuarioId, receta);
             dificultad = NormalizarDificultad(receta);
 
             if (!LimitesPlan.PuedeUsarDificultad(usuario?.Rol, dificultad))
@@ -166,6 +168,36 @@ public class RecetaIaService : IRecetaIaService
         }
 
         return receta;
+    }
+
+    private async Task AsegurarCupoRecetasGuardadasAsync(Usuario? usuario, int usuarioId)
+    {
+        if (usuario is null)
+        {
+            throw new InvalidOperationException("El usuario no existe.");
+        }
+
+        if (RolUsuario.TieneAccesoPremium(usuario.Rol) || _modoPruebas.SinLimitesDePlan)
+        {
+            return;
+        }
+
+        var cantidad = await _recetaRepository.CountAsync(receta => receta.UsuarioId == usuarioId);
+        if (cantidad >= LimitesPlan.MaxFavoritosBasico)
+        {
+            throw new ForbiddenException(LimitesPlan.MensajeLimiteFavoritos);
+        }
+    }
+
+    private async Task GuardarEnHistorialAsync(int usuarioId, RecetaGeneradaDto receta)
+    {
+        try
+        {
+            await GuardarRecetaAsync(usuarioId, receta);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ConflictException or ArgumentException)
+        {
+        }
     }
 
     private async Task<RecetaGeneradaDto> PedirRecetaAsync(string prompt, string systemInstruction)
@@ -204,8 +236,6 @@ public class RecetaIaService : IRecetaIaService
         receta.Ingredientes ??= [];
         receta.Pasos ??= [];
 
-        await _favoritoService.AsegurarCupoFavoritosAsync(usuarioId);
-
         var usuario = await _usuarioRepository.GetByIdAsync(usuarioId);
         var dificultad = NormalizarDificultad(receta);
         if (!LimitesPlan.PuedeUsarDificultad(usuario?.Rol, dificultad))
@@ -214,6 +244,20 @@ public class RecetaIaService : IRecetaIaService
         }
 
         var titulo = Recortar(GenerarTituloPorDefecto(receta.Titulo, receta.Ingredientes), MaxTitulo);
+        var yaGuardada = await _recetaRepository.FirstOrDefaultAsync(existente =>
+            existente.UsuarioId == usuarioId && existente.Titulo == titulo);
+        if (yaGuardada is not null)
+        {
+            return new RecetaGuardadaResponse
+            {
+                RecetaId = yaGuardada.Id,
+                Titulo = yaGuardada.Titulo,
+                Favorita = false,
+                Mensaje = "Esa receta ya está en Recetas."
+            };
+        }
+
+        await AsegurarCupoRecetasGuardadasAsync(usuario, usuarioId);
 
         var ingredientesValidos = receta.Ingredientes
             .Where(ingrediente => !string.IsNullOrWhiteSpace(ingrediente.Nombre))
@@ -229,7 +273,7 @@ public class RecetaIaService : IRecetaIaService
 
         if (pasosValidos.Count == 0)
         {
-            throw new InvalidOperationException("La receta debe tener al menos un paso de preparación.");
+            pasosValidos.Add("Preparar con los ingredientes indicados y servir.");
         }
 
         var ingredientesReceta = new List<IngredienteReceta>();
@@ -280,18 +324,12 @@ public class RecetaIaService : IRecetaIaService
 
         var recetaCreada = await _recetaRepository.AddAsync(nuevaReceta);
 
-        await _favoritoService.AddFavoritoAsync(new FavoritoCreateDto
-        {
-            UsuarioId = usuarioId,
-            RecetaId = recetaCreada.Id
-        });
-
         return new RecetaGuardadaResponse
         {
             RecetaId = recetaCreada.Id,
             Titulo = recetaCreada.Titulo,
-            Favorita = true,
-            Mensaje = "Receta guardada y agregada a tus favoritos."
+            Favorita = false,
+            Mensaje = "Receta guardada en Recetas. Si la querés en favoritos, marcala con el corazón."
         };
     }
 

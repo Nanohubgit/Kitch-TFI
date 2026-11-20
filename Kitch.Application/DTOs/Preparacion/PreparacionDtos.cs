@@ -97,6 +97,20 @@ public class AgregarFaltantesPorcionesRequestDto
     public List<SustitucionAplicadaDto> Sustituciones { get; set; } = new();
 }
 
+public class MarcarFaltanteDisponibleRequestDto
+{
+    [Required]
+    public int RecetaId { get; set; }
+
+    [Required]
+    public int IngredienteId { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int NuevasPorciones { get; set; }
+
+    public List<SustitucionAplicadaDto> Sustituciones { get; set; } = new();
+}
+
 public class AplicarSustitutoRequestDto
 {
     [Required]

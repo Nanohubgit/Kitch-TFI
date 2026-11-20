@@ -1,4 +1,4 @@
-﻿using Kitch.Application.Common;
+using Kitch.Application.Common;
 using Kitch.Application.DTOs.ListaCompra;
 using Kitch.Application.DTOs.Preparacion;
 using Kitch.Application.DTOs.Recetas;
@@ -126,6 +126,70 @@ public class PreparacionService : IPreparacionService
         return await _listaCompraService.GetByUsuarioIdAsync(usuarioId);
     }
 
+    public Task<PrevisualizarPorcionesResponseDto> MarcarFaltanteDisponibleAsync(
+        int usuarioId,
+        MarcarFaltanteDisponibleRequestDto request) =>
+        _unidadDeTrabajo.EjecutarAsync(async () =>
+        {
+            await BloquearStockAsync(usuarioId);
+            return await MarcarFaltanteDisponibleEnTransaccionAsync(usuarioId, request);
+        });
+
+    private async Task<PrevisualizarPorcionesResponseDto> MarcarFaltanteDisponibleEnTransaccionAsync(
+        int usuarioId,
+        MarcarFaltanteDisponibleRequestDto request)
+    {
+        var previsualizacion = new PrevisualizarPorcionesRequestDto
+        {
+            UsuarioId = usuarioId,
+            RecetaId = request.RecetaId,
+            NuevasPorciones = request.NuevasPorciones,
+            Sustituciones = request.Sustituciones ?? []
+        };
+
+        var preview = await PrevisualizarRecalculoPorcionesAsync(previsualizacion);
+        var faltante = preview.IngredientesFaltantes
+            .FirstOrDefault(item => item.IngredienteId == request.IngredienteId);
+
+        if (faltante is null)
+        {
+            return preview;
+        }
+
+        var stock = await _stockRepository.FirstOrDefaultAsync(item =>
+            item.UsuarioId == usuarioId && item.IngredienteId == faltante.IngredienteId);
+
+        if (stock is null)
+        {
+            await _stockRepository.AddAsync(new StockUsuario
+            {
+                UsuarioId = usuarioId,
+                IngredienteId = faltante.IngredienteId,
+                Cantidad = faltante.CantidadFaltante,
+                UnidadMedida = faltante.UnidadMedida
+            });
+        }
+        else if (stock.Cantidad <= 0)
+        {
+            stock.Cantidad = faltante.CantidadFaltante;
+            stock.UnidadMedida = faltante.UnidadMedida;
+            await _stockRepository.UpdateAsync(stock);
+        }
+        else if (UnidadesMedida.TryConvertir(faltante.CantidadFaltante, faltante.UnidadMedida, stock.UnidadMedida, out var convertida))
+        {
+            stock.Cantidad = Math.Round(stock.Cantidad + convertida, 2);
+            await _stockRepository.UpdateAsync(stock);
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                $"En tu alacena tenés {faltante.Nombre} cargado en {stock.UnidadMedida} y la receta lo usa en {faltante.UnidadMedida}. " +
+                "Actualizalo desde Mi alacena.");
+        }
+
+        return await PrevisualizarRecalculoPorcionesAsync(previsualizacion);
+    }
+
     public async Task<PrevisualizarDescuentoStockResponseDto> PrevisualizarDescuentoStockAsync(PrevisualizarDescuentoStockRequestDto request)
     {
         ValidarPorciones(request.PorcionesCocinadas);
@@ -240,7 +304,7 @@ public class PreparacionService : IPreparacionService
         foreach (var (stock, cantidadStock, cantidadReceta, nombre, unidad) in descuentos)
         {
             stock.Cantidad = Math.Max(0, Math.Round(stock.Cantidad - cantidadStock, 2));
-            await _stockRepository.UpdateAsync(stock);
+            await GuardarStockDescontadoAsync(stock);
             resultado.Descontados.Add(new IngredienteMovimientoStockDto
             {
                 Nombre = nombre,
@@ -362,6 +426,11 @@ public class PreparacionService : IPreparacionService
             .ToList();
     }
 
+    private Task GuardarStockDescontadoAsync(StockUsuario stock) =>
+        stock.Cantidad <= 0
+            ? _stockRepository.DeleteAsync(stock)
+            : _stockRepository.UpdateAsync(stock);
+
     private Task BloquearStockAsync(int usuarioId) =>
         _unidadDeTrabajo.BloquearRecursoAsync($"kitch:stock:usuario:{usuarioId}");
 
@@ -409,7 +478,7 @@ public class PreparacionService : IPreparacionService
                 UnidadesMedida.TryConvertir(aDescontar, ingrediente.UnidadMedida, stock.UnidadMedida, out var enUnidadStock))
             {
                 stock.Cantidad = Math.Max(0, Math.Round(stock.Cantidad - enUnidadStock, 2));
-                await _stockRepository.UpdateAsync(stock);
+                await GuardarStockDescontadoAsync(stock);
 
                 resultado.Descontados.Add(new IngredienteMovimientoStockDto
                 {
