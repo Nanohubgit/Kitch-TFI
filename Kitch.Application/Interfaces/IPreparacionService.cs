@@ -24,4 +24,5 @@ public interface IPreparacionService
         int porciones,
         IReadOnlyList<SustitucionAplicadaDto>? sustituciones = null);
     Task<AplicarSustitutoResponseDto> AplicarSustitutoAsync(int usuarioId, AplicarSustitutoRequestDto request);
+    Task<PrevisualizarPorcionesResponseDto> MarcarFaltanteDisponibleAsync(int usuarioId, MarcarFaltanteDisponibleRequestDto request);
 }

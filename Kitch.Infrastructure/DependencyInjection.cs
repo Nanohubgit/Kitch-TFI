@@ -15,6 +15,8 @@ namespace Kitch.Infrastructure;
 public static class DependencyInjection
 {
     private const int TimeoutIaSegundosPorDefecto = 60;
+    public const string ClaveSinLimitesDePlan = "Testing:SinLimitesDePlan";
+    private static readonly string[] ClavesObligatoriasIa = ["ApiKey", "BaseUrl", "Model"];
 
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
@@ -25,6 +27,10 @@ public static class DependencyInjection
         services.AddScoped<IEmailService, SmtpEmailService>();
         services.AddSingleton<IPasswordHasher, BCryptPasswordHasher>();
         services.AddSingleton(CrearPlanSuscripcion(configuration));
+        services.AddSingleton(new ModoPruebasConfig
+        {
+            SinLimitesDePlan = bool.TryParse(configuration[ClaveSinLimitesDePlan], out var sinLimites) && sinLimites
+        });
 
         var mercadoPagoToken = configuration["MercadoPago:AccessToken"];
         if (!string.IsNullOrWhiteSpace(mercadoPagoToken))
@@ -34,9 +40,8 @@ public static class DependencyInjection
 
         services.AddScoped<IPaymentGatewayService, MercadoPagoPaymentService>();
 
-        var proveedorIa = configuration["Ai:Provider"]?.Trim();
-        var usarOpenAi = string.Equals(proveedorIa, "OpenAI", StringComparison.OrdinalIgnoreCase);
-        if (usarOpenAi)
+        var seccionIa = ValidarConfiguracionIa(configuration);
+        if (seccionIa == OpenAiClient.SeccionConfiguracion)
         {
             services.AddScoped<IAsistenteIaClient, OpenAiClient>();
         }
@@ -73,6 +78,61 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(timeout);
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         });
+    }
+
+    private static string ValidarConfiguracionIa(IConfiguration configuration)
+    {
+        var proveedor = configuration["Ai:Provider"]?.Trim();
+        var proveedoresValidos = $"'{OpenAiClient.NombreProveedor}' o '{GroqClient.NombreProveedor}'";
+
+        if (string.IsNullOrWhiteSpace(proveedor))
+        {
+            throw new InvalidOperationException(
+                $"Configuración de IA inválida: falta 'Ai:Provider'. Definilo como {proveedoresValidos} en appsettings.json o en User Secrets.");
+        }
+
+        string seccion;
+        if (string.Equals(proveedor, OpenAiClient.NombreProveedor, StringComparison.OrdinalIgnoreCase))
+        {
+            seccion = OpenAiClient.SeccionConfiguracion;
+        }
+        else if (string.Equals(proveedor, GroqClient.NombreProveedor, StringComparison.OrdinalIgnoreCase))
+        {
+            seccion = GroqClient.SeccionConfiguracion;
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                $"Configuración de IA inválida: 'Ai:Provider' vale '{proveedor}'. Los valores válidos son {proveedoresValidos}.");
+        }
+
+        var faltantes = ClavesObligatoriasIa
+            .Where(clave => string.IsNullOrWhiteSpace(configuration[$"{seccion}:{clave}"]))
+            .Select(clave => $"'{seccion}:{clave}'")
+            .ToList();
+
+        if (faltantes.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Configuración de IA incompleta para el proveedor '{proveedor}': falta {string.Join(", ", faltantes)}. " +
+                "La API key va en User Secrets y el resto en appsettings.json.");
+        }
+
+        var temperatura = configuration[$"{seccion}:Temperature"];
+        if (!string.IsNullOrWhiteSpace(temperatura) &&
+            !double.TryParse(temperatura, NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+        {
+            throw new InvalidOperationException(
+                $"Configuración de IA inválida: '{seccion}:Temperature' vale '{temperatura}'. Usá un número con punto decimal, por ejemplo 0.3.");
+        }
+
+        if (!Uri.TryCreate(configuration[$"{seccion}:BaseUrl"], UriKind.Absolute, out _))
+        {
+            throw new InvalidOperationException(
+                $"Configuración de IA inválida: '{seccion}:BaseUrl' no es una URL válida.");
+        }
+
+        return seccion;
     }
 
     private static PlanSuscripcionConfig CrearPlanSuscripcion(IConfiguration configuration)

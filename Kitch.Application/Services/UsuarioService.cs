@@ -14,6 +14,7 @@ public class UsuarioService : IUsuarioService
     private readonly IRepository<Usuario> _repository;
     private readonly IRepository<Pago> _pagoRepository;
     private readonly IRepository<ContratoSub> _contratoRepository;
+    private readonly IRepository<Suscripcion> _suscripcionRepository;
     private readonly IRepository<Receta> _recetaRepository;
     private readonly IMemoryCache _cache;
     private readonly IUnidadDeTrabajo _unidadDeTrabajo;
@@ -23,11 +24,13 @@ public class UsuarioService : IUsuarioService
         IRepository<Usuario> repository,
         IRepository<Pago> pagoRepository,
         IRepository<ContratoSub> contratoRepository,
+        IRepository<Suscripcion> suscripcionRepository,
         IRepository<Receta> recetaRepository,
         IMemoryCache cache,
         IUnidadDeTrabajo unidadDeTrabajo,
         IPasswordHasher passwordHasher)
     {
+        _suscripcionRepository = suscripcionRepository;
         _unidadDeTrabajo = unidadDeTrabajo;
         _passwordHasher = passwordHasher;
         _repository = repository;
@@ -248,15 +251,23 @@ public class UsuarioService : IUsuarioService
             throw new ForbiddenException("No se puede eliminar una cuenta de administrador.");
         }
 
-        if (await _pagoRepository.AnyAsync(pago => pago.UsuarioId == id) ||
-            await _contratoRepository.AnyAsync(contrato => contrato.UsuarioId == id))
-        {
-            throw new ConflictException(
-                "El usuario tiene pagos o contratos registrados y el historial no se puede borrar. Bloqueá la cuenta en lugar de eliminarla.");
-        }
-
         await _unidadDeTrabajo.EjecutarAsync(async () =>
         {
+            foreach (var pago in await _pagoRepository.FindAsync(pago => pago.UsuarioId == id))
+            {
+                await _pagoRepository.DeleteAsync(pago);
+            }
+
+            foreach (var contrato in await _contratoRepository.FindAsync(contrato => contrato.UsuarioId == id))
+            {
+                await _contratoRepository.DeleteAsync(contrato);
+            }
+
+            foreach (var suscripcion in await _suscripcionRepository.FindAsync(suscripcion => suscripcion.UsuarioId == id))
+            {
+                await _suscripcionRepository.DeleteAsync(suscripcion);
+            }
+
             var recetas = await _recetaRepository.FindAsync(receta => receta.UsuarioId == id);
             foreach (var receta in recetas)
             {

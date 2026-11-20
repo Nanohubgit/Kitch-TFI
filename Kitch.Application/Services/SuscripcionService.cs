@@ -206,6 +206,63 @@ public class SuscripcionService : ISuscripcionService
         };
     }
 
+    public async Task<VerificacionPagosResponseDto> VerificarPagosAsync(int usuarioId)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
+            ?? throw new UnauthorizedAccessException();
+
+        if (usuario.Rol == RolUsuario.Admin)
+        {
+            return new VerificacionPagosResponseDto
+            {
+                RolActual = usuario.Rol,
+                Mensaje = "Las cuentas administradoras no necesitan suscripción."
+            };
+        }
+
+        var cobros = await _paymentGateway.BuscarPagosAprobadosAsync(usuarioId.ToString());
+        var aplicados = 0;
+
+        foreach (var cobro in cobros)
+        {
+            if (string.IsNullOrWhiteSpace(cobro.TransaccionId))
+            {
+                continue;
+            }
+
+            var transaccionId = ObtenerTransaccionId(cobro, cobro.TransaccionId);
+            if (await _pagoRepository.AnyAsync(pago => pago.TransaccionId == transaccionId))
+            {
+                continue;
+            }
+
+            await AplicarCobroAsync(cobro, transaccionId);
+
+            if (await _pagoRepository.AnyAsync(pago => pago.TransaccionId == transaccionId && pago.UsuarioId == usuarioId))
+            {
+                aplicados++;
+            }
+        }
+
+        usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
+            ?? throw new UnauthorizedAccessException();
+        var esProfesional = usuario.Rol == RolUsuario.Profesional;
+        var profesionalHasta = esProfesional ? await ObtenerFinVigenteAsync(usuarioId) : null;
+
+        return new VerificacionPagosResponseDto
+        {
+            PagosAplicados = aplicados,
+            RolActual = usuario.Rol,
+            RequiereRefrescarSesion = aplicados > 0 && esProfesional,
+            ProfesionalHasta = profesionalHasta,
+            Mensaje = aplicados > 0
+                ? $"Encontramos tu pago aprobado. Sos Profesional hasta {FormatearFecha(profesionalHasta)}."
+                : esProfesional
+                    ? $"Tu suscripción Profesional está vigente hasta {FormatearFecha(profesionalHasta)}."
+                    : "No encontramos pagos aprobados nuevos. Si recién pagaste, esperá unos segundos y volvé a verificar."
+        };
+    }
+
     public async Task ProcesarNotificacionPagoAsync(string paymentId)
     {
         var cobro = await _paymentGateway.ConsultarPagoAsync(paymentId);

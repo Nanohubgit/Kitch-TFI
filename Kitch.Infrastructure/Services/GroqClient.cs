@@ -6,6 +6,7 @@ public class GroqClient : ChatCompletionsClientBase
 {
     public const string NombreCliente = "GroqClient";
     public const string SeccionConfiguracion = "Groq";
+    public const string NombreProveedor = "Groq";
 
     public GroqClient(IHttpClientFactory httpClientFactory, IConfiguration configuration)
         : base(

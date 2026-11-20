@@ -49,6 +49,12 @@ public static class RestriccionDietetica
         "muzzarella", "parmesano", "dulce de leche", "nata"
     ];
 
+    private static readonly string[] Azucares =
+    [
+        "azucar", "miel", "dulce de leche", "mermelada", "chocolate", "gaseosa", "jarabe",
+        "glucosa", "almibar", "caramelo", "helado", "golosina", "confitura"
+    ];
+
     private static readonly string[] FrutosSecos =
     [
         "nuez", "almendra", "avellana", "castana", "pistacho", "mani", "anacardo", "caju", "pecan"
@@ -91,6 +97,11 @@ public static class RestriccionDietetica
             clave.Contains("gluten", StringComparison.Ordinal))
         {
             return ContieneAlguno(nombre, AlternativasSinGluten) || !ContieneAlguno(nombre, ConGluten);
+        }
+
+        if (clave.Contains("diabet", StringComparison.Ordinal))
+        {
+            return !ContieneAlguno(nombre, Azucares);
         }
 
         var prohibidos = new List<string>();

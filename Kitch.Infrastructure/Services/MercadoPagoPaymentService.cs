@@ -19,6 +19,8 @@ public class MercadoPagoPaymentService : IPaymentGatewayService
 {
     private const string MensajeNoDisponible =
         "Mercado Pago no está disponible en este momento. Intentá nuevamente en unos minutos.";
+    private const string EstadoAprobado = "approved";
+    private const int MaxPagosPorBusqueda = 50;
 
     private readonly IConfiguration _configuration;
     private readonly ILogger<MercadoPagoPaymentService> _logger;
@@ -137,16 +139,55 @@ public class MercadoPagoPaymentService : IPaymentGatewayService
             throw new ServicioExternoException(MensajeNoDisponible, ex);
         }
 
-        if (payment is null)
+        return payment is null ? null : MapearPago(payment);
+    }
+
+    public async Task<IReadOnlyList<PaymentNotificationResult>> BuscarPagosAprobadosAsync(
+        string externalReference,
+        CancellationToken cancellationToken = default)
+    {
+        var referencia = externalReference?.Trim();
+        if (string.IsNullOrWhiteSpace(referencia))
         {
-            return null;
+            return [];
         }
 
+        var busqueda = new AdvancedSearchRequest
+        {
+            Limit = MaxPagosPorBusqueda,
+            Offset = 0,
+            Sort = "date_created",
+            Criteria = "asc",
+            Filters = new Dictionary<string, object>
+            {
+                ["external_reference"] = referencia,
+                ["status"] = EstadoAprobado
+            }
+        };
+
+        try
+        {
+            var pagina = await new PaymentClient().SearchAsync(busqueda, CrearOpciones(), cancellationToken);
+            return (pagina?.Results ?? [])
+                .Where(payment => string.Equals(payment.ExternalReference, referencia, StringComparison.Ordinal))
+                .Select(MapearPago)
+                .Where(cobro => cobro.Aprobado)
+                .ToList();
+        }
+        catch (MercadoPagoException ex)
+        {
+            _logger.LogError(ex, "No se pudieron buscar los pagos de la referencia {Referencia} en Mercado Pago", referencia);
+            throw new ServicioExternoException(MensajeNoDisponible, ex);
+        }
+    }
+
+    private static PaymentNotificationResult MapearPago(MercadoPago.Resource.Payment.Payment payment)
+    {
         var status = payment.Status ?? string.Empty;
 
         return new PaymentNotificationResult
         {
-            Aprobado = status.Equals("approved", StringComparison.OrdinalIgnoreCase),
+            Aprobado = status.Equals(EstadoAprobado, StringComparison.OrdinalIgnoreCase),
             Status = status,
             ExternalReference = payment.ExternalReference,
             TransaccionId = payment.Id?.ToString(),

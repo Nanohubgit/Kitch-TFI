@@ -1,3 +1,4 @@
+using Kitch.Application.Common;
 using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
 using Kitch.Domain.Constants;
@@ -9,10 +10,12 @@ namespace Kitch.Application.Services;
 public class CuotaIaService : ICuotaIaService
 {
     private readonly IRepository<Usuario> _usuarioRepository;
+    private readonly ModoPruebasConfig _modoPruebas;
 
-    public CuotaIaService(IRepository<Usuario> usuarioRepository)
+    public CuotaIaService(IRepository<Usuario> usuarioRepository, ModoPruebasConfig modoPruebas)
     {
         _usuarioRepository = usuarioRepository;
+        _modoPruebas = modoPruebas;
     }
 
     public async Task ConsumirAsync(int usuarioId)
@@ -27,10 +30,14 @@ public class CuotaIaService : ICuotaIaService
             usuario.PeticionesIaDelDia = 0;
         }
 
-        var tope = PedidoRecetaPremium.TopeDiario(usuario.Rol);
-        if (usuario.PeticionesIaDelDia >= tope)
+        var sinTopeBasico = _modoPruebas.SinLimitesDePlan && !RolUsuario.TieneAccesoPremium(usuario.Rol);
+        if (!sinTopeBasico)
         {
-            throw new ForbiddenException(PedidoRecetaPremium.MensajeTopeDiario(usuario.Rol));
+            var tope = PedidoRecetaPremium.TopeDiario(usuario.Rol);
+            if (usuario.PeticionesIaDelDia >= tope)
+            {
+                throw new ForbiddenException(PedidoRecetaPremium.MensajeTopeDiario(usuario.Rol));
+            }
         }
 
         usuario.PeticionesIaDelDia++;

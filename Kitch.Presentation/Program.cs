@@ -91,6 +91,14 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<KitchDbContext>(options =>
     options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure()));
 
+var claveSinLimitesDePlan = Kitch.Infrastructure.DependencyInjection.ClaveSinLimitesDePlan;
+var sinLimitesDePlan = bool.TryParse(builder.Configuration[claveSinLimitesDePlan], out var valorSinLimites) && valorSinLimites;
+if (sinLimitesDePlan && !builder.Environment.IsDevelopment())
+{
+    throw new InvalidOperationException(
+        $"'{claveSinLimitesDePlan}' solo se puede activar en el entorno Development.");
+}
+
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
@@ -153,6 +161,13 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IClaimsTransformation, RolVigenteClaimsTransformation>();
 
 var app = builder.Build();
+
+if (sinLimitesDePlan)
+{
+    app.Logger.LogWarning(
+        "Modo pruebas activo ({Clave}): sin tope de recetas guardadas ni de consultas de IA del plan Básico. Dificultad, planificador y sustitutos siguen limitados.",
+        claveSinLimitesDePlan);
+}
 
 await app.MigrateDatabaseAsync();
 await app.NormalizarIngredientesAsync();

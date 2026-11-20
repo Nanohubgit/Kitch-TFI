@@ -16,5 +16,9 @@ public interface IPaymentGatewayService
         string paymentId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<PaymentNotificationResult>> BuscarPagosAprobadosAsync(
+        string externalReference,
+        CancellationToken cancellationToken = default);
+
     bool FirmaWebhookValida(string? firma, string? requestId, string paymentId);
 }

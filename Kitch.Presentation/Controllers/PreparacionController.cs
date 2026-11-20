@@ -39,6 +39,14 @@ public class PreparacionController : ApiControllerBase
         return Ok(items);
     }
 
+    [HttpPost("marcar-faltante-disponible")]
+    public async Task<ActionResult<PrevisualizarPorcionesResponseDto>> MarcarFaltanteDisponible(
+        [FromBody] MarcarFaltanteDisponibleRequestDto request)
+    {
+        var response = await _preparacionService.MarcarFaltanteDisponibleAsync(GetUsuarioIdOrThrow(), request);
+        return Ok(response);
+    }
+
     [HttpPost("previsualizar-descuento-stock")]
     public async Task<ActionResult<PrevisualizarDescuentoStockResponseDto>> PrevisualizarDescuentoStock(
         [FromBody] PrevisualizarDescuentoStockRequestDto request)

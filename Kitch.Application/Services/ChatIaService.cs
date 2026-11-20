@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -37,7 +37,8 @@ public class ChatIaService : IChatIaService
         "\"nombre\": string | null, " +
         "\"ingredientes\": [{\"nombre\": string, \"cantidad\": number, \"unidadMedida\": string}] | null, " +
         "\"pasos\": [string] | null, " +
-        "\"receta\": {\"titulo\": string, \"descripcion\": string, \"tiempoPreparacionMinutos\": number, " +
+        "\"receta\": {\"basesYaUsadas\": [string], \"platoClasico\": string, \"ingredientesDescartados\": [string], \"ingredientesAComprar\": [string], " +
+        "\"titulo\": string, \"descripcion\": string, \"tiempoPreparacionMinutos\": number, " +
         "\"porciones\": number, \"dificultad\": \"Facil\"|\"Medio\"|\"Dificil\", \"caloriasEstimadas\": number, " +
         "\"categoria\": \"pastas\"|\"carnes\"|\"pollo\"|\"ensaladas\"|\"sopas\"|\"pescados\"|\"pizzas\"|\"postres\"|\"tartas\"|\"guisos\"|\"general\", " +
         "\"ingredientes\": [{\"nombre\": string, \"cantidad\": number, \"unidadMedida\": string}], \"pasos\": [string]} | null, " +
@@ -47,10 +48,16 @@ public class ChatIaService : IChatIaService
         "\"indiceReceta\": number | null, \"reemplazarSiConflicto\": boolean}\n\n" +
         "REGLAS DE LA 'accion':\n" +
         "- 'conversar': charla general, dudas, consejos. 'receta' va en null.\n" +
-        "- 'generar_receta': el usuario pide una receta. Completás 'receta' (mín. 1 ingrediente y 1 paso, " +
-        "tiempo y porciones > 0). Usá preferentemente lo que hay en la alacena. En 'mensaje' presentás la receta. " +
-        "SIEMPRE poné en 'titulo' un nombre descriptivo y real del plato (ej. 'Tortilla de papas'); NUNCA uses 'string', " +
-        "'receta' ni dejes el título vacío. Si el usuario no aclara el nombre, inventá uno acorde a los ingredientes. " +
+        "- 'generar_receta': el usuario pide una receta, ideas de qué cocinar o qué puede hacer con lo que tiene " +
+        "(ej. '¿qué puedo cocinar con lo que tengo?', 'receta rápida para hoy', 'generame algo con lo de la alacena', " +
+        "'tengo ganas de algo con huevo para la cena', 'dame otra'). Ante la duda entre 'conversar' y 'generar_receta' " +
+        "cuando el usuario quiere cocinar algo, usá 'generar_receta'. Completás 'receta' (mín. 1 ingrediente y 1 paso, " +
+        "tiempo y porciones > 0). Basala en los ingredientes de la alacena que combinen bien, siguiendo las reglas de " +
+        "REALISMO CULINARIO. Una receta nueva NUNCA copia una de RECETAS RECIENTES ni la receta en pantalla: " +
+        "pensala de cero aunque los ingredientes sean los mismos, salvo que el usuario pida explícitamente repetirla. " +
+        "En 'mensaje' presentás la receta. " +
+        "SIEMPRE poné en 'titulo' el nombre real y reconocible del plato (ej. 'Tortilla de papas'); NUNCA uses 'string', " +
+        "'receta' ni dejes el título vacío. " +
         "OBLIGATORIO: en 'categoria' elegí exactamente uno de estos valores en minúsculas: " +
         "pastas, carnes, pollo, ensaladas, sopas, pescados, pizzas, postres, tartas, guisos, general. " +
         "Si no encaja con claridad, usá 'general'.\n" +
@@ -61,8 +68,9 @@ public class ChatIaService : IChatIaService
         "NUNCA uses 'conversar' para un pedido de guardado. No inventes una receta nueva al guardar.\n" +
         "- 'sustituir': el usuario pregunta con qué reemplazar un ingrediente. Poné el nombre del ingrediente " +
         "original en 'ingredienteSustituir'. En 'mensaje' explicás brevemente; el sistema completa la lista de sustitutos.\n" +
-        "- 'recomendar': el usuario pide ideas/recetas según lo que tiene. 'receta' va en null; el sistema agrega " +
-        "las recetas compatibles. En 'mensaje' introducís las recomendaciones.\n" +
+        "- 'recomendar': SOLO cuando el usuario pide explícitamente recetas del catálogo de Kitch o ya cargadas en la app " +
+        "(ej. '¿qué recetas del catálogo puedo hacer?', 'mostrame recetas de la app con lo que tengo'). " +
+        "'receta' va en null; el sistema agrega las recetas compatibles. En 'mensaje' introducís las recomendaciones.\n" +
         "- 'eliminar_receta': el usuario quiere borrar/eliminar recetas guardadas. " +
         "Si menciona UNA receta puntual (ej. 'borrá la de tortilla', 'eliminá la tarta de manzana'), poné solo el nombre " +
         "(sin comillas, tal como lo dijo) en 'tituloEliminar' y dejá 'eliminarTodas' en false. " +
@@ -76,9 +84,13 @@ public class ChatIaService : IChatIaService
         "Si el sistema avisó que ese turno ya estaba ocupado y el usuario confirma que quiere reemplazarlo ('sí, reemplazala'), " +
         "repetí receta, fecha y turno y poné 'reemplazarSiConflicto' en true; en cualquier otro caso dejalo en false. " +
         "En 'fechaPlanificar' poné la fecha en formato YYYY-MM-DD (resolvé 'hoy', 'mañana', 'el viernes' usando la 'Fecha de hoy' del contexto). " +
-        "En 'turnoPlanificar' poné el momento: 'Desayuno', 'Almuerzo', 'Merienda' o 'Cena'. " +
+        "En 'turnoPlanificar' poné el momento SOLO si el usuario lo dijo en este mensaje: 'Desayuno', 'Almuerzo' o 'Cena'. " +
+        "Si NO dijo el tipo de comida, NO uses 'planificar_receta' y NO inventes 'Cena': usá 'conversar' y preguntá " +
+        "si la quiere en Desayuno, Almuerzo o Cena. " +
         "En 'mensaje' confirmás. El sistema agrega solo lo que el usuario tenga guardado y, si le faltan ingredientes, " +
         "los suma automáticamente a su lista de compras.\n" +
+        "- Si el usuario pide algo dulce (torta, postre, budín, flan) y no hay coincidencias, no recomiendes platos salados. " +
+        "Generá o recomendá solo postres. Si pide algo salado, no recomiendes postres.\n" +
         "- 'cocinar_receta': el usuario avisa que YA cocinó/preparó una receta y quiere descontar los " +
         "ingredientes usados de su alacena (ej. 'ya la hice', 'cociné la tortilla', 'preparé esta receta', " +
         "'descontá los ingredientes', 'ya la cociné, bajá el stock'). En 'tituloCocinar' poné el nombre de la receta " +
@@ -93,7 +105,33 @@ public class ChatIaService : IChatIaService
 
     private const string NombrePorDefecto = "Chef";
 
+    private const string PedidoRecetaSinCoincidencias =
+        "No hay recetas del catálogo que pueda hacer con mi alacena. Generame una receta nueva, real y con lógica, " +
+        "basada en los ingredientes de mi alacena que combinen bien entre sí (no hace falta usarlos todos). " +
+        "Respondé con accion 'generar_receta'.";
+
+    private const string MensajeRecetaSinCoincidencias =
+        "No encontré recetas del catálogo que puedas hacer con lo que tenés, así que te armé una nueva con tu alacena.";
+
+    private const string PedidoRecetaDulce =
+        "El pedido es DULCE (torta, postre o similar). Generame solo un postre real, con categoria 'postres'. " +
+        "PROHIBIDO devolver guiso, carne, ensalada, sopa u otro plato salado. Respondé con accion 'generar_receta'.";
+
+    private const string PedidoRecetaSalada =
+        "El pedido es SALADO. Generame un plato salado real. PROHIBIDO devolver torta, postre o algo dulce. " +
+        "Respondé con accion 'generar_receta'.";
+
+    private const string PedidoRecetaAlacenaVacia =
+        "Mi alacena está vacía. Generame una receta sencilla, real y con pocos ingredientes básicos fáciles de conseguir. " +
+        "Respondé con accion 'generar_receta'.";
+
+    private const string MensajeRecetaAlacenaVacia =
+        "Tu alacena está vacía, así que te propongo una receta sencilla con ingredientes básicos. " +
+        "Guardala para ver qué te falta y tildar lo que ya tengas.";
+
     private const int MaxRecetasRecientes = 5;
+
+    private const int MaxRecetasGuardadasEnContexto = 8;
 
     private static readonly JsonSerializerOptions JsonOptions = JsonIa.Opciones;
 
@@ -168,7 +206,8 @@ public class ChatIaService : IChatIaService
 
         var systemInstruction = InstruccionAgente
             .Replace("__RESTRICCION_DIETETICA__", restriccion)
-            .Replace("__NOMBRE_USUARIO__", nombreUsuario);
+            .Replace("__NOMBRE_USUARIO__", nombreUsuario) +
+            "\n\n" + RealismoRecetaPrompt.Instruccion;
 
         if (!RolUsuario.TieneAccesoPremium(usuario?.Rol))
         {
@@ -208,6 +247,15 @@ public class ChatIaService : IChatIaService
         try
         {
             json = await _asistenteIa.GenerarRespuestaConversacionAsync(mensajes, systemInstruction, jsonMode: true);
+        }
+        catch (ServicioIaException ex) when (ex.Motivo == MotivoFallaIa.NoConfigurado)
+        {
+            await _cuotaIa.DevolverAsync(usuarioId);
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = "El asistente de IA no está configurado en el servidor. Avisale al administrador de Kitch."
+            };
         }
         catch (ServicioIaException ex) when (ex.Motivo == MotivoFallaIa.Saturado)
         {
@@ -251,14 +299,20 @@ public class ChatIaService : IChatIaService
             };
         }
 
+        if (string.Equals(sobre.Accion?.Trim(), ChatAccion.GenerarReceta, StringComparison.OrdinalIgnoreCase))
+        {
+            sobre = await EvitarRecetaRepetidaAsync(usuarioId, sobre, mensajes, systemInstruction, ultimoTexto);
+            sobre = await EvitarPostreFalsoAsync(sobre, mensajes, systemInstruction, ultimoTexto);
+        }
+
         var respuesta = (sobre.Accion ?? string.Empty).Trim().ToLowerInvariant() switch
         {
             ChatAccion.GenerarReceta => await ResolverGenerarRecetaAsync(usuarioId, sobre),
             ChatAccion.GuardarReceta => await ResolverGuardarRecetaAsync(usuarioId, sobre, request.RecetaActual),
             ChatAccion.Sustituir => await ResolverSustituirAsync(usuarioId, sobre),
-            ChatAccion.Recomendar => await ResolverRecomendarAsync(usuarioId, sobre),
+            ChatAccion.Recomendar => await ResolverRecomendarAsync(usuarioId, sobre, mensajes, systemInstruction, ultimoTexto),
             ChatAccion.EliminarReceta => await ResolverEliminarRecetaAsync(usuarioId, sobre),
-            ChatAccion.PlanificarReceta => await ResolverPlanificarRecetaAsync(usuarioId, sobre),
+            ChatAccion.PlanificarReceta => await ResolverPlanificarRecetaAsync(usuarioId, sobre, ultimoTexto),
             ChatAccion.CocinarReceta => await ResolverCocinarRecetaAsync(usuarioId, sobre),
             ChatAccion.ConsultarRecetasGuardadas => await ResolverConsultarRecetasGuardadasAsync(usuarioId, sobre),
             _ => new ChatRespuestaDto
@@ -318,13 +372,33 @@ public class ChatIaService : IChatIaService
         {
         }
 
+        RecetaGuardadaResponse? guardada = null;
+        try
+        {
+            guardada = await _recetaIaService.GuardarRecetaAsync(usuarioId, receta);
+        }
+        catch (ForbiddenException ex)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = ex.Message
+            };
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ConflictException or ArgumentException)
+        {
+        }
+
+        var avisoHistorial = guardada is null
+            ? $"Te propongo: {receta.Titulo}."
+            : $"Te propongo: {receta.Titulo}. Quedó en Recetas. Si la querés en favoritos, marcala con el corazón.";
+
         return new ChatRespuestaDto
         {
             Accion = ChatAccion.GenerarReceta,
-            Mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
-                ? $"Te propongo: {receta.Titulo}. Si querés, decime \"guardala\" y la agrego a tus favoritos."
-                : sobre.Mensaje,
-            Receta = receta
+            Mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje) ? avisoHistorial : sobre.Mensaje,
+            Receta = receta,
+            RecetaGuardada = guardada
         };
     }
 
@@ -348,7 +422,6 @@ public class ChatIaService : IChatIaService
 
         try
         {
-            await _favoritoService.AsegurarCupoFavoritosAsync(usuarioId);
             var guardada = await _recetaIaService.GuardarRecetaAsync(usuarioId, receta);
 
             await OlvidarRecetaAsync(usuarioId, receta.Titulo);
@@ -613,17 +686,37 @@ public class ChatIaService : IChatIaService
         };
     }
 
-    private async Task<ChatRespuestaDto> ResolverRecomendarAsync(int usuarioId, SobreAgente sobre)
+    private async Task<ChatRespuestaDto> ResolverRecomendarAsync(
+        int usuarioId,
+        SobreAgente sobre,
+        List<MensajeIa> mensajes,
+        string systemInstruction,
+        string pedidoUsuario)
     {
+        var sabor = DetectarSabor(pedidoUsuario);
         var candidatas = (await _recomendacionService.RecomendarAsync(usuarioId, LimitesPlan.MaxFaltantesRecomendacion)).ToList();
+        candidatas = FiltrarPorSabor(candidatas, sabor);
         var completas = candidatas.Where(receta => receta.Grupo == GrupoRecomendacion.Completa).ToList();
         var recomendaciones = completas.Count > 0 ? completas : candidatas;
 
+        if (recomendaciones.Count == 0)
+        {
+            var generada = await GenerarRecetaSinCoincidenciasAsync(usuarioId, mensajes, systemInstruction, sabor);
+            if (generada is not null)
+            {
+                return generada;
+            }
+        }
+
         var mensajeSistema = recomendaciones.Count == 0
-            ? "No encontré recetas que puedas hacer con lo que tenés (ni faltando hasta 2 ingredientes). Cargá más ingredientes o pedime que te genere una."
-            : completas.Count > 0
-                ? "Con lo que tenés en tu alacena podés hacer estas recetas:"
-                : $"Te faltan pocos ingredientes (como máximo {LimitesPlan.MaxFaltantesRecomendacion}) para estas recetas:";
+            ? "No encontré recetas de ese tipo que puedas hacer con lo que tenés. Cargá más ingredientes o pedime que te genere una."
+            : sabor == SaborPedido.Dulce
+                ? "Estas opciones son dulces, del mismo estilo que pediste:"
+                : sabor == SaborPedido.Salado
+                    ? "Estas opciones son saladas, del mismo estilo que pediste:"
+                    : completas.Count > 0
+                        ? "Con lo que tenés en tu alacena podés hacer estas recetas:"
+                        : $"Te faltan pocos ingredientes (como máximo {LimitesPlan.MaxFaltantesRecomendacion}) para estas recetas:";
 
         return new ChatRespuestaDto
         {
@@ -633,6 +726,55 @@ public class ChatIaService : IChatIaService
                 : $"{sobre.Mensaje} {mensajeSistema}",
             Recomendaciones = recomendaciones
         };
+    }
+
+    private async Task<ChatRespuestaDto?> GenerarRecetaSinCoincidenciasAsync(
+        int usuarioId,
+        List<MensajeIa> mensajes,
+        string systemInstruction,
+        SaborPedido sabor)
+    {
+        var stock = await _stockRepository.FindAsync(item => item.UsuarioId == usuarioId && item.Cantidad > 0);
+        var alacenaVacia = stock.Count == 0;
+        var pedido = sabor == SaborPedido.Dulce
+            ? PedidoRecetaDulce
+            : sabor == SaborPedido.Salado
+                ? PedidoRecetaSalada
+                : alacenaVacia ? PedidoRecetaAlacenaVacia : PedidoRecetaSinCoincidencias;
+        var mensajeSistema = sabor == SaborPedido.Dulce
+            ? "No encontré postres en el catálogo para eso, así que te armé uno dulce."
+            : sabor == SaborPedido.Salado
+                ? "No encontré platos salados en el catálogo para eso, así que te armé uno salado."
+                : alacenaVacia ? MensajeRecetaAlacenaVacia : MensajeRecetaSinCoincidencias;
+
+        var conversacion = new List<MensajeIa>(mensajes) { new("user", pedido) };
+
+        string json;
+        try
+        {
+            json = await _asistenteIa.GenerarRespuestaConversacionAsync(conversacion, systemInstruction, jsonMode: true);
+        }
+        catch (ServicioExternoException)
+        {
+            return null;
+        }
+
+        var sobre = DeserializarSobre(json);
+        if (sobre?.Receta is null)
+        {
+            return null;
+        }
+
+        var respuesta = await ResolverGenerarRecetaAsync(usuarioId, sobre);
+        if (respuesta.Accion != ChatAccion.GenerarReceta)
+        {
+            return null;
+        }
+
+        respuesta.Mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
+            ? mensajeSistema
+            : $"{mensajeSistema} {sobre.Mensaje}";
+        return respuesta;
     }
 
     private async Task<List<RecetaFavorita>> ObtenerFavoritosAccesiblesAsync(int usuarioId)
@@ -729,7 +871,7 @@ public class ChatIaService : IChatIaService
         };
     }
 
-    private async Task<ChatRespuestaDto> ResolverPlanificarRecetaAsync(int usuarioId, SobreAgente sobre)
+    private async Task<ChatRespuestaDto> ResolverPlanificarRecetaAsync(int usuarioId, SobreAgente sobre, string pedidoUsuario)
     {
         var (recetaId, tituloReceta, errorReceta) = await ResolverRecetaParaAccionAsync(
             usuarioId,
@@ -745,9 +887,23 @@ public class ChatIaService : IChatIaService
             };
         }
 
-        var fecha = ParsearFecha(sobre.FechaPlanificar);
-
-        var turno = InterpretarTurno(sobre.TurnoPlanificar);
+        var turno = TurnoExplicito(pedidoUsuario);
+        var fecha = FechaExplicita(pedidoUsuario, FechaLocal.Hoy());
+        if (turno is null || fecha is null)
+        {
+            var faltaTurno = turno is null;
+            var faltaFecha = fecha is null;
+            var pregunta = faltaTurno && faltaFecha
+                ? $"¿Qué día y qué comida querés para \"{tituloReceta}\"? Por ejemplo: el sábado que viene, a la cena."
+                : faltaTurno
+                    ? $"¿Para qué comida querés planificar \"{tituloReceta}\" el {fecha:dd/MM}? Elegí Desayuno, Almuerzo o Cena."
+                    : $"¿Qué día querés planificar \"{tituloReceta}\"? Podés decir hoy, mañana o el sábado que viene.";
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = pregunta
+            };
+        }
 
         try
         {
@@ -755,7 +911,7 @@ public class ChatIaService : IChatIaService
             {
                 UsuarioId = usuarioId,
                 RecetaId = recetaId.Value,
-                FechaAsignada = fecha,
+                FechaAsignada = fecha.Value,
                 Turno = turno,
                 ReemplazarSiConflicto = sobre.ReemplazarSiConflicto
             });
@@ -828,6 +984,17 @@ public class ChatIaService : IChatIaService
 
         if (indiceReceta is null && !string.IsNullOrWhiteSpace(titulo))
         {
+            var propias = (await _recetaService.GetAllAsync(usuarioId))
+                .Where(receta => receta.UsuarioId == usuarioId)
+                .ToList();
+            var propia = propias.FirstOrDefault(receta =>
+                    receta.Titulo.Trim().Equals(titulo, StringComparison.OrdinalIgnoreCase))
+                ?? propias.FirstOrDefault(receta => CoincideTitulo(receta.Titulo, titulo));
+            if (propia is not null)
+            {
+                return (propia.Id, propia.Titulo, null);
+            }
+
             var favoritos = await ObtenerFavoritosAccesiblesAsync(usuarioId);
 
             var receta = favoritos
@@ -930,30 +1097,251 @@ public class ChatIaService : IChatIaService
         }
     }
 
-    private static string InterpretarTurno(string? turno)
+    private static readonly string[] BasesSaladasEnPostre =
+    [
+        "lenteja", "garbanzo", "poroto", "polenta", "arroz", "fideo", "carne", "pollo", "papa"
+    ];
+
+    private static bool TieneBaseSalada(string? texto)
     {
-        var texto = (turno ?? string.Empty).Trim().ToLowerInvariant();
-        if (texto.Length == 0)
+        var limpio = (texto ?? string.Empty).ToLowerInvariant();
+        return BasesSaladasEnPostre.Any(baseSalada => limpio.Contains(baseSalada, StringComparison.Ordinal));
+    }
+
+    private static bool RecetaEsPostreFalso(RecetaGeneradaDto receta) =>
+        TieneBaseSalada(receta.Titulo) ||
+        receta.Ingredientes.Any(ingrediente => TieneBaseSalada(ingrediente.Nombre));
+
+    private async Task<SobreAgente> EvitarPostreFalsoAsync(
+        SobreAgente sobre,
+        List<MensajeIa> mensajes,
+        string systemInstruction,
+        string pedidoUsuario)
+    {
+        if (DetectarSabor(pedidoUsuario) != SaborPedido.Dulce ||
+            sobre.Receta is null ||
+            !RecetaEsPostreFalso(sobre.Receta))
         {
-            return TurnosComida.Almuerzo;
+            return sobre;
         }
 
-        if (texto.Contains("desayun") || texto.Contains("mañana") || texto.Contains("manana"))
+        var conversacion = new List<MensajeIa>(mensajes)
+        {
+            new("user",
+                $"\"{sobre.Receta.Titulo}\" no es un postre: usa una base salada de la alacena. " +
+                "Generá un postre real sin azúcar (fruta, huevo o avena). " +
+                "Prohibido lentejas, garbanzos, arroz, polenta, papa, fideos o carne. " +
+                "Respondé con accion 'generar_receta'.")
+        };
+
+        try
+        {
+            var json = await _asistenteIa.GenerarRespuestaConversacionAsync(conversacion, systemInstruction, jsonMode: true);
+            var alternativa = DeserializarSobre(json);
+            if (alternativa?.Receta is { Ingredientes.Count: > 0 } &&
+                string.Equals(alternativa.Accion?.Trim(), ChatAccion.GenerarReceta, StringComparison.OrdinalIgnoreCase) &&
+                !RecetaEsPostreFalso(alternativa.Receta))
+            {
+                return alternativa;
+            }
+        }
+        catch (ServicioExternoException)
+        {
+        }
+
+        sobre.Accion = ChatAccion.Conversar;
+        sobre.Receta = null;
+        sobre.Mensaje = "Eso no es un postre: no voy a usar lentejas, arroz o polenta para hacerlo dulce. " +
+            "Pedime un postre sin azúcar, por ejemplo manzanas al horno o flan sin azúcar.";
+        return sobre;
+    }
+
+    private static DateTime? FechaExplicita(string? texto, DateTime hoy)
+    {
+        var limpio = QuitarTildes((texto ?? string.Empty).ToLowerInvariant());
+        if (limpio.Contains("pasado manana", StringComparison.Ordinal))
+        {
+            return hoy.AddDays(2);
+        }
+
+        if (limpio.Contains("manana", StringComparison.Ordinal))
+        {
+            return hoy.AddDays(1);
+        }
+
+        if (limpio.Contains("hoy", StringComparison.Ordinal))
+        {
+            return hoy;
+        }
+
+        if (DateTime.TryParseExact(ExtraerFechaNumerica(limpio), ["d/M", "dd/MM", "d/M/yyyy", "dd/MM/yyyy"],
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out var numerica))
+        {
+            var anio = numerica.Year < 2000 ? hoy.Year : numerica.Year;
+            var fecha = new DateTime(anio, numerica.Month, numerica.Day);
+            if (fecha.Date < hoy.Date)
+            {
+                fecha = fecha.AddYears(1);
+            }
+
+            return fecha;
+        }
+
+        (string Nombre, DayOfWeek Dia)[] dias =
+        [
+            ("domingo", DayOfWeek.Sunday),
+            ("lunes", DayOfWeek.Monday),
+            ("martes", DayOfWeek.Tuesday),
+            ("miercoles", DayOfWeek.Wednesday),
+            ("jueves", DayOfWeek.Thursday),
+            ("viernes", DayOfWeek.Friday),
+            ("sabado", DayOfWeek.Saturday)
+        ];
+
+        foreach (var (nombre, dia) in dias)
+        {
+            if (!limpio.Contains(nombre, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var delta = ((int)dia - (int)hoy.DayOfWeek + 7) % 7;
+            if (delta == 0)
+            {
+                delta = 7;
+            }
+
+            return hoy.AddDays(delta);
+        }
+
+        return null;
+    }
+
+    private static string ExtraerFechaNumerica(string texto)
+    {
+        var inicio = -1;
+        for (var i = 0; i < texto.Length; i++)
+        {
+            if (!char.IsDigit(texto[i]))
+            {
+                continue;
+            }
+
+            inicio = i;
+            break;
+        }
+
+        if (inicio < 0)
+        {
+            return string.Empty;
+        }
+
+        var fin = inicio;
+        while (fin < texto.Length && (char.IsDigit(texto[fin]) || texto[fin] == '/'))
+        {
+            fin++;
+        }
+
+        return texto[inicio..fin].Trim('/');
+    }
+
+    private static string QuitarTildes(string texto)
+    {
+        var formD = texto.Normalize(System.Text.NormalizationForm.FormD);
+        var builder = new StringBuilder(formD.Length);
+        foreach (var caracter in formD)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(caracter) != UnicodeCategory.NonSpacingMark)
+            {
+                builder.Append(caracter);
+            }
+        }
+
+        return builder.ToString().Normalize(System.Text.NormalizationForm.FormC);
+    }
+
+    private static string? TurnoExplicito(string? texto)
+    {
+        var limpio = (texto ?? string.Empty).Trim().ToLowerInvariant();
+        if (limpio.Contains("desayun", StringComparison.Ordinal))
         {
             return TurnosComida.Desayuno;
         }
 
-        if (texto.Contains("merienda") || texto.Contains("tarde"))
+        if (limpio.Contains("almuerz", StringComparison.Ordinal) ||
+            limpio.Contains("mediodia", StringComparison.Ordinal) ||
+            limpio.Contains("mediodía", StringComparison.Ordinal))
         {
-            return TurnosComida.Merienda;
+            return TurnosComida.Almuerzo;
         }
 
-        if (texto.Contains("cena") || texto.Contains("noche"))
+        if (limpio.Contains("cena", StringComparison.Ordinal) ||
+            limpio.Contains("a la noche", StringComparison.Ordinal) ||
+            limpio.Contains("de noche", StringComparison.Ordinal) ||
+            limpio.Contains("esta noche", StringComparison.Ordinal))
         {
             return TurnosComida.Cena;
         }
 
-        return TurnosComida.Almuerzo;
+        return null;
+    }
+
+    private enum SaborPedido
+    {
+        Ninguno,
+        Dulce,
+        Salado
+    }
+
+    private static readonly string[] PalabrasDulces =
+    [
+        "dulce", "torta", "postre", "budin", "budín", "brownie", "flan", "bizcoch", "galleta",
+        "galletita", "helado", "mousse", "pastel", "chocolate", "merengue"
+    ];
+
+    private static SaborPedido DetectarSabor(string? texto)
+    {
+        var limpio = (texto ?? string.Empty).ToLowerInvariant();
+        var dulce = PalabrasDulces.Any(palabra => limpio.Contains(palabra, StringComparison.Ordinal));
+        var salado = limpio.Contains("salado", StringComparison.Ordinal) ||
+            limpio.Contains("salada", StringComparison.Ordinal);
+        if (dulce && !salado)
+        {
+            return SaborPedido.Dulce;
+        }
+
+        if (salado && !dulce)
+        {
+            return SaborPedido.Salado;
+        }
+
+        return SaborPedido.Ninguno;
+    }
+
+    private static bool EsDulce(RecetaCompatibleDto receta)
+    {
+        if (string.Equals(receta.Categoria, "postres", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var titulo = receta.Titulo.ToLowerInvariant();
+        return PalabrasDulces.Any(palabra => titulo.Contains(palabra, StringComparison.Ordinal));
+    }
+
+    private static List<RecetaCompatibleDto> FiltrarPorSabor(List<RecetaCompatibleDto> recetas, SaborPedido sabor)
+    {
+        if (sabor == SaborPedido.Dulce)
+        {
+            return recetas.Where(receta => EsDulce(receta) && !TieneBaseSalada(receta.Titulo)).ToList();
+        }
+
+        if (sabor == SaborPedido.Salado)
+        {
+            return recetas.Where(receta => !EsDulce(receta)).ToList();
+        }
+
+        return recetas;
     }
 
     private static readonly CultureInfo CulturaArgentina = CultureInfo.GetCultureInfo("es-AR");
@@ -1042,7 +1430,7 @@ public class ChatIaService : IChatIaService
 
         if (stock.Count == 0)
         {
-            contexto.AppendLine("- (la alacena está vacía)");
+            contexto.AppendLine("- (la alacena está vacía: si pide una receta, igual generá una sencilla con ingredientes básicos; el sistema le muestra qué le falta)");
         }
         else
         {
@@ -1074,6 +1462,54 @@ public class ChatIaService : IChatIaService
             }
         }
 
+        var guardadas = await ObtenerRecetasGuardadasRecientesAsync(usuarioId);
+        contexto.AppendLine();
+        if (guardadas.Count == 0)
+        {
+            contexto.AppendLine("RECETAS GUARDADAS RECIENTEMENTE: (ninguna todavía)");
+        }
+        else
+        {
+            contexto.AppendLine("RECETAS GUARDADAS RECIENTEMENTE (para variar, no para repetir):");
+            foreach (var receta in guardadas)
+            {
+                var ingredientes = string.Join(", ", receta.IngredientesReceta
+                    .Select(ingrediente => ingrediente.Ingrediente?.Nombre)
+                    .Where(nombre => !string.IsNullOrWhiteSpace(nombre)));
+                contexto.AppendLine($"- {receta.Titulo} - ingredientes: {ingredientes}");
+            }
+        }
+
+        if (stock.Count > 0)
+        {
+            var usados = recientes
+                .SelectMany(receta => receta.Ingredientes.Select(ingrediente => ingrediente.Nombre))
+                .Concat(guardadas.SelectMany(receta => receta.IngredientesReceta.Select(ingrediente => ingrediente.Ingrediente?.Nombre)))
+                .Where(nombre => !string.IsNullOrWhiteSpace(nombre))
+                .Select(nombre => nombre!.Trim().ToLowerInvariant())
+                .ToList();
+
+            var usoPorIngrediente = stock
+                .Select(item => item.Ingrediente?.Nombre?.Trim())
+                .Where(nombre => !string.IsNullOrWhiteSpace(nombre))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(nombre => (Nombre: nombre!, Usos: usados.Count(usado => CoincideIngrediente(usado, nombre!))))
+                .ToList();
+
+            var sinUsar = usoPorIngrediente.Where(item => item.Usos == 0).Select(item => item.Nombre).ToList();
+            var yaUsados = usoPorIngrediente
+                .Where(item => item.Usos > 0)
+                .OrderByDescending(item => item.Usos)
+                .Select(item => $"{item.Nombre} ({item.Usos})")
+                .ToList();
+
+            contexto.AppendLine();
+            contexto.AppendLine("INGREDIENTES DE LA ALACENA SIN USAR EN RECETAS RECIENTES O GUARDADAS (elegí la base del plato entre estos cuando se pueda): " +
+                (sinUsar.Count == 0 ? "(ninguno)" : string.Join(", ", sinUsar)));
+            contexto.AppendLine("INGREDIENTES DE LA ALACENA YA USADOS (cantidad de recetas; evitá repetirlos como base): " +
+                (yaUsados.Count == 0 ? "(ninguno)" : string.Join(", ", yaUsados)));
+        }
+
         var recetaDetalle = EsRecetaValida(recetaActual) ? recetaActual : recientes.FirstOrDefault();
         if (recetaDetalle is not null)
         {
@@ -1085,6 +1521,130 @@ public class ChatIaService : IChatIaService
         }
 
         return contexto.ToString();
+    }
+
+    private const int MaxReintentosVariedad = 2;
+
+    private async Task<SobreAgente> EvitarRecetaRepetidaAsync(
+        int usuarioId,
+        SobreAgente sobre,
+        List<MensajeIa> mensajes,
+        string systemInstruction,
+        string pedidoUsuario)
+    {
+        if (sobre.Receta is null || sobre.Receta.Ingredientes.Count == 0)
+        {
+            return sobre;
+        }
+
+        var anteriores = (await ObtenerRecetasRecientesAsync(usuarioId))
+            .Select(receta => (receta.Titulo, Ingredientes: receta.Ingredientes.Select(ingrediente => ingrediente.Nombre).ToList()))
+            .Concat((await ObtenerRecetasGuardadasRecientesAsync(usuarioId))
+                .Select(receta => (receta.Titulo, Ingredientes: receta.IngredientesReceta
+                    .Select(ingrediente => ingrediente.Ingrediente?.Nombre ?? string.Empty)
+                    .ToList())))
+            .ToList();
+
+        var actual = sobre;
+        var rechazadas = new List<string>();
+
+        for (var intento = 0; intento < MaxReintentosVariedad; intento++)
+        {
+            var nueva = IngredientesPrincipales(actual.Receta!.Ingredientes.Select(ingrediente => ingrediente.Nombre));
+            var parecida = anteriores.FirstOrDefault(anterior =>
+                EsRecetaParecida(nueva, IngredientesPrincipales(anterior.Ingredientes), pedidoUsuario));
+
+            if (parecida.Titulo is null)
+            {
+                return actual;
+            }
+
+            rechazadas.Add(actual.Receta.Titulo);
+            var listaRechazadas = string.Join(", ", rechazadas.Select(titulo => $"\"{titulo}\""));
+            var conversacion = new List<MensajeIa>(mensajes)
+            {
+                new("user",
+                    $"La receta \"{actual.Receta.Titulo}\" se parece demasiado a \"{parecida.Titulo}\" " +
+                    $"(misma base o casi los mismos ingredientes). Ya rechacé: {listaRechazadas}. " +
+                    "Generá otra receta real con OTRO ingrediente base y OTRO tipo de preparación. " +
+                    $"Si la alacena no alcanza, comprá como máximo {RealismoRecetaPrompt.MaxIngredientesAComprar} ingredientes. " +
+                    "Respondé con accion 'generar_receta'.")
+            };
+
+            try
+            {
+                var json = await _asistenteIa.GenerarRespuestaConversacionAsync(conversacion, systemInstruction, jsonMode: true);
+                var alternativa = DeserializarSobre(json);
+                if (alternativa?.Receta is { Ingredientes.Count: > 0 } &&
+                    string.Equals(alternativa.Accion?.Trim(), ChatAccion.GenerarReceta, StringComparison.OrdinalIgnoreCase))
+                {
+                    actual = alternativa;
+                    continue;
+                }
+
+                return sobre;
+            }
+            catch (ServicioExternoException)
+            {
+                return sobre;
+            }
+        }
+
+        return actual;
+    }
+
+    private static readonly string[] BasicosDeDespensa = ["sal", "pimienta", "aceite", "agua"];
+
+    private const double SimilitudMaximaIngredientes = 0.6;
+
+    private static List<string> IngredientesPrincipales(IEnumerable<string?> nombres) =>
+        nombres
+            .Where(nombre => !string.IsNullOrWhiteSpace(nombre))
+            .Select(nombre => nombre!.Trim().ToLowerInvariant())
+            .Where(nombre => !BasicosDeDespensa.Any(basico => nombre.StartsWith(basico, StringComparison.Ordinal)))
+            .Distinct()
+            .ToList();
+
+    private static bool EsRecetaParecida(List<string> nueva, List<string> anterior, string pedidoUsuario)
+    {
+        if (nueva.Count == 0 || anterior.Count == 0)
+        {
+            return false;
+        }
+
+        if (pedidoUsuario.ToLowerInvariant().Contains(anterior[0], StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (CoincideIngrediente(nueva[0], anterior[0]))
+        {
+            return true;
+        }
+
+        var compartidos = nueva.Count(ingrediente => anterior.Any(otro => CoincideIngrediente(ingrediente, otro)));
+        var union = nueva.Count + anterior.Count - compartidos;
+        return union > 0 && (double)compartidos / union >= SimilitudMaximaIngredientes;
+    }
+
+    private static bool CoincideIngrediente(string usado, string enAlacena)
+    {
+        var alacena = enAlacena.Trim().ToLowerInvariant();
+        return usado.Contains(alacena, StringComparison.Ordinal) || alacena.Contains(usado, StringComparison.Ordinal);
+    }
+
+    private async Task<List<Receta>> ObtenerRecetasGuardadasRecientesAsync(int usuarioId)
+    {
+        var favoritos = await _favoritoRepository.FindWithIncludePathsAsync(
+            favorito => favorito.UsuarioId == usuarioId,
+            $"{nameof(RecetaFavorita.Receta)}.{nameof(Receta.IngredientesReceta)}.{nameof(IngredienteReceta.Ingrediente)}");
+
+        return favoritos
+            .Where(favorito => favorito.Receta is not null)
+            .OrderByDescending(favorito => favorito.Id)
+            .Take(MaxRecetasGuardadasEnContexto)
+            .Select(favorito => favorito.Receta)
+            .ToList();
     }
 
     private static SobreAgente? DeserializarSobre(string json)

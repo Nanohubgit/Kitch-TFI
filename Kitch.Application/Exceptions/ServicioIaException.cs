@@ -4,7 +4,8 @@ public enum MotivoFallaIa
 {
     Saturado,
     NoDisponible,
-    Timeout
+    Timeout,
+    NoConfigurado
 }
 
 public class ServicioIaException : ServicioExternoException
