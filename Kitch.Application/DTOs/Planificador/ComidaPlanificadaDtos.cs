@@ -42,6 +42,7 @@ public class ComidaPlanificadaResponseDto
     public int Id { get; set; }
     public int RecetaId { get; set; }
     public string RecetaTitulo { get; set; } = string.Empty;
+    public int RecetaTiempoPreparacionMinutos { get; set; }
     public DateTime FechaAsignada { get; set; }
     public string Turno { get; set; } = string.Empty;
     public List<string> IngredientesAgregadosALista { get; set; } = [];

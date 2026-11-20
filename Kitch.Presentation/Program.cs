@@ -8,6 +8,7 @@ using Kitch.Infrastructure;
 using Kitch.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -62,17 +63,14 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-    ?? [];
-corsOrigins = corsOrigins
-    .Where(origin => !string.IsNullOrWhiteSpace(origin))
-    .Distinct(StringComparer.OrdinalIgnoreCase)
-    .ToArray();
+var corsOrigins = ResolverOrigenesCors(builder.Configuration);
 
-if (corsOrigins.Length == 0)
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    corsOrigins = ["http://localhost:5173"];
-}
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.AddCors(options =>
 {
@@ -165,13 +163,15 @@ var app = builder.Build();
 if (sinLimitesDePlan)
 {
     app.Logger.LogWarning(
-        "Modo pruebas activo ({Clave}): sin tope de recetas guardadas ni de consultas de IA del plan Básico. Dificultad, planificador y sustitutos siguen limitados.",
+        "Modo pruebas activo ({Clave}): sin tope de recetas guardadas ni de consultas de IA del plan Básico. Dificultad, favoritos, planificador y sustitutos siguen limitados.",
         claveSinLimitesDePlan);
 }
 
 await app.MigrateDatabaseAsync();
 await app.NormalizarIngredientesAsync();
 await app.SeedAdminUserAsync();
+
+app.UseForwardedHeaders();
 
 if (app.Environment.IsDevelopment())
 {
@@ -188,6 +188,62 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 app.MapControllers();
 
 app.Run();
+
+static string[] ResolverOrigenesCors(IConfiguration configuration)
+{
+    var origenes = new List<string>();
+
+    var lista = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+    if (lista is { Length: > 0 })
+    {
+        origenes.AddRange(lista);
+    }
+
+    var plano = configuration["Cors:AllowedOrigins"];
+    if (!string.IsNullOrWhiteSpace(plano))
+    {
+        origenes.AddRange(plano.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+    }
+
+    AgregarOrigenDesdeUrl(origenes, configuration["FrontendUrl"]);
+    AgregarOrigenDesdeUrl(origenes, configuration["Frontend:BaseUrl"]);
+
+    var limpios = origenes
+        .Select(NormalizarOrigen)
+        .Where(origen => !string.IsNullOrWhiteSpace(origen))
+        .Select(origen => origen!)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    return limpios.Length > 0 ? limpios : ["http://localhost:5173"];
+}
+
+static void AgregarOrigenDesdeUrl(List<string> destino, string? url)
+{
+    var origen = NormalizarOrigen(url);
+    if (!string.IsNullOrWhiteSpace(origen))
+    {
+        destino.Add(origen);
+    }
+}
+
+static string? NormalizarOrigen(string? valor)
+{
+    if (string.IsNullOrWhiteSpace(valor))
+    {
+        return null;
+    }
+
+    var limpio = valor.Trim().TrimEnd('/');
+    if (Uri.TryCreate(limpio, UriKind.Absolute, out var uri) &&
+        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+    {
+        return uri.GetLeftPart(UriPartial.Authority);
+    }
+
+    return null;
+}

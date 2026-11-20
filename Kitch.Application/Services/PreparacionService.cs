@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Kitch.Application.Common;
 using Kitch.Application.DTOs.ListaCompra;
 using Kitch.Application.DTOs.Preparacion;
@@ -13,12 +15,29 @@ namespace Kitch.Application.Services;
 public class PreparacionService : IPreparacionService
 {
     private const int MaxPorciones = 100;
+    private const int MaxTitulo = 200;
+    private const int MaxDescripcion = 1000;
+    private const int MaxPaso = 1000;
+
+    private const string InstruccionAdaptarReceta =
+        "Sos un chef argentino experto. Te paso una receta original (título, descripción y pasos de preparación) " +
+        "y los reemplazos de ingredientes que eligió el usuario. Tenés que reescribir el título, la descripción y " +
+        "TODOS los pasos en español rioplatense natural para que tengan total coherencia gramatical (género, número, " +
+        "artículos: por ejemplo 'el arroz', nunca 'las arroz') y coherencia culinaria real (por ejemplo, si reemplaza " +
+        "papa por arroz, adaptá la técnica de cocción en lugar de decir pelar el arroz). " +
+        "Si el ingrediente reemplazado figura en el título (ej: 'Tortilla de Papas' con papa -> arroz), actualizá el " +
+        "título de forma natural (ej: 'Tortilla de Arroz'). Mantené la misma cantidad exacta de pasos y su numeración " +
+        "1..N. Respondé ÚNICAMENTE con JSON válido, sin markdown, con esta forma: " +
+        "{\"titulo\":string,\"descripcion\":string,\"preparaciones\":[{\"numeroPaso\":number,\"descripcionPaso\":string}]}.";
+
+    private static readonly JsonSerializerOptions JsonOptions = JsonIa.Opciones;
 
     private readonly IRepository<Receta> _recetaRepository;
     private readonly IRepository<StockUsuario> _stockRepository;
     private readonly IRepository<Usuario> _usuarioRepository;
     private readonly IListaCompraService _listaCompraService;
     private readonly ISustitucionService _sustitucionService;
+    private readonly IAsistenteIaClient _asistenteIa;
     private readonly IUnidadDeTrabajo _unidadDeTrabajo;
 
     public PreparacionService(
@@ -27,6 +46,7 @@ public class PreparacionService : IPreparacionService
         IRepository<Usuario> usuarioRepository,
         IListaCompraService listaCompraService,
         ISustitucionService sustitucionService,
+        IAsistenteIaClient asistenteIa,
         IUnidadDeTrabajo unidadDeTrabajo)
     {
         _unidadDeTrabajo = unidadDeTrabajo;
@@ -35,6 +55,7 @@ public class PreparacionService : IPreparacionService
         _usuarioRepository = usuarioRepository;
         _listaCompraService = listaCompraService;
         _sustitucionService = sustitucionService;
+        _asistenteIa = asistenteIa;
     }
 
     public async Task<PrevisualizarPorcionesResponseDto> PrevisualizarRecalculoPorcionesAsync(PrevisualizarPorcionesRequestDto request)
@@ -50,6 +71,23 @@ public class PreparacionService : IPreparacionService
             .Select(ingrediente =>
             {
                 var ajustada = Math.Round(ingrediente.Cantidad * factor, 2);
+                if (IngredientesBasicos.EsAgua(ingrediente.Nombre))
+                {
+                    return new IngredienteAjustadoDto
+                    {
+                        IngredienteId = ingrediente.IngredienteId,
+                        Nombre = ingrediente.Nombre,
+                        CantidadOriginal = ingrediente.Cantidad,
+                        CantidadAjustada = ajustada,
+                        UnidadMedida = ingrediente.UnidadMedida,
+                        CantidadEnAlacena = ajustada,
+                        UnidadEnAlacena = ingrediente.UnidadMedida,
+                        UnidadCompatible = true,
+                        CantidadFaltante = 0m,
+                        AlcanzaStock = true
+                    };
+                }
+
                 stockPorIngrediente.TryGetValue(ingrediente.IngredienteId, out var stock);
                 var (compatible, enAlacena) = DisponibleEnUnidadReceta(stock, ingrediente.UnidadMedida);
                 var faltante = compatible
@@ -204,6 +242,7 @@ public class PreparacionService : IPreparacionService
             Receta = receta.Titulo,
             PorcionesCocinadas = request.PorcionesCocinadas,
             Ingredientes = ingredientesEfectivos
+                .Where(ingrediente => !IngredientesBasicos.EsAgua(ingrediente.Nombre))
                 .Select(ingrediente =>
                 {
                     stockPorIngrediente.TryGetValue(ingrediente.IngredienteId, out var stock);
@@ -263,6 +302,11 @@ public class PreparacionService : IPreparacionService
 
         foreach (var ingrediente in ingredientesEfectivos)
         {
+            if (IngredientesBasicos.EsAgua(ingrediente.Nombre))
+            {
+                continue;
+            }
+
             var cantidadADescontar = personalizado.TryGetValue(ingrediente.IngredienteId, out var usada)
                 ? usada
                 : Math.Round(ingrediente.Cantidad * factor, 2);
@@ -324,7 +368,7 @@ public class PreparacionService : IPreparacionService
         int usuarioId,
         AplicarSustitutoRequestDto request)
     {
-        var receta = await GetRecetaConIngredientesAsync(request.RecetaId, usuarioId);
+        var receta = await GetRecetaConIngredientesAsync(request.RecetaId, usuarioId, incluirPreparaciones: true);
         var original = receta.IngredientesReceta
             .FirstOrDefault(item => item.IngredienteId == request.IngredienteOriginalId);
 
@@ -343,34 +387,174 @@ public class PreparacionService : IPreparacionService
                 "No hay un reemplazo viable que mantenga la receta. Podés abortar o guardarla para otro momento.");
         }
 
-        var cantidadNueva = Math.Round(original.Cantidad * (elegido.FactorEquivalencia <= 0 ? 1m : elegido.FactorEquivalencia), 2);
-        var ingredientes = receta.IngredientesReceta
-            .Select(item => item.IngredienteId == original.IngredienteId
-                ? new IngredienteRecetaResponseDto
-                {
-                    Id = item.Id,
-                    IngredienteId = elegido.IngredienteId,
-                    Nombre = elegido.Nombre,
-                    Cantidad = cantidadNueva,
-                    UnidadMedida = item.UnidadMedida
-                }
-                : new IngredienteRecetaResponseDto
-                {
-                    Id = item.Id,
-                    IngredienteId = item.IngredienteId,
-                    Nombre = item.Ingrediente?.Nombre ?? $"#{item.IngredienteId}",
-                    Cantidad = item.Cantidad,
-                    UnidadMedida = item.UnidadMedida
-                })
+        var activas = (request.SustitucionesActivas ?? [])
+            .Where(item =>
+                item.IngredienteOriginalId > 0 &&
+                item.IngredienteSustitutoId > 0 &&
+                item.IngredienteOriginalId != request.IngredienteOriginalId)
             .ToList();
+        activas.Add(new SustitucionAplicadaDto
+        {
+            IngredienteOriginalId = request.IngredienteOriginalId,
+            IngredienteSustitutoId = request.IngredienteSustitutoId
+        });
+
+        var efectivos = await ResolverIngredientesEfectivosAsync(usuarioId, receta, activas);
+        var originalesPorId = receta.IngredientesReceta.ToDictionary(item => item.IngredienteId);
+        var cambiosTexto = new List<string>();
+        var ingredientes = new List<IngredienteRecetaResponseDto>(receta.IngredientesReceta.Count);
+
+        var itemsOriginales = receta.IngredientesReceta.ToList();
+        for (var i = 0; i < itemsOriginales.Count; i++)
+        {
+            var baseItem = itemsOriginales[i];
+            var efectivo = efectivos[i];
+            if (efectivo.IngredienteId != baseItem.IngredienteId)
+            {
+                var nombreBase = baseItem.Ingrediente?.Nombre ?? $"#{baseItem.IngredienteId}";
+                cambiosTexto.Add($"- Reemplazar '{nombreBase}' por '{efectivo.Nombre}' ({efectivo.Cantidad} {efectivo.UnidadMedida})");
+            }
+
+            ingredientes.Add(new IngredienteRecetaResponseDto
+            {
+                Id = baseItem.Id,
+                IngredienteId = efectivo.IngredienteId,
+                Nombre = efectivo.Nombre,
+                Cantidad = efectivo.Cantidad,
+                UnidadMedida = efectivo.UnidadMedida
+            });
+        }
+
+        var pasosBase = receta.Preparaciones
+            .OrderBy(paso => paso.NumeroPaso)
+            .Select((paso, index) => new PreparacionRecetaResponseDto
+            {
+                Id = paso.Id,
+                NumeroPaso = index + 1,
+                DescripcionPaso = paso.DescripcionPaso
+            })
+            .ToList();
+
+        var adaptada = await AdaptarTextosRecetaConIaAsync(receta, pasosBase, cambiosTexto);
+        var nombreOriginal = originalesPorId.TryGetValue(original.IngredienteId, out var orig)
+            ? orig.Ingrediente?.Nombre ?? "el ingrediente"
+            : "el ingrediente";
 
         return new AplicarSustitutoResponseDto
         {
             RecetaId = receta.Id,
-            Titulo = receta.Titulo,
-            Mensaje = $"Reemplazamos {original.Ingrediente?.Nombre ?? "el ingrediente"} por {elegido.Nombre}.",
-            Ingredientes = ingredientes
+            Titulo = adaptada.Titulo,
+            Descripcion = adaptada.Descripcion,
+            Mensaje = $"Reemplazamos {nombreOriginal} por {elegido.Nombre}.",
+            Ingredientes = ingredientes,
+            Preparaciones = adaptada.Preparaciones
         };
+    }
+
+    private async Task<(string Titulo, string Descripcion, List<PreparacionRecetaResponseDto> Preparaciones)>
+        AdaptarTextosRecetaConIaAsync(
+            Receta receta,
+            List<PreparacionRecetaResponseDto> pasosBase,
+            List<string> cambiosTexto)
+    {
+        if (cambiosTexto.Count == 0)
+        {
+            return (receta.Titulo, receta.Descripcion, pasosBase);
+        }
+
+        try
+        {
+            var pasosTexto = string.Join("\n", pasosBase.Select(p => $"{p.NumeroPaso}. {p.DescripcionPaso}"));
+            var prompt =
+                $"Receta original:\n" +
+                $"Título: {receta.Titulo}\n" +
+                $"Descripción: {receta.Descripcion}\n" +
+                $"Pasos:\n{pasosTexto}\n\n" +
+                $"Reemplazos elegidos:\n{string.Join("\n", cambiosTexto)}";
+
+            var json = await _asistenteIa.GenerarRespuestaJsonAsync(prompt, InstruccionAdaptarReceta);
+            var limpio = JsonIa.LimpiarBloqueCodigo(json);
+            if (limpio.Length == 0)
+            {
+                return (receta.Titulo, receta.Descripcion, pasosBase);
+            }
+
+            var dto = JsonSerializer.Deserialize<RecetaAdaptadaIaDto>(limpio, JsonOptions);
+            if (dto is null)
+            {
+                return (receta.Titulo, receta.Descripcion, pasosBase);
+            }
+
+            var titulo = RecortarTexto(dto.Titulo, MaxTitulo, receta.Titulo);
+            var descripcion = RecortarTexto(dto.Descripcion, MaxDescripcion, receta.Descripcion);
+            var pasosAdaptados = ResolverPasosAdaptados(dto.Preparaciones, pasosBase);
+
+            return (titulo, descripcion, pasosAdaptados);
+        }
+        catch
+        {
+            return (receta.Titulo, receta.Descripcion, pasosBase);
+        }
+    }
+
+    private static string RecortarTexto(string? valor, int maximo, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(valor))
+        {
+            return fallback;
+        }
+
+        var limpio = valor.Trim();
+        return limpio.Length > maximo ? limpio[..maximo].TrimEnd() : limpio;
+    }
+
+    private static List<PreparacionRecetaResponseDto> ResolverPasosAdaptados(
+        List<PasoAdaptadoIaDto>? generados,
+        List<PreparacionRecetaResponseDto> pasosBase)
+    {
+        if (generados is null || generados.Count != pasosBase.Count)
+        {
+            return pasosBase;
+        }
+
+        var ordenados = generados
+            .OrderBy(paso => paso.NumeroPaso)
+            .ToList();
+
+        var resultado = new List<PreparacionRecetaResponseDto>(pasosBase.Count);
+        for (var i = 0; i < pasosBase.Count; i++)
+        {
+            var texto = RecortarTexto(ordenados[i].DescripcionPaso, MaxPaso, pasosBase[i].DescripcionPaso);
+            resultado.Add(new PreparacionRecetaResponseDto
+            {
+                Id = pasosBase[i].Id,
+                NumeroPaso = pasosBase[i].NumeroPaso,
+                DescripcionPaso = texto
+            });
+        }
+
+        return resultado;
+    }
+
+    private sealed class RecetaAdaptadaIaDto
+    {
+        [JsonPropertyName("titulo")]
+        public string? Titulo { get; set; }
+
+        [JsonPropertyName("descripcion")]
+        public string? Descripcion { get; set; }
+
+        [JsonPropertyName("preparaciones")]
+        public List<PasoAdaptadoIaDto>? Preparaciones { get; set; }
+    }
+
+    private sealed class PasoAdaptadoIaDto
+    {
+        [JsonPropertyName("numeroPaso")]
+        public int NumeroPaso { get; set; }
+
+        [JsonPropertyName("descripcionPaso")]
+        public string? DescripcionPaso { get; set; }
     }
 
     public Task<DescuentoStockResultadoDto> DescontarIngredientesParcialAsync(
@@ -450,6 +634,11 @@ public class PreparacionService : IPreparacionService
 
         foreach (var ingrediente in ingredientesEfectivos)
         {
+            if (IngredientesBasicos.EsAgua(ingrediente.Nombre))
+            {
+                continue;
+            }
+
             var cantidadNecesaria = Math.Round(ingrediente.Cantidad * factor, 2);
             if (cantidadNecesaria <= 0)
             {
@@ -529,11 +718,18 @@ public class PreparacionService : IPreparacionService
             .ToDictionary(grupo => grupo.Key, grupo => grupo.First());
     }
 
-    private async Task<Receta> GetRecetaConIngredientesAsync(int recetaId, int usuarioId)
+    private async Task<Receta> GetRecetaConIngredientesAsync(
+        int recetaId,
+        int usuarioId,
+        bool incluirPreparaciones = false)
     {
+        var rutas = incluirPreparaciones
+            ? new[] { $"{nameof(Receta.IngredientesReceta)}.{nameof(IngredienteReceta.Ingrediente)}", nameof(Receta.Preparaciones) }
+            : new[] { $"{nameof(Receta.IngredientesReceta)}.{nameof(IngredienteReceta.Ingrediente)}" };
+
         var recetas = await _recetaRepository.FindWithIncludePathsAsync(
             receta => receta.Id == recetaId,
-            $"{nameof(Receta.IngredientesReceta)}.{nameof(IngredienteReceta.Ingrediente)}");
+            rutas);
 
         var receta = recetas.FirstOrDefault()
             ?? throw new KeyNotFoundException(AccesoReceta.MensajeNoEncontrada);

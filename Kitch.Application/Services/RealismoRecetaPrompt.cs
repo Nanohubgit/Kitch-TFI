@@ -13,11 +13,14 @@ internal static class RealismoRecetaPrompt
         "El título es el nombre con el que ese plato se conoce de verdad (ej. 'Mondongo a la española', 'Pollo al horno con papas', " +
         "'Shakshuka', 'Tortilla de papas', 'Albóndigas de lentejas'). PROHIBIDO inventar nombres o combinar nombres de ingredientes " +
         "(ej. 'Huevos al mondongo', 'Albóndigas de polenta y frutos secos').\n" +
-        "2) PLATO PEDIDO: si el usuario pide un plato puntual (ej. 'albóndigas', 'tarta', 'guiso'), hacé la versión clásica real de ESE plato. " +
+        "2) PLATO O INGREDIENTE PEDIDO: si el usuario pide un plato puntual (ej. 'albóndigas', 'tarta', 'guiso', 'carne al horno') " +
+        "o un ingrediente puntual (ej. 'algo con carne', 'una receta con pollo', 'receta con pescado'), hacé SIEMPRE la versión clásica real " +
+        "de ESE plato o con ESE ingrediente, AUNQUE ESE INGREDIENTE NO ESTÉ EN LA ALACENA (salvo que viole su restricción dietética). " +
         "Si tiene una restricción dietética, usá la adaptación tradicional y conocida (ej. vegano: albóndigas de lentejas o garbanzos, " +
         "milanesas de berenjena o soja, tortilla de garbanzo), nunca una mezcla inventada con lo que haya en la alacena. " +
-        "Usá la alacena solo para los ingredientes que ese plato lleva naturalmente; en este caso el límite de compras sube a " +
-        $"{MaxIngredientesAComprarPlatoPedido}. " +
+        "Usá la alacena solo para los ingredientes que ese plato lleva naturalmente y poné los faltantes en 'ingredientesAComprar'; " +
+        $"en este caso el límite de compras sube a {MaxIngredientesAComprarPlatoPedido}. " +
+        "Nunca devuelvas 'receta' vacía ni rechaces un pedido solo porque el ingrediente pedido no está en la alacena. " +
         "Si el pedido es dulce, torta o postre, el plato es un postre de recetario. " +
         "La alacena no puede cambiarlo por un invento salado (galletas de lentejas, torta de arroz, budín de polenta). " +
         "Si falta fruta, huevo o avena, se compran dentro del límite.\n" +
@@ -41,8 +44,11 @@ internal static class RealismoRecetaPrompt
         "7) No metas ingredientes que no combinan con el plato solo para aprovecharlos (ej. con mondongo, huevo y tomate NO hagas un " +
         "revuelto ni le pongas huevo al mondongo: elegí 'Mondongo a la española' con tomate, o 'Huevos rancheros' con huevo y tomate).\n" +
         "8) BÁSICOS DE DESPENSA: sal, pimienta, aceite y agua se asumen disponibles y no cuentan como compra. Cualquier otro ingrediente " +
-        "que no esté en la alacena cuenta como compra. Si un ingrediente tradicional es opcional o de adorno (ej. comino, perejil, " +
+        "que no esté en la alacena cuenta como compra. " +
+        "Si un ingrediente tradicional es opcional o de adorno (ej. comino, perejil, " +
         "queso para gratinar) y no está en la alacena, hacé la versión sin él. " +
+        "PROHIBIDO escribir '(opcional)', 'opcional', '(a gusto)' ni aclaraciones entre paréntesis en el nombre de ningún ingrediente ni en el título; " +
+        "si querés aclarar que algo es opcional, hacelo únicamente en 'descripcion'. " +
         "Si la alacena está vacía, el límite de compras no aplica: proponé un plato clásico sencillo, con pocos ingredientes " +
         "básicos, baratos y fáciles de conseguir, y NUNCA respondas que no podés armar una receta por no tener ingredientes.\n" +
         "9) Técnicas y tiempos reales: el mondongo se hierve entre 1,5 y 2 horas hasta quedar tierno; las legumbres secas " +

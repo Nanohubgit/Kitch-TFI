@@ -1,11 +1,28 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using Kitch.Application.Interfaces;
 
 namespace Kitch.Application.Services;
 
 public class IngredienteNormalizerService : IIngredienteNormalizerService
 {
+    private static readonly Regex RegexParentesisCalificador = new(
+        @"\s*[\(\[]\s*[^)\]]*(?:opcional|optativ[oa]?|a\s+gusto|al\s+gusto|si\s+se\s+desea|si\s+quer[eé]s|si\s+prefier\w*|para\s+(?:decorar|servir|acompa[nñ]ar|terminar|espolvorear)|c/n|cantidad\s+necesaria|aprox\.?)[^)\]]*[\)\]]",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex RegexSufijoCalificador = new(
+        @"(?:\s*[,;/\-–—]\s*|\s+)(?:opcional|optativ[oa]?|a\s+gusto|al\s+gusto|si\s+se\s+desea|c/n|cantidad\s+necesaria)\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex RegexParentesisVacios = new(
+        @"\s*[\(\[]\s*[\)\]]",
+        RegexOptions.Compiled);
+
+    private static readonly Regex RegexEspaciosMultiples = new(
+        @"\s+",
+        RegexOptions.Compiled);
+
     private static readonly HashSet<string> PluralesInvariantes = new(StringComparer.Ordinal)
     {
         "lentejas",
@@ -25,14 +42,37 @@ public class IngredienteNormalizerService : IIngredienteNormalizerService
         "humus"
     };
 
+    public string LimpiarNombreVisible(string? nombre)
+    {
+        if (string.IsNullOrWhiteSpace(nombre))
+        {
+            return string.Empty;
+        }
+
+        var limpio = nombre.Trim();
+        string anterior;
+        do
+        {
+            anterior = limpio;
+            limpio = RegexParentesisCalificador.Replace(limpio, " ");
+            limpio = RegexSufijoCalificador.Replace(limpio, string.Empty);
+            limpio = RegexParentesisVacios.Replace(limpio, " ");
+            limpio = RegexEspaciosMultiples.Replace(limpio, " ").Trim(' ', ',', ';', '-', '/', '–', '—');
+        }
+        while (!string.Equals(limpio, anterior, StringComparison.Ordinal));
+
+        return limpio;
+    }
+
     public string Normalizar(string? nombre)
     {
         if (string.IsNullOrWhiteSpace(nombre))
         {
-            throw new ArgumentException("El nombre del ingrediente no puede ser nulo o vacío.", nameof(nombre));
+            throw new ArgumentException("El nombre del ingrediente no puede ser nulo o vacío.");
         }
 
-        var texto = QuitarTildes(nombre.Trim().ToLowerInvariant());
+        var visible = LimpiarNombreVisible(nombre);
+        var texto = QuitarTildes(visible.ToLowerInvariant());
         var palabras = texto.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
 
         for (var i = 0; i < palabras.Length; i++)
@@ -43,7 +83,7 @@ public class IngredienteNormalizerService : IIngredienteNormalizerService
         var normalizado = string.Join(' ', palabras);
         if (string.IsNullOrWhiteSpace(normalizado))
         {
-            throw new ArgumentException("El nombre del ingrediente no puede ser nulo o vacío.", nameof(nombre));
+            throw new ArgumentException("El nombre del ingrediente no puede ser nulo o vacío.");
         }
 
         return normalizado;
