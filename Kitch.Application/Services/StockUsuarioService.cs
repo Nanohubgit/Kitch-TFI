@@ -12,18 +12,21 @@ public class StockUsuarioService : IStockUsuarioService
     private readonly IRepository<StockUsuario> _repository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
     private readonly IIngredienteNormalizerService _normalizer;
+    private readonly IIngredienteValidadorService _validador;
     private readonly IUnidadDeTrabajo _unidadDeTrabajo;
 
     public StockUsuarioService(
         IRepository<StockUsuario> repository,
         IRepository<Ingrediente> ingredienteRepository,
         IIngredienteNormalizerService normalizer,
+        IIngredienteValidadorService validador,
         IUnidadDeTrabajo unidadDeTrabajo)
     {
         _unidadDeTrabajo = unidadDeTrabajo;
         _repository = repository;
         _ingredienteRepository = ingredienteRepository;
         _normalizer = normalizer;
+        _validador = validador;
     }
 
     public async Task<IEnumerable<StockUsuarioResponseDto>> GetByUsuarioIdAsync(int usuarioId)
@@ -42,8 +45,15 @@ public class StockUsuarioService : IStockUsuarioService
         return stock.FirstOrDefault()?.ToResponseDto();
     }
 
-    public Task<StockUsuarioResponseDto> CreateAsync(StockUsuarioCreateDto stock) =>
-        EnTransaccionAsync(stock.UsuarioId, () => CreateEnTransaccionAsync(stock));
+    public async Task<StockUsuarioResponseDto> CreateAsync(StockUsuarioCreateDto stock)
+    {
+        if (stock.IngredienteId <= 0 && !string.IsNullOrWhiteSpace(stock.NombreIngrediente))
+        {
+            await _validador.AsegurarEsAlimentoAsync(stock.NombreIngrediente);
+        }
+
+        return await EnTransaccionAsync(stock.UsuarioId, () => CreateEnTransaccionAsync(stock));
+    }
 
     private Task<T> EnTransaccionAsync<T>(int usuarioId, Func<Task<T>> operacion) =>
         _unidadDeTrabajo.EjecutarAsync(async () =>

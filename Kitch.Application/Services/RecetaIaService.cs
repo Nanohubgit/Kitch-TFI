@@ -26,6 +26,7 @@ public class RecetaIaService : IRecetaIaService
         "\"pasos\": [string]}. " +
         "El campo categoria es OBLIGATORIO: elegí exactamente uno de esos valores, en minúsculas. " +
         "Si no encaja con claridad, usá \"general\". " +
+        "En 'ingredientes[].nombre' poné solo el nombre limpio del ingrediente, sin '(opcional)', 'opcional' ni paréntesis (cualquier aclaración opcional va solo en 'descripcion'). " +
         "El tiempo y las porciones deben ser mayores a cero, y tiene que haber al menos un ingrediente y un paso.";
 
     public static readonly string InstruccionPlanBasico =
@@ -208,6 +209,10 @@ public class RecetaIaService : IRecetaIaService
         {
             receta.Ingredientes ??= [];
             receta.Pasos ??= [];
+            foreach (var ingrediente in receta.Ingredientes)
+            {
+                ingrediente.Nombre = _normalizer.LimpiarNombreVisible(ingrediente.Nombre);
+            }
         }
 
         if (receta is null || string.IsNullOrWhiteSpace(receta.Titulo) || receta.Ingredientes.Count == 0)

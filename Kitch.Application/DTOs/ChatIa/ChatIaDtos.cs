@@ -31,8 +31,12 @@ public static class ChatAccion
     public const string Recomendar = "recomendar";
     public const string EliminarReceta = "eliminar_receta";
     public const string PlanificarReceta = "planificar_receta";
+    public const string EliminarComidaPlanificada = "eliminar_comida_planificada";
     public const string CocinarReceta = "cocinar_receta";
     public const string ConsultarRecetasGuardadas = "consultar_recetas_guardadas";
+    public const string AgregarIngredienteAlacena = "agregar_ingrediente_alacena";
+    public const string ActualizarIngredienteAlacena = "actualizar_ingrediente_alacena";
+    public const string EliminarIngredienteAlacena = "eliminar_ingrediente_alacena";
 }
 
 public class ChatRespuestaDto

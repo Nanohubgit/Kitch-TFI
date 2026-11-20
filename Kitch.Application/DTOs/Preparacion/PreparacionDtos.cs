@@ -121,14 +121,18 @@ public class AplicarSustitutoRequestDto
 
     [Required]
     public int IngredienteSustitutoId { get; set; }
+
+    public List<SustitucionAplicadaDto> SustitucionesActivas { get; set; } = new();
 }
 
 public class AplicarSustitutoResponseDto
 {
     public int RecetaId { get; set; }
     public string Titulo { get; set; } = string.Empty;
+    public string Descripcion { get; set; } = string.Empty;
     public string Mensaje { get; set; } = string.Empty;
     public List<IngredienteRecetaResponseDto> Ingredientes { get; set; } = new();
+    public List<PreparacionRecetaResponseDto> Preparaciones { get; set; } = new();
 }
 
 public class IngredienteDescuentoDto

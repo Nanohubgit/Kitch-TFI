@@ -7,6 +7,7 @@ using Kitch.Application.DTOs.ChatIa;
 using Kitch.Application.DTOs.Planificador;
 using Kitch.Application.DTOs.RecetaIa;
 using Kitch.Application.DTOs.Recomendacion;
+using Kitch.Application.DTOs.StockUsuarios;
 using Kitch.Application.DTOs.Sustituciones;
 using Kitch.Application.Exceptions;
 using Kitch.Application.Interfaces;
@@ -32,7 +33,7 @@ public class ChatIaService : IChatIaService
         "Cuando el usuario se refiera a una receta de esa lista, poné su número en 'indiceReceta' y su título en 'nombre'. " +
         "Si hay varias recetas, identificá CUÁL pidió el usuario; no inventes otra.\n\n" +
         "RESPONDÉS SIEMPRE EXCLUSIVAMENTE con un ÚNICO objeto JSON válido, sin texto extra ni markdown, con esta forma EXACTA:\n" +
-        "{\"accion\": \"conversar\"|\"generar_receta\"|\"guardar_receta\"|\"sustituir\"|\"recomendar\"|\"eliminar_receta\"|\"planificar_receta\"|\"cocinar_receta\"|\"consultar_recetas_guardadas\", " +
+        "{\"accion\": \"conversar\"|\"generar_receta\"|\"guardar_receta\"|\"sustituir\"|\"recomendar\"|\"eliminar_receta\"|\"planificar_receta\"|\"eliminar_comida_planificada\"|\"cocinar_receta\"|\"consultar_recetas_guardadas\"|\"agregar_ingrediente_alacena\"|\"actualizar_ingrediente_alacena\"|\"eliminar_ingrediente_alacena\", " +
         "\"mensaje\": string, " +
         "\"nombre\": string | null, " +
         "\"ingredientes\": [{\"nombre\": string, \"cantidad\": number, \"unidadMedida\": string}] | null, " +
@@ -45,19 +46,26 @@ public class ChatIaService : IChatIaService
         "\"ingredienteSustituir\": string | null, \"tituloEliminar\": string | null, \"eliminarTodas\": boolean, " +
         "\"tituloPlanificar\": string | null, \"fechaPlanificar\": string | null, \"turnoPlanificar\": string | null, " +
         "\"tituloCocinar\": string | null, \"porcionesCocinar\": number | null, " +
+        "\"ingredientesAlacena\": [{\"nombre\": string, \"cantidad\": number | null, \"unidadMedida\": string | null}] | null, " +
+        "\"eliminarTodosAlacena\": boolean, " +
         "\"indiceReceta\": number | null, \"reemplazarSiConflicto\": boolean}\n\n" +
         "REGLAS DE LA 'accion':\n" +
         "- 'conversar': charla general, dudas, consejos. 'receta' va en null.\n" +
         "- 'generar_receta': el usuario pide una receta, ideas de qué cocinar o qué puede hacer con lo que tiene " +
         "(ej. '¿qué puedo cocinar con lo que tengo?', 'receta rápida para hoy', 'generame algo con lo de la alacena', " +
-        "'tengo ganas de algo con huevo para la cena', 'dame otra'). Ante la duda entre 'conversar' y 'generar_receta' " +
-        "cuando el usuario quiere cocinar algo, usá 'generar_receta'. Completás 'receta' (mín. 1 ingrediente y 1 paso, " +
-        "tiempo y porciones > 0). Basala en los ingredientes de la alacena que combinen bien, siguiendo las reglas de " +
+        "'tengo ganas de algo con huevo para la cena', 'dame una receta de carne al horno', 'dame otra'). Ante la duda entre 'conversar' y 'generar_receta' " +
+        "cuando el usuario quiere cocinar algo, usá 'generar_receta'. OBLIGATORIO: completá el objeto 'receta' (NUNCA lo dejes null; " +
+        "mín. 1 ingrediente y 1 paso, tiempo y porciones > 0, y poné 'ingredientes' y 'pasos' DENTRO de 'receta'). " +
+        "Si el usuario pide un plato o ingrediente puntual (ej. carne, pollo, polenta), generá la receta aunque no tenga ese ingrediente en la alacena " +
+        "(el sistema le muestra qué le falta comprar), salvo que viole su restricción dietética. " +
+        "Si no pidió un plato puntual, basala en los ingredientes de la alacena que combinen bien, siguiendo las reglas de " +
         "REALISMO CULINARIO. Una receta nueva NUNCA copia una de RECETAS RECIENTES ni la receta en pantalla: " +
         "pensala de cero aunque los ingredientes sean los mismos, salvo que el usuario pida explícitamente repetirla. " +
         "En 'mensaje' presentás la receta. " +
         "SIEMPRE poné en 'titulo' el nombre real y reconocible del plato (ej. 'Tortilla de papas'); NUNCA uses 'string', " +
         "'receta' ni dejes el título vacío. " +
+        "En 'ingredientes[].nombre' poné solo el nombre limpio del ingrediente, NUNCA '(opcional)', 'opcional' ni paréntesis " +
+        "(si algo es opcional, aclaralo solo en 'descripcion'). " +
         "OBLIGATORIO: en 'categoria' elegí exactamente uno de estos valores en minúsculas: " +
         "pastas, carnes, pollo, ensaladas, sopas, pescados, pizzas, postres, tartas, guisos, general. " +
         "Si no encaja con claridad, usá 'general'.\n" +
@@ -77,18 +85,28 @@ public class ChatIaService : IChatIaService
         "Si quiere borrar TODAS (ej. 'borrá todas mis recetas', 'eliminá todos mis favoritos', 'borrá todo', 'limpiá mis favoritos'), " +
         "poné 'eliminarTodas' en true y 'tituloEliminar' en null. En 'mensaje' confirmás. " +
         "El sistema borra solo recetas que el usuario tenga guardadas.\n" +
-        "- 'planificar_receta': el usuario quiere agendar/planificar una receta para una fecha y momento del día " +
-        "(ej. 'planificá la tortilla para mañana al mediodía', 'agendá esta receta para el viernes a la cena'). " +
-        "En 'tituloPlanificar' poné el nombre de la receta (o dejalo null si se refiere a la última receta de la conversación); " +
-        "si es una de RECETAS RECIENTES, poné además su número en 'indiceReceta'. " +
-        "Si el sistema avisó que ese turno ya estaba ocupado y el usuario confirma que quiere reemplazarlo ('sí, reemplazala'), " +
-        "repetí receta, fecha y turno y poné 'reemplazarSiConflicto' en true; en cualquier otro caso dejalo en false. " +
-        "En 'fechaPlanificar' poné la fecha en formato YYYY-MM-DD (resolvé 'hoy', 'mañana', 'el viernes' usando la 'Fecha de hoy' del contexto). " +
-        "En 'turnoPlanificar' poné el momento SOLO si el usuario lo dijo en este mensaje: 'Desayuno', 'Almuerzo' o 'Cena'. " +
-        "Si NO dijo el tipo de comida, NO uses 'planificar_receta' y NO inventes 'Cena': usá 'conversar' y preguntá " +
-        "si la quiere en Desayuno, Almuerzo o Cena. " +
-        "En 'mensaje' confirmás. El sistema agrega solo lo que el usuario tenga guardado y, si le faltan ingredientes, " +
-        "los suma automáticamente a su lista de compras.\n" +
+        "- 'planificar_receta': el usuario quiere agendar/planificar una receta para una fecha y momento del día, o está respondiendo " +
+        "el día/turno/confirmación que le pediste en el turno anterior para terminar de planificarla " +
+        "(ej. 'planificá el guiso de lentejas para el domingo', 'Almuerzo', 'el viernes a la cena', 'sí, reemplazala'). " +
+        "En 'tituloPlanificar' poné el nombre EXACTO de la receta mencionada en el pedido o en el historial de esta planificación " +
+        "(revisá MIS RECETAS GUARDADAS y RECETAS RECIENTES). Si el usuario nombró una receta específica, dejá 'indiceReceta' en null " +
+        "para no confundirla con otra receta reciente; usá 'indiceReceta' SOLO si dijo 'esta', 'la última', 'la anterior' o un número. " +
+        "Si el sistema avisó que ese turno ya estaba ocupado y el usuario confirma ('sí, reemplazala'), repetí receta, fecha y turno y poné 'reemplazarSiConflicto' en true. " +
+        "En 'fechaPlanificar' poné YYYY-MM-DD (conservando la fecha que el usuario dijo en turnos previos de esta planificación si ahora solo indicó el turno). " +
+        "En 'turnoPlanificar' poné 'Desayuno', 'Almuerzo', 'Merienda' o 'Cena' SOLO si el usuario lo dijo en esta planificación (no inventes un turno). " +
+        "Usá 'planificar_receta' incluso si falta solo el turno o solo la fecha: el sistema le pregunta exactamente lo que falta.\n" +
+        "- 'eliminar_comida_planificada': el usuario quiere quitar/sacar/borrar una o todas las comidas de su planificador semanal " +
+        "(ej. 'sacá el almuerzo del domingo', 'borrá las hamburguesas de lentejas del planificador', 'limpiá mi planificador'). " +
+        "Completá 'tituloPlanificar', 'fechaPlanificar' y/o 'turnoPlanificar' según lo que haya dicho, o 'eliminarTodas': true si quiere vaciarlo.\n" +
+        "- 'agregar_ingrediente_alacena': el usuario quiere agregar uno o más ingredientes/alimentos a su alacena " +
+        "(ej. 'agregá 6 huevos a mi alacena', 'compré 1 kg de papa y 1 litro de leche'). " +
+        "Completá 'ingredientesAlacena' con nombre, cantidad y unidadMedida (si no indicó cantidad, usá 1 y unidad 'u').\n" +
+        "- 'actualizar_ingrediente_alacena': el usuario quiere cambiar la cantidad de un ingrediente que ya tiene en su alacena " +
+        "(ej. 'dejame 2 huevos en la alacena', 'me quedaron 300 gr de arroz'). Completá 'ingredientesAlacena'.\n" +
+        "- 'eliminar_ingrediente_alacena': el usuario quiere borrar/eliminar/sacar uno, varios o todos los ingredientes de su alacena " +
+        "(ej. 'borrá los huevooo de la alacena', 'eliminá el ajo y la leche', 'sacá la polenta de mi alacena', 'vaciá mi alacena'). " +
+        "Entendé errores de tipeo, mayúsculas, plurales o letras repetidas y poné en 'ingredientesAlacena' el nombre tal como está en la alacena o como lo dijo el usuario; " +
+        "si quiere borrar todo el stock, poné 'eliminarTodosAlacena': true.\n" +
         "- Si el usuario pide algo dulce (torta, postre, budín, flan) y no hay coincidencias, no recomiendes platos salados. " +
         "Generá o recomendá solo postres. Si pide algo salado, no recomiendes postres.\n" +
         "- 'cocinar_receta': el usuario avisa que YA cocinó/preparó una receta y quiere descontar los " +
@@ -149,6 +167,7 @@ public class ChatIaService : IChatIaService
     private readonly IFavoritoService _favoritoService;
     private readonly ICuotaIaService _cuotaIa;
     private readonly IRecetaService _recetaService;
+    private readonly IStockUsuarioService _stockUsuarioService;
     private readonly IUnidadDeTrabajo _unidadDeTrabajo;
     private readonly IMemoryCache _cache;
 
@@ -167,10 +186,12 @@ public class ChatIaService : IChatIaService
         IFavoritoService favoritoService,
         ICuotaIaService cuotaIa,
         IRecetaService recetaService,
+        IStockUsuarioService stockUsuarioService,
         IUnidadDeTrabajo unidadDeTrabajo,
         IMemoryCache cache)
     {
         _recetaService = recetaService;
+        _stockUsuarioService = stockUsuarioService;
         _unidadDeTrabajo = unidadDeTrabajo;
         _cache = cache;
         _asistenteIa = asistenteIa;
@@ -301,6 +322,7 @@ public class ChatIaService : IChatIaService
 
         if (string.Equals(sobre.Accion?.Trim(), ChatAccion.GenerarReceta, StringComparison.OrdinalIgnoreCase))
         {
+            sobre = await AsegurarRecetaCompletaAsync(sobre, mensajes, systemInstruction, ultimoTexto);
             sobre = await EvitarRecetaRepetidaAsync(usuarioId, sobre, mensajes, systemInstruction, ultimoTexto);
             sobre = await EvitarPostreFalsoAsync(sobre, mensajes, systemInstruction, ultimoTexto);
         }
@@ -312,9 +334,13 @@ public class ChatIaService : IChatIaService
             ChatAccion.Sustituir => await ResolverSustituirAsync(usuarioId, sobre),
             ChatAccion.Recomendar => await ResolverRecomendarAsync(usuarioId, sobre, mensajes, systemInstruction, ultimoTexto),
             ChatAccion.EliminarReceta => await ResolverEliminarRecetaAsync(usuarioId, sobre),
-            ChatAccion.PlanificarReceta => await ResolverPlanificarRecetaAsync(usuarioId, sobre, ultimoTexto),
+            ChatAccion.PlanificarReceta => await ResolverPlanificarRecetaAsync(usuarioId, sobre, turnos),
+            ChatAccion.EliminarComidaPlanificada => await ResolverEliminarComidaPlanificadaAsync(usuarioId, sobre, turnos),
             ChatAccion.CocinarReceta => await ResolverCocinarRecetaAsync(usuarioId, sobre),
             ChatAccion.ConsultarRecetasGuardadas => await ResolverConsultarRecetasGuardadasAsync(usuarioId, sobre),
+            ChatAccion.AgregarIngredienteAlacena => await ResolverAgregarIngredienteAlacenaAsync(usuarioId, sobre),
+            ChatAccion.ActualizarIngredienteAlacena => await ResolverActualizarIngredienteAlacenaAsync(usuarioId, sobre),
+            ChatAccion.EliminarIngredienteAlacena => await ResolverEliminarIngredienteAlacenaAsync(usuarioId, sobre, ultimoTexto),
             _ => new ChatRespuestaDto
             {
                 Accion = ChatAccion.Conversar,
@@ -337,9 +363,53 @@ public class ChatIaService : IChatIaService
         return respuesta;
     }
 
+    private async Task<SobreAgente> AsegurarRecetaCompletaAsync(
+        SobreAgente sobre,
+        List<MensajeIa> mensajes,
+        string systemInstruction,
+        string pedidoUsuario)
+    {
+        var compuesta = ComponerRecetaDesdeSobre(sobre);
+        if (EsRecetaValida(compuesta))
+        {
+            sobre.Receta = compuesta;
+            return sobre;
+        }
+
+        var conversacion = new List<MensajeIa>(mensajes)
+        {
+            new("user",
+                $"Respondiste con accion 'generar_receta' pero dejaste el objeto 'receta' vacío o sin ingredientes. " +
+                $"Generá ahora una receta clásica real para: \"{pedidoUsuario}\". " +
+                "Completá el objeto 'receta' con titulo, descripcion, tiempoPreparacionMinutos, porciones, dificultad, caloriasEstimadas, categoria, ingredientes y pasos, " +
+                "aunque falten ingredientes en la alacena (anotalos en ingredientesAComprar). Respondé con accion 'generar_receta'.")
+        };
+
+        try
+        {
+            var json = await _asistenteIa.GenerarRespuestaConversacionAsync(conversacion, systemInstruction, jsonMode: true);
+            var reintento = DeserializarSobre(json);
+            if (reintento is not null)
+            {
+                var recetaReintento = ComponerRecetaDesdeSobre(reintento);
+                if (EsRecetaValida(recetaReintento))
+                {
+                    reintento.Accion = ChatAccion.GenerarReceta;
+                    reintento.Receta = recetaReintento;
+                    return reintento;
+                }
+            }
+        }
+        catch (ServicioExternoException)
+        {
+        }
+
+        return sobre;
+    }
+
     private async Task<ChatRespuestaDto> ResolverGenerarRecetaAsync(int usuarioId, SobreAgente sobre)
     {
-        var receta = sobre.Receta;
+        var receta = ComponerRecetaDesdeSobre(sobre);
         if (receta is null || receta.Ingredientes.Count == 0)
         {
             return new ChatRespuestaDto
@@ -347,6 +417,11 @@ public class ChatIaService : IChatIaService
                 Accion = ChatAccion.Conversar,
                 Mensaje = "No pude armar una receta válida esta vez. Probá pedírmela de nuevo o cargá más ingredientes en tu alacena."
             };
+        }
+
+        foreach (var ingrediente in receta.Ingredientes)
+        {
+            ingrediente.Nombre = _normalizer.LimpiarNombreVisible(ingrediente.Nombre);
         }
 
         receta.Titulo = RecetaIaService.GenerarTituloPorDefecto(receta.Titulo, receta.Ingredientes);
@@ -416,6 +491,11 @@ public class ChatIaService : IChatIaService
                 Accion = ChatAccion.Conversar,
                 Mensaje = "No encuentro una receta para guardar. Primero pedime que te genere una y después decime que la guarde."
             };
+        }
+
+        foreach (var ingrediente in receta.Ingredientes)
+        {
+            ingrediente.Nombre = _normalizer.LimpiarNombreVisible(ingrediente.Nombre);
         }
 
         receta.Titulo = RecetaIaService.GenerarTituloPorDefecto(receta.Titulo, receta.Ingredientes);
@@ -803,80 +883,131 @@ public class ChatIaService : IChatIaService
             };
         }
 
+        var propias = (await _recetaService.GetAllAsync(usuarioId))
+            .Where(receta => receta.UsuarioId == usuarioId)
+            .ToList();
         var favoritos = await ObtenerFavoritosAccesiblesAsync(usuarioId);
 
-        var favoritosABorrar = favoritos.ToList();
-        if (!sobre.EliminarTodas)
+        if (sobre.EliminarTodas)
         {
-            var exactos = favoritos
-                .Where(favorito => favorito.Receta is not null &&
-                    favorito.Receta.Titulo.Trim().Equals(titulo, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            var parciales = favoritos
-                .Where(favorito => favorito.Receta is not null && CoincideTitulo(favorito.Receta.Titulo, titulo!))
-                .ToList();
+            var idsPropias = propias.Select(receta => receta.Id).ToHashSet();
+            var favoritosCatalogo = favoritos.Where(favorito => !idsPropias.Contains(favorito.RecetaId)).ToList();
+            var total = idsPropias.Count + favoritosCatalogo.Count;
 
-            if (exactos.Count == 0 && parciales.Count > 1)
+            if (total == 0)
             {
                 return new ChatRespuestaDto
                 {
-                    Accion = ChatAccion.Conversar,
-                    Mensaje = $"Encontré varias recetas guardadas que coinciden con \"{titulo}\": " +
-                        $"{string.Join(", ", parciales.Select(favorito => $"\"{favorito.Receta.Titulo}\""))}. ¿Cuál querés borrar?"
+                    Accion = ChatAccion.EliminarReceta,
+                    Mensaje = "No tenés recetas guardadas para borrar.",
+                    RecetasEliminadas = 0
                 };
             }
 
-            favoritosABorrar = exactos.Count > 0 ? exactos : parciales;
+            await _unidadDeTrabajo.EjecutarAsync(async () =>
+            {
+                foreach (var favorito in favoritosCatalogo)
+                {
+                    await _favoritoRepository.DeleteAsync(favorito);
+                }
+
+                foreach (var recetaId in idsPropias)
+                {
+                    await _recetaService.DeleteAsync(recetaId, usuarioId);
+                }
+            });
+            _cache.Remove(RecetaService.CacheCatalogoKey);
+
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.EliminarReceta,
+                Mensaje = $"Listo, borré tus {total} receta(s) guardada(s).",
+                RecetasEliminadas = total
+            };
         }
 
-        if (favoritosABorrar.Count == 0)
+        var propiasCoincidentes = BusquedaDifusa.BuscarMejores(propias, receta => receta.Titulo, titulo);
+        var idsPropiasCoincidentes = propiasCoincidentes.Select(receta => receta.Id).ToHashSet();
+        var favoritosCoincidentes = BusquedaDifusa.BuscarMejores(
+            favoritos.Where(favorito => favorito.Receta is not null && !idsPropiasCoincidentes.Contains(favorito.RecetaId)),
+            favorito => favorito.Receta.Titulo,
+            titulo);
+
+        var totalCoincidencias = propiasCoincidentes.Count + favoritosCoincidentes.Count;
+        if (totalCoincidencias > 1)
+        {
+            var nombres = propiasCoincidentes.Select(receta => receta.Titulo)
+                .Concat(favoritosCoincidentes.Select(favorito => favorito.Receta.Titulo))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(nombre => $"\"{nombre}\"");
+
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = $"Encontré varias recetas parecidas a \"{titulo}\": {string.Join(", ", nombres)}. ¿Cuál querés borrar?"
+            };
+        }
+
+        if (totalCoincidencias == 0)
         {
             return new ChatRespuestaDto
             {
                 Accion = ChatAccion.EliminarReceta,
-                Mensaje = sobre.EliminarTodas
-                    ? "No tenés recetas guardadas para borrar."
-                    : $"No encontré ninguna receta guardada que coincida con \"{titulo}\".",
+                Mensaje = $"No encontré ninguna receta guardada que coincida con \"{titulo}\".",
                 RecetasEliminadas = 0
             };
         }
 
-        var recetasPropias = favoritosABorrar
-            .Where(favorito => favorito.Receta.UsuarioId == usuarioId)
-            .Select(favorito => favorito.RecetaId)
-            .ToHashSet();
-
-        await _unidadDeTrabajo.EjecutarAsync(async () =>
+        string tituloBorrado;
+        if (propiasCoincidentes.Count == 1)
         {
-            foreach (var favorito in favoritosABorrar.Where(favorito => !recetasPropias.Contains(favorito.RecetaId)))
-            {
-                await _favoritoRepository.DeleteAsync(favorito);
-            }
+            var receta = propiasCoincidentes[0];
+            tituloBorrado = receta.Titulo;
+            await _recetaService.DeleteAsync(receta.Id, usuarioId);
+        }
+        else
+        {
+            var favorito = favoritosCoincidentes[0];
+            tituloBorrado = favorito.Receta.Titulo;
+            await _favoritoRepository.DeleteAsync(favorito);
+        }
 
-            foreach (var recetaId in recetasPropias)
-            {
-                await _recetaService.DeleteAsync(recetaId, usuarioId);
-            }
-        });
         _cache.Remove(RecetaService.CacheCatalogoKey);
         return new ChatRespuestaDto
         {
             Accion = ChatAccion.EliminarReceta,
-            Mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
-                ? (sobre.EliminarTodas
-                    ? $"Listo, borré tus {favoritosABorrar.Count} receta(s) guardada(s)."
-                    : $"Listo, borré {favoritosABorrar.Count} receta(s) que coincidían con \"{titulo}\".")
-                : sobre.Mensaje,
-            RecetasEliminadas = favoritosABorrar.Count
+            Mensaje = $"Listo, borré \"{tituloBorrado}\".",
+            RecetasEliminadas = 1
         };
     }
 
-    private async Task<ChatRespuestaDto> ResolverPlanificarRecetaAsync(int usuarioId, SobreAgente sobre, string pedidoUsuario)
+    private async Task<ChatRespuestaDto> ResolverPlanificarRecetaAsync(
+        int usuarioId,
+        SobreAgente sobre,
+        IReadOnlyList<ChatMessageDto> turnos)
     {
+        var hoy = FechaLocal.Hoy();
+        var turnosFlujo = ObtenerTurnosFlujoPlanificacion(turnos);
+        var ultimoTexto = turnos.Count > 0 ? turnos[^1].Texto : string.Empty;
+
+        var tituloEnPreguntaPrevia = ExtraerTituloDePreguntaPlanificacion(turnosFlujo);
+        var tituloPedido = !string.IsNullOrWhiteSpace(sobre.TituloPlanificar)
+            ? sobre.TituloPlanificar.Trim()
+            : tituloEnPreguntaPrevia;
+
+        if (!string.IsNullOrWhiteSpace(tituloEnPreguntaPrevia) &&
+            !string.IsNullOrWhiteSpace(tituloPedido) &&
+            !BusquedaDifusa.Coincide(tituloPedido, tituloEnPreguntaPrevia) &&
+            !UsuarioMencionoOtraReceta(ultimoTexto, tituloPedido))
+        {
+            tituloPedido = tituloEnPreguntaPrevia;
+        }
+
+        var indiceEfectivo = string.IsNullOrWhiteSpace(tituloPedido) ? sobre.IndiceReceta : null;
         var (recetaId, tituloReceta, errorReceta) = await ResolverRecetaParaAccionAsync(
             usuarioId,
-            sobre.TituloPlanificar,
-            sobre.IndiceReceta,
+            tituloPedido,
+            indiceEfectivo,
             "planificarla");
         if (recetaId is null)
         {
@@ -887,23 +1018,25 @@ public class ChatIaService : IChatIaService
             };
         }
 
-        var turno = TurnoExplicito(pedidoUsuario);
-        var fecha = FechaExplicita(pedidoUsuario, FechaLocal.Hoy());
+        var turno = ResolverTurnoEnFlujo(turnosFlujo);
+        var fecha = ResolverFechaEnFlujo(turnosFlujo, hoy);
         if (turno is null || fecha is null)
         {
             var faltaTurno = turno is null;
             var faltaFecha = fecha is null;
             var pregunta = faltaTurno && faltaFecha
-                ? $"¿Qué día y qué comida querés para \"{tituloReceta}\"? Por ejemplo: el sábado que viene, a la cena."
+                ? $"¿Qué día y qué comida querés para \"{tituloReceta}\"? Por ejemplo: el domingo, al almuerzo."
                 : faltaTurno
-                    ? $"¿Para qué comida querés planificar \"{tituloReceta}\" el {fecha:dd/MM}? Elegí Desayuno, Almuerzo o Cena."
-                    : $"¿Qué día querés planificar \"{tituloReceta}\"? Podés decir hoy, mañana o el sábado que viene.";
+                    ? $"¿Para qué comida querés planificar \"{tituloReceta}\" el {fecha:dd/MM}? Elegí Desayuno, Almuerzo, Merienda o Cena."
+                    : $"¿Qué día querés planificar \"{tituloReceta}\" ({turno})? Podés decir hoy, mañana o el domingo que viene.";
             return new ChatRespuestaDto
             {
                 Accion = ChatAccion.Conversar,
                 Mensaje = pregunta
             };
         }
+
+        var reemplazar = sobre.ReemplazarSiConflicto || EsConfirmacionReemplazo(turnosFlujo, ultimoTexto);
 
         try
         {
@@ -913,7 +1046,7 @@ public class ChatIaService : IChatIaService
                 RecetaId = recetaId.Value,
                 FechaAsignada = fecha.Value,
                 Turno = turno,
-                ReemplazarSiConflicto = sobre.ReemplazarSiConflicto
+                ReemplazarSiConflicto = reemplazar
             });
 
             var agregados = resultado.IngredientesAgregadosALista;
@@ -924,9 +1057,7 @@ public class ChatIaService : IChatIaService
             return new ChatRespuestaDto
             {
                 Accion = ChatAccion.PlanificarReceta,
-                Mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
-                    ? $"Planifiqué \"{tituloReceta}\" para el {fecha:dd/MM/yyyy} ({turno})." + aviso
-                    : sobre.Mensaje + aviso,
+                Mensaje = $"Planifiqué \"{tituloReceta}\" para el {fecha:dd/MM/yyyy} ({turno})." + aviso,
                 ComidaPlanificada = resultado.Comida,
                 IngredientesAgregadosALista = agregados
             };
@@ -948,6 +1079,410 @@ public class ChatIaService : IChatIaService
                 Mensaje = ex.Message
             };
         }
+    }
+
+    private async Task<ChatRespuestaDto> ResolverEliminarComidaPlanificadaAsync(
+        int usuarioId,
+        SobreAgente sobre,
+        IReadOnlyList<ChatMessageDto> turnos)
+    {
+        var hoy = FechaLocal.Hoy();
+        var ultimoTexto = turnos.Count > 0 ? turnos[^1].Texto : string.Empty;
+        var comidas = (await _planificadorService.GetByUsuarioIdAsync(usuarioId))
+            .Where(comida => comida.FechaAsignada.Date >= hoy)
+            .OrderBy(comida => comida.FechaAsignada)
+            .ToList();
+
+        if (comidas.Count == 0)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.EliminarComidaPlanificada,
+                Mensaje = "No tenés comidas planificadas próximas para quitar."
+            };
+        }
+
+        if (sobre.EliminarTodas)
+        {
+            foreach (var comida in comidas)
+            {
+                await _planificadorService.DeleteAsync(comida.Id, usuarioId);
+            }
+
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.EliminarComidaPlanificada,
+                Mensaje = $"Listo, limpié tus {comidas.Count} comida(s) del planificador."
+            };
+        }
+
+        var fecha = FechaExplicita(ultimoTexto, hoy) ?? ParsearFechaOpcional(sobre.FechaPlanificar);
+        var turno = TurnoExplicito(ultimoTexto) ?? NormalizarTurnoOpcional(sobre.TurnoPlanificar);
+        var titulo = string.IsNullOrWhiteSpace(sobre.TituloPlanificar)
+            ? sobre.TituloEliminar?.Trim()
+            : sobre.TituloPlanificar.Trim();
+
+        IEnumerable<ComidaPlanificadaResponseDto> filtradas = comidas;
+        if (fecha is not null)
+        {
+            filtradas = filtradas.Where(comida => comida.FechaAsignada.Date == fecha.Value.Date);
+        }
+
+        if (turno is not null)
+        {
+            filtradas = filtradas.Where(comida => string.Equals(comida.Turno, turno, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var lista = filtradas.ToList();
+        if (!string.IsNullOrWhiteSpace(titulo))
+        {
+            var porTitulo = BusquedaDifusa.BuscarMejores(lista, comida => comida.RecetaTitulo, titulo);
+            if (porTitulo.Count > 0 || (fecha is null && turno is null))
+            {
+                lista = porTitulo;
+            }
+        }
+
+        if (lista.Count == 0)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = "No encontré esa comida en tu planificador. Decime el día, el turno o el nombre de la receta que querés quitar."
+            };
+        }
+
+        if (lista.Count > 1 && fecha is null && turno is null)
+        {
+            var opciones = lista.Select(comida => $"\"{comida.RecetaTitulo}\" ({comida.FechaAsignada:dd/MM}, {comida.Turno})");
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = $"Encontré varias comidas planificadas que coinciden: {string.Join(", ", opciones)}. ¿Cuál querés quitar?"
+            };
+        }
+
+        foreach (var comida in lista)
+        {
+            await _planificadorService.DeleteAsync(comida.Id, usuarioId);
+        }
+
+        var resumen = string.Join(", ", lista.Select(comida => $"\"{comida.RecetaTitulo}\" ({comida.FechaAsignada:dd/MM}, {comida.Turno})"));
+        return new ChatRespuestaDto
+        {
+            Accion = ChatAccion.EliminarComidaPlanificada,
+            Mensaje = $"Listo, quité del planificador: {resumen}."
+        };
+    }
+
+    private async Task<ChatRespuestaDto> ResolverAgregarIngredienteAlacenaAsync(int usuarioId, SobreAgente sobre)
+    {
+        var items = (sobre.IngredientesAlacena ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item.Nombre))
+            .ToList();
+
+        if (items.Count == 0 && !string.IsNullOrWhiteSpace(sobre.Nombre))
+        {
+            items.Add(new IngredienteAlacenaChatDto { Nombre = sobre.Nombre.Trim(), Cantidad = 1, UnidadMedida = UnidadesMedida.Unidad });
+        }
+
+        if (items.Count == 0)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = "¿Qué ingrediente y qué cantidad querés agregar a tu alacena?"
+            };
+        }
+
+        var agregados = new List<string>();
+        var errores = new List<string>();
+
+        foreach (var item in items)
+        {
+            var cantidad = item.Cantidad is > 0 ? item.Cantidad.Value : 1m;
+            var unidad = string.IsNullOrWhiteSpace(item.UnidadMedida) ? UnidadesMedida.Unidad : item.UnidadMedida.Trim();
+            try
+            {
+                var creado = await _stockUsuarioService.CreateAsync(new StockUsuarioCreateDto
+                {
+                    UsuarioId = usuarioId,
+                    NombreIngrediente = item.Nombre!.Trim(),
+                    Cantidad = cantidad,
+                    UnidadMedida = unidad
+                });
+                agregados.Add($"{creado.NombreIngrediente} ({cantidad} {unidad})");
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            {
+                errores.Add($"{item.Nombre!.Trim()}: {ex.Message}");
+            }
+        }
+
+        if (agregados.Count == 0)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = string.Join(" ", errores)
+            };
+        }
+
+        var mensaje = $"Listo, sumé a tu alacena: {string.Join(", ", agregados)}.";
+        if (errores.Count > 0)
+        {
+            mensaje += $" No pude agregar: {string.Join(" | ", errores)}.";
+        }
+
+        return new ChatRespuestaDto
+        {
+            Accion = ChatAccion.AgregarIngredienteAlacena,
+            Mensaje = mensaje
+        };
+    }
+
+    private async Task<ChatRespuestaDto> ResolverActualizarIngredienteAlacenaAsync(int usuarioId, SobreAgente sobre)
+    {
+        var items = (sobre.IngredientesAlacena ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item.Nombre))
+            .ToList();
+
+        if (items.Count == 0)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = "¿Qué ingrediente de tu alacena querés actualizar y a qué cantidad?"
+            };
+        }
+
+        var stock = (await _stockRepository.FindWithIncludesAsync(
+            item => item.UsuarioId == usuarioId,
+            item => item.Ingrediente)).ToList();
+
+        var actualizados = new List<string>();
+        var eliminados = new List<string>();
+        var noEncontrados = new List<string>();
+
+        foreach (var pedido in items)
+        {
+            var coincidencias = BusquedaDifusa.BuscarMejores(
+                stock,
+                item => item.Ingrediente?.Nombre ?? string.Empty,
+                pedido.Nombre);
+
+            if (coincidencias.Count == 0)
+            {
+                noEncontrados.Add(pedido.Nombre!.Trim());
+                continue;
+            }
+
+            if (coincidencias.Count > 1)
+            {
+                var nombres = coincidencias.Select(item => $"\"{item.Ingrediente?.Nombre}\"");
+                return new ChatRespuestaDto
+                {
+                    Accion = ChatAccion.Conversar,
+                    Mensaje = $"Tenés varios ingredientes parecidos a \"{pedido.Nombre}\": {string.Join(", ", nombres)}. ¿Cuál querés actualizar?"
+                };
+            }
+
+            var objetivo = coincidencias[0];
+            var nombreReal = objetivo.Ingrediente?.Nombre ?? pedido.Nombre!.Trim();
+            var nuevaCantidad = pedido.Cantidad ?? objetivo.Cantidad;
+            if (nuevaCantidad <= 0)
+            {
+                await _stockUsuarioService.DeleteAsync(objetivo.Id, usuarioId);
+                eliminados.Add(nombreReal);
+                continue;
+            }
+
+            var nuevaUnidad = string.IsNullOrWhiteSpace(pedido.UnidadMedida)
+                ? objetivo.UnidadMedida
+                : pedido.UnidadMedida.Trim();
+
+            await _stockUsuarioService.UpdateAsync(objetivo.Id, new StockUsuarioUpdateDto
+            {
+                Cantidad = nuevaCantidad,
+                UnidadMedida = nuevaUnidad,
+                FechaCaducidad = objetivo.FechaCaducidad
+            }, usuarioId);
+            actualizados.Add($"{nombreReal} ({nuevaCantidad} {nuevaUnidad})");
+        }
+
+        var partes = new List<string>();
+        if (actualizados.Count > 0)
+        {
+            partes.Add($"Actualicé en tu alacena: {string.Join(", ", actualizados)}.");
+        }
+
+        if (eliminados.Count > 0)
+        {
+            partes.Add($"Quité de tu alacena: {string.Join(", ", eliminados)}.");
+        }
+
+        if (noEncontrados.Count > 0)
+        {
+            partes.Add($"No encontré en tu alacena: {string.Join(", ", noEncontrados)}.");
+        }
+
+        return new ChatRespuestaDto
+        {
+            Accion = actualizados.Count > 0 || eliminados.Count > 0
+                ? ChatAccion.ActualizarIngredienteAlacena
+                : ChatAccion.Conversar,
+            Mensaje = string.Join(" ", partes)
+        };
+    }
+
+    private async Task<ChatRespuestaDto> ResolverEliminarIngredienteAlacenaAsync(
+        int usuarioId,
+        SobreAgente sobre,
+        string ultimoTexto)
+    {
+        var stock = (await _stockRepository.FindWithIncludesAsync(
+            item => item.UsuarioId == usuarioId,
+            item => item.Ingrediente)).ToList();
+
+        if (stock.Count == 0)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.EliminarIngredienteAlacena,
+                Mensaje = "Tu alacena ya está vacía."
+            };
+        }
+
+        if (sobre.EliminarTodosAlacena || sobre.EliminarTodas)
+        {
+            foreach (var item in stock)
+            {
+                await _stockUsuarioService.DeleteAsync(item.Id, usuarioId);
+            }
+
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.EliminarIngredienteAlacena,
+                Mensaje = $"Listo, vacié tu alacena (eliminé {stock.Count} ingrediente(s))."
+            };
+        }
+
+        var nombresPedidos = (sobre.IngredientesAlacena ?? [])
+            .Select(item => item.Nombre?.Trim())
+            .Where(nombre => !string.IsNullOrWhiteSpace(nombre))
+            .Select(nombre => nombre!)
+            .ToList();
+
+        if (nombresPedidos.Count == 0 && !string.IsNullOrWhiteSpace(sobre.TituloEliminar))
+        {
+            nombresPedidos.Add(sobre.TituloEliminar.Trim());
+        }
+
+        if (nombresPedidos.Count == 0 && !string.IsNullOrWhiteSpace(sobre.Nombre))
+        {
+            nombresPedidos.Add(sobre.Nombre.Trim());
+        }
+
+        if (nombresPedidos.Count == 0)
+        {
+            var inferidos = InferirIngredientesDesdeTexto(stock, ultimoTexto);
+            nombresPedidos.AddRange(inferidos);
+        }
+
+        if (nombresPedidos.Count == 0)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = "¿Qué ingrediente querés eliminar de tu alacena?"
+            };
+        }
+
+        var aEliminar = new List<StockUsuario>();
+        var idsAgregados = new HashSet<int>();
+        var noEncontrados = new List<string>();
+
+        foreach (var pedido in nombresPedidos)
+        {
+            var coincidencias = BusquedaDifusa.BuscarMejores(
+                stock,
+                item => item.Ingrediente?.Nombre ?? string.Empty,
+                pedido);
+
+            if (coincidencias.Count == 0)
+            {
+                noEncontrados.Add(pedido);
+                continue;
+            }
+
+            if (coincidencias.Count > 1)
+            {
+                var opciones = coincidencias.Select(item => $"\"{item.Ingrediente?.Nombre}\"");
+                return new ChatRespuestaDto
+                {
+                    Accion = ChatAccion.Conversar,
+                    Mensaje = $"Encontré varios ingredientes parecidos a \"{pedido}\" en tu alacena: {string.Join(", ", opciones)}. ¿Cuál querés borrar?"
+                };
+            }
+
+            if (idsAgregados.Add(coincidencias[0].Id))
+            {
+                aEliminar.Add(coincidencias[0]);
+            }
+        }
+
+        if (aEliminar.Count == 0)
+        {
+            return new ChatRespuestaDto
+            {
+                Accion = ChatAccion.Conversar,
+                Mensaje = $"No encontré {string.Join(", ", noEncontrados.Select(item => $"\"{item}\""))} en tu alacena."
+            };
+        }
+
+        var borrados = new List<string>();
+        foreach (var item in aEliminar)
+        {
+            await _stockUsuarioService.DeleteAsync(item.Id, usuarioId);
+            borrados.Add(item.Ingrediente?.Nombre ?? $"#{item.IngredienteId}");
+        }
+
+        var mensaje = $"Listo, eliminé de tu alacena: {string.Join(", ", borrados)}.";
+        if (noEncontrados.Count > 0)
+        {
+            mensaje += $" No encontré: {string.Join(", ", noEncontrados)}.";
+        }
+
+        return new ChatRespuestaDto
+        {
+            Accion = ChatAccion.EliminarIngredienteAlacena,
+            Mensaje = mensaje
+        };
+    }
+
+    private static List<string> InferirIngredientesDesdeTexto(List<StockUsuario> stock, string texto)
+    {
+        var palabras = BusquedaDifusa.Normalizar(texto)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(palabra => palabra.Length >= 3)
+            .ToList();
+
+        var encontrados = new List<string>();
+        foreach (var item in stock)
+        {
+            var nombre = item.Ingrediente?.Nombre;
+            if (string.IsNullOrWhiteSpace(nombre))
+            {
+                continue;
+            }
+
+            if (palabras.Any(palabra => BusquedaDifusa.Coincide(nombre, palabra)))
+            {
+                encontrados.Add(nombre);
+            }
+        }
+
+        return encontrados;
     }
 
     private async Task<ChatRespuestaDto> ResolverConsultarRecetasGuardadasAsync(int usuarioId, SobreAgente sobre)
@@ -982,45 +1517,56 @@ public class ChatIaService : IChatIaService
             indiceReceta = null;
         }
 
-        if (indiceReceta is null && !string.IsNullOrWhiteSpace(titulo))
+        if (!string.IsNullOrWhiteSpace(titulo))
         {
-            var propias = (await _recetaService.GetAllAsync(usuarioId))
-                .Where(receta => receta.UsuarioId == usuarioId)
-                .ToList();
-            var propia = propias.FirstOrDefault(receta =>
-                    receta.Titulo.Trim().Equals(titulo, StringComparison.OrdinalIgnoreCase))
-                ?? propias.FirstOrDefault(receta => CoincideTitulo(receta.Titulo, titulo));
+            var accesibles = (await _recetaService.GetAllAsync(usuarioId)).ToList();
+            var propias = accesibles.Where(receta => receta.UsuarioId == usuarioId).ToList();
+            var propia = BusquedaDifusa.BuscarMejor(propias, receta => receta.Titulo, titulo);
             if (propia is not null)
             {
                 return (propia.Id, propia.Titulo, null);
             }
 
             var favoritos = await ObtenerFavoritosAccesiblesAsync(usuarioId);
-
-            var receta = favoritos
-                .Select(favorito => favorito.Receta)
-                .FirstOrDefault(r => r is not null && r.Titulo.Trim().Equals(titulo, StringComparison.OrdinalIgnoreCase))
-                ?? favoritos
-                    .Select(favorito => favorito.Receta)
-                    .FirstOrDefault(r => r is not null && CoincideTitulo(r.Titulo, titulo));
-
-            if (receta is not null)
+            var favorito = BusquedaDifusa.BuscarMejor(
+                favoritos.Where(item => item.Receta is not null).Select(item => item.Receta),
+                receta => receta.Titulo,
+                titulo);
+            if (favorito is not null)
             {
-                return (receta.Id, receta.Titulo, null);
+                return (favorito.Id, favorito.Titulo, null);
             }
+
+            var catalogo = accesibles.Where(receta => receta.UsuarioId is null).ToList();
+            var delCatalogo = BusquedaDifusa.BuscarMejor(catalogo, receta => receta.Titulo, titulo);
+            if (delCatalogo is not null)
+            {
+                return (delCatalogo.Id, delCatalogo.Titulo, null);
+            }
+
+            var recientePorTitulo = BusquedaDifusa.BuscarMejor(recientes, receta => receta.Titulo, titulo);
+            if (recientePorTitulo is not null)
+            {
+                try
+                {
+                    var guardada = await _recetaIaService.GuardarRecetaAsync(usuarioId, recientePorTitulo);
+                    await OlvidarRecetaAsync(usuarioId, recientePorTitulo.Titulo);
+                    return (guardada.RecetaId, guardada.Titulo, null);
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or ForbiddenException or ConflictException or ArgumentException)
+                {
+                    return (null, null, $"No pude preparar la receta para {proposito}: {ex.Message}");
+                }
+            }
+
+            return (null, null, $"No encontré \"{titulo}\" entre tus recetas guardadas ni entre las últimas que te propuse.");
         }
 
-        var recordada = BuscarEnRecientes(recientes, indiceReceta, titulo);
-        if (recordada is null && indiceReceta is null && string.IsNullOrWhiteSpace(titulo))
-        {
-            recordada = recientes.FirstOrDefault();
-        }
-
+        var recordada = BuscarEnRecientes(recientes, indiceReceta, null) ?? recientes.FirstOrDefault();
         if (recordada is null)
         {
-            return (null, null, string.IsNullOrWhiteSpace(titulo)
-                ? "No sé a qué receta te referís. Generá o guardá una receta primero, o decime el nombre de una que ya tengas guardada."
-                : $"No encontré \"{titulo}\" entre tus recetas guardadas ni entre las últimas que te propuse.");
+            return (null, null,
+                "No sé a qué receta te referís. Generá o guardá una receta primero, o decime el nombre de una que ya tengas guardada.");
         }
 
         try
@@ -1156,6 +1702,201 @@ public class ChatIaService : IChatIaService
         return sobre;
     }
 
+    private static List<ChatMessageDto> ObtenerTurnosFlujoPlanificacion(IReadOnlyList<ChatMessageDto> turnos)
+    {
+        var resultado = new List<ChatMessageDto>();
+        for (var i = turnos.Count - 1; i >= 0 && resultado.Count < 8; i--)
+        {
+            var turno = turnos[i];
+            var esAsistente = NormalizarRolGroq(turno.Rol) == "assistant";
+            if (esAsistente && EsCorteDeFlujoPlanificacion(turno.Texto))
+            {
+                break;
+            }
+
+            resultado.Add(turno);
+        }
+
+        resultado.Reverse();
+        return resultado;
+    }
+
+    private static bool EsCorteDeFlujoPlanificacion(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto))
+        {
+            return false;
+        }
+
+        var limpio = texto.Trim();
+        return limpio.StartsWith("Planifiqué ", StringComparison.OrdinalIgnoreCase) ||
+               limpio.StartsWith("Te propongo:", StringComparison.OrdinalIgnoreCase) ||
+               limpio.StartsWith("Listo, ", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ExtraerTituloDePreguntaPlanificacion(IReadOnlyList<ChatMessageDto> turnosFlujo)
+    {
+        for (var i = turnosFlujo.Count - 1; i >= 0; i--)
+        {
+            var turno = turnosFlujo[i];
+            if (NormalizarRolGroq(turno.Rol) != "assistant")
+            {
+                continue;
+            }
+
+            var texto = turno.Texto;
+            var esPreguntaPlan =
+                texto.Contains("planificar", StringComparison.OrdinalIgnoreCase) ||
+                texto.Contains("reemplace esa comida", StringComparison.OrdinalIgnoreCase) ||
+                texto.Contains("qué día y qué comida", StringComparison.OrdinalIgnoreCase);
+
+            if (!esPreguntaPlan)
+            {
+                continue;
+            }
+
+            var inicio = texto.IndexOf('"');
+            if (inicio < 0)
+            {
+                continue;
+            }
+
+            var fin = texto.IndexOf('"', inicio + 1);
+            if (fin > inicio + 1)
+            {
+                var candidato = texto[(inicio + 1)..fin].Trim();
+                if (!candidato.Equals("sí, reemplazala", StringComparison.OrdinalIgnoreCase))
+                {
+                    return candidato;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static bool UsuarioMencionoOtraReceta(string ultimoTexto, string tituloPropuesto)
+    {
+        var palabrasTexto = BusquedaDifusa.Normalizar(ultimoTexto)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(palabra => palabra.Length >= 4)
+            .ToList();
+        if (palabrasTexto.Count == 0)
+        {
+            return false;
+        }
+
+        var palabrasTitulo = BusquedaDifusa.Normalizar(tituloPropuesto)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(palabra => palabra.Length >= 4)
+            .ToList();
+
+        return palabrasTitulo.Any(palabraTitulo =>
+            palabrasTexto.Any(palabraTexto => BusquedaDifusa.Coincide(palabraTitulo, palabraTexto)));
+    }
+
+    private static string? ResolverTurnoEnFlujo(IReadOnlyList<ChatMessageDto> turnosFlujo)
+    {
+        for (var i = turnosFlujo.Count - 1; i >= 0; i--)
+        {
+            if (NormalizarRolGroq(turnosFlujo[i].Rol) != "user")
+            {
+                continue;
+            }
+
+            var encontrado = TurnoExplicito(turnosFlujo[i].Texto);
+            if (encontrado is not null)
+            {
+                return encontrado;
+            }
+        }
+
+        return null;
+    }
+
+    private static DateTime? ResolverFechaEnFlujo(
+        IReadOnlyList<ChatMessageDto> turnosFlujo,
+        DateTime hoy)
+    {
+        for (var i = turnosFlujo.Count - 1; i >= 0; i--)
+        {
+            if (NormalizarRolGroq(turnosFlujo[i].Rol) != "user")
+            {
+                continue;
+            }
+
+            var encontrada = FechaExplicita(turnosFlujo[i].Texto, hoy);
+            if (encontrada is not null)
+            {
+                return encontrada;
+            }
+        }
+
+        for (var i = turnosFlujo.Count - 1; i >= 0; i--)
+        {
+            if (NormalizarRolGroq(turnosFlujo[i].Rol) != "assistant")
+            {
+                continue;
+            }
+
+            var enPregunta = FechaExplicita(turnosFlujo[i].Texto, hoy);
+            if (enPregunta is not null)
+            {
+                return enPregunta;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool EsConfirmacionReemplazo(IReadOnlyList<ChatMessageDto> turnosFlujo, string ultimoTexto)
+    {
+        var huboConflicto = turnosFlujo.Any(turno =>
+            NormalizarRolGroq(turno.Rol) == "assistant" &&
+            turno.Texto.Contains("reemplac", StringComparison.OrdinalIgnoreCase));
+        if (!huboConflicto)
+        {
+            return false;
+        }
+
+        var limpio = QuitarTildes(ultimoTexto.Trim().ToLowerInvariant());
+        return limpio.Contains("reemplaz", StringComparison.Ordinal) ||
+               limpio.Contains("cambial", StringComparison.Ordinal) ||
+               limpio == "si" ||
+               limpio.StartsWith("si,", StringComparison.Ordinal) ||
+               limpio.StartsWith("si ", StringComparison.Ordinal) ||
+               limpio.Contains("dale", StringComparison.Ordinal);
+    }
+
+    private static string? NormalizarTurnoOpcional(string? turno)
+    {
+        if (string.IsNullOrWhiteSpace(turno))
+        {
+            return null;
+        }
+
+        return TurnosComida.Validos.FirstOrDefault(opcion =>
+            opcion.Equals(turno.Trim(), StringComparison.OrdinalIgnoreCase)) ?? TurnoExplicito(turno);
+    }
+
+    private static DateTime? ParsearFechaOpcional(string? fecha)
+    {
+        if (!string.IsNullOrWhiteSpace(fecha) &&
+            DateTime.TryParseExact(fecha.Trim(), FormatosFecha, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parseada))
+        {
+            return parseada.Date;
+        }
+
+        return null;
+    }
+
+    private static readonly (string Nombre, int Mes)[] MesesAnio =
+    [
+        ("enero", 1), ("febrero", 2), ("marzo", 3), ("abril", 4),
+        ("mayo", 5), ("junio", 6), ("julio", 7), ("agosto", 8),
+        ("septiembre", 9), ("setiembre", 9), ("octubre", 10), ("noviembre", 11), ("diciembre", 12)
+    ];
+
     private static DateTime? FechaExplicita(string? texto, DateTime hoy)
     {
         var limpio = QuitarTildes((texto ?? string.Empty).ToLowerInvariant());
@@ -1185,6 +1926,33 @@ public class ChatIaService : IChatIaService
             }
 
             return fecha;
+        }
+
+        foreach (var (nombreMes, mes) in MesesAnio)
+        {
+            var indiceMes = limpio.IndexOf($" de {nombreMes}", StringComparison.Ordinal);
+            if (indiceMes <= 0)
+            {
+                continue;
+            }
+
+            var antes = limpio[..indiceMes].TrimEnd();
+            var ultimoEspacio = antes.LastIndexOf(' ');
+            var tokenDia = ultimoEspacio >= 0 ? antes[(ultimoEspacio + 1)..] : antes;
+            if (int.TryParse(tokenDia, out var diaMes) && diaMes is >= 1 and <= 31)
+            {
+                var anio = hoy.Year;
+                if (diaMes <= DateTime.DaysInMonth(anio, mes))
+                {
+                    var fecha = new DateTime(anio, mes, diaMes);
+                    if (fecha.Date < hoy.Date)
+                    {
+                        fecha = fecha.AddYears(1);
+                    }
+
+                    return fecha;
+                }
+            }
         }
 
         (string Nombre, DayOfWeek Dia)[] dias =
@@ -1262,17 +2030,25 @@ public class ChatIaService : IChatIaService
 
     private static string? TurnoExplicito(string? texto)
     {
-        var limpio = (texto ?? string.Empty).Trim().ToLowerInvariant();
+        var limpio = QuitarTildes((texto ?? string.Empty).Trim().ToLowerInvariant());
         if (limpio.Contains("desayun", StringComparison.Ordinal))
         {
             return TurnosComida.Desayuno;
         }
 
         if (limpio.Contains("almuerz", StringComparison.Ordinal) ||
-            limpio.Contains("mediodia", StringComparison.Ordinal) ||
-            limpio.Contains("mediodía", StringComparison.Ordinal))
+            limpio.Contains("almorz", StringComparison.Ordinal) ||
+            limpio.Contains("mediodia", StringComparison.Ordinal))
         {
             return TurnosComida.Almuerzo;
+        }
+
+        if (limpio.Contains("meriend", StringComparison.Ordinal) ||
+            limpio.Contains("merend", StringComparison.Ordinal) ||
+            limpio.Contains("a la tarde", StringComparison.Ordinal) ||
+            limpio.Contains("de tarde", StringComparison.Ordinal))
+        {
+            return TurnosComida.Merienda;
         }
 
         if (limpio.Contains("cena", StringComparison.Ordinal) ||
@@ -1359,15 +2135,8 @@ public class ChatIaService : IChatIaService
         return FechaLocal.Hoy();
     }
 
-    private static bool CoincideTitulo(string tituloReceta, string busqueda)
-    {
-        var a = tituloReceta.Trim();
-        var b = busqueda.Trim();
-
-        return a.Equals(b, StringComparison.OrdinalIgnoreCase) ||
-            a.Contains(b, StringComparison.OrdinalIgnoreCase) ||
-            b.Contains(a, StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool CoincideTitulo(string tituloReceta, string busqueda) =>
+        BusquedaDifusa.Coincide(tituloReceta, busqueda);
 
     private const int MaxTurnosHistorial = 20;
 
@@ -1459,6 +2228,44 @@ public class ChatIaService : IChatIaService
                     .Where(ingrediente => !string.IsNullOrWhiteSpace(ingrediente.Nombre))
                     .Select(ingrediente => ingrediente.Nombre.Trim()));
                 contexto.AppendLine($"{indice + 1}. {receta.Titulo} ({receta.Dificultad}, {receta.Categoria}) - ingredientes: {ingredientes}");
+            }
+        }
+
+        var misRecetas = (await _recetaService.GetAllAsync(usuarioId))
+            .Where(receta => receta.UsuarioId == usuarioId)
+            .OrderByDescending(receta => receta.Id)
+            .Take(20)
+            .ToList();
+        contexto.AppendLine();
+        if (misRecetas.Count == 0)
+        {
+            contexto.AppendLine("MIS RECETAS GUARDADAS: (ninguna todavía)");
+        }
+        else
+        {
+            contexto.AppendLine("MIS RECETAS GUARDADAS (disponibles para planificar, cocinar o borrar por nombre):");
+            foreach (var receta in misRecetas)
+            {
+                contexto.AppendLine($"- {receta.Titulo} ({receta.Dificultad}, {receta.Categoria})");
+            }
+        }
+
+        var planificadas = (await _planificadorService.GetByUsuarioIdAsync(usuarioId))
+            .Where(comida => comida.FechaAsignada.Date >= hoy)
+            .OrderBy(comida => comida.FechaAsignada)
+            .ToList();
+        contexto.AppendLine();
+        if (planificadas.Count == 0)
+        {
+            contexto.AppendLine("PLANIFICADOR ACTUAL: (sin comidas próximas)");
+        }
+        else
+        {
+            contexto.AppendLine("PLANIFICADOR ACTUAL:");
+            foreach (var comida in planificadas)
+            {
+                contexto.AppendLine(
+                    $"- {comida.FechaAsignada:yyyy-MM-dd} ({comida.FechaAsignada.ToString("dddd", CulturaArgentina)}) {comida.Turno}: {comida.RecetaTitulo}");
             }
         }
 
@@ -1719,10 +2526,28 @@ public class ChatIaService : IChatIaService
         [JsonPropertyName("porcionesCocinar")]
         public int? PorcionesCocinar { get; set; }
 
+        [JsonPropertyName("ingredientesAlacena")]
+        public List<IngredienteAlacenaChatDto>? IngredientesAlacena { get; set; }
+
+        [JsonPropertyName("eliminarTodosAlacena")]
+        public bool EliminarTodosAlacena { get; set; }
+
         [JsonPropertyName("indiceReceta")]
         public int? IndiceReceta { get; set; }
 
         [JsonPropertyName("reemplazarSiConflicto")]
         public bool ReemplazarSiConflicto { get; set; }
+    }
+
+    private sealed class IngredienteAlacenaChatDto
+    {
+        [JsonPropertyName("nombre")]
+        public string? Nombre { get; set; }
+
+        [JsonPropertyName("cantidad")]
+        public decimal? Cantidad { get; set; }
+
+        [JsonPropertyName("unidadMedida")]
+        public string? UnidadMedida { get; set; }
     }
 }

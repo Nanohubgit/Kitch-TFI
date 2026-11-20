@@ -89,6 +89,7 @@ public static class DtoMappings
         Id = comida.Id,
         RecetaId = comida.RecetaId,
         RecetaTitulo = comida.Receta?.Titulo ?? string.Empty,
+        RecetaTiempoPreparacionMinutos = comida.Receta?.TiempoPreparacionMinutos ?? 0,
         FechaAsignada = comida.FechaAsignada,
         Turno = comida.Turno,
         IngredientesAgregadosALista = [],

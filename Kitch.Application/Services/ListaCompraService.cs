@@ -1,4 +1,4 @@
-﻿using Kitch.Application.DTOs.ListaCompra;
+using Kitch.Application.DTOs.ListaCompra;
 using Kitch.Application.Interfaces;
 using Kitch.Application.Mappings;
 using Kitch.Domain.Constants;
@@ -17,6 +17,7 @@ public class ListaCompraService : IListaCompraService
     private readonly IRepository<StockUsuario> _stockRepository;
     private readonly IRepository<Ingrediente> _ingredienteRepository;
     private readonly IIngredienteNormalizerService _normalizer;
+    private readonly IIngredienteValidadorService _validador;
     private readonly IUnidadDeTrabajo _unidadDeTrabajo;
 
     public ListaCompraService(
@@ -26,6 +27,7 @@ public class ListaCompraService : IListaCompraService
         IRepository<StockUsuario> stockRepository,
         IRepository<Ingrediente> ingredienteRepository,
         IIngredienteNormalizerService normalizer,
+        IIngredienteValidadorService validador,
         IUnidadDeTrabajo unidadDeTrabajo)
     {
         _unidadDeTrabajo = unidadDeTrabajo;
@@ -35,6 +37,7 @@ public class ListaCompraService : IListaCompraService
         _stockRepository = stockRepository;
         _ingredienteRepository = ingredienteRepository;
         _normalizer = normalizer;
+        _validador = validador;
     }
 
     public async Task<IEnumerable<ItemListaCompraResponseDto>> GetByUsuarioIdAsync(int usuarioId)
@@ -57,12 +60,19 @@ public class ListaCompraService : IListaCompraService
         return await MapearUnoConCategoriaAsync(item);
     }
 
-    public Task<ItemListaCompraResponseDto> CreateAsync(ItemListaCompraCreateDto item) =>
-        EnTransaccionAsync(item.UsuarioId, () => CreateEnTransaccionAsync(item));
+    public async Task<ItemListaCompraResponseDto> CreateAsync(ItemListaCompraCreateDto item)
+    {
+        if (item.IngredienteId is null && !string.IsNullOrWhiteSpace(item.NombreArticulo))
+        {
+            await _validador.AsegurarEsAlimentoAsync(item.NombreArticulo);
+        }
+
+        return await EnTransaccionAsync(item.UsuarioId, () => CreateEnTransaccionAsync(item));
+    }
 
     private async Task<ItemListaCompraResponseDto> CreateEnTransaccionAsync(ItemListaCompraCreateDto item)
     {
-        var nombre = item.NombreArticulo.Trim();
+        var nombre = _normalizer.LimpiarNombreVisible(item.NombreArticulo);
         var unidad = NormalizarUnidad(item.UnidadMedida);
 
         if (nombre.Length == 0)
@@ -109,8 +119,15 @@ public class ListaCompraService : IListaCompraService
         return await MapearUnoConCategoriaAsync(created);
     }
 
-    public Task<bool> UpdateAsync(int id, ItemListaCompraUpdateDto item, int usuarioId) =>
-        EnTransaccionAsync(usuarioId, () => UpdateEnTransaccionAsync(id, item, usuarioId));
+    public async Task<bool> UpdateAsync(int id, ItemListaCompraUpdateDto item, int usuarioId)
+    {
+        if (item.IngredienteId is null && !string.IsNullOrWhiteSpace(item.NombreArticulo))
+        {
+            await _validador.AsegurarEsAlimentoAsync(item.NombreArticulo);
+        }
+
+        return await EnTransaccionAsync(usuarioId, () => UpdateEnTransaccionAsync(id, item, usuarioId));
+    }
 
     private async Task<bool> UpdateEnTransaccionAsync(int id, ItemListaCompraUpdateDto item, int usuarioId)
     {
@@ -121,7 +138,7 @@ public class ListaCompraService : IListaCompraService
             return false;
         }
 
-        var nombre = item.NombreArticulo?.Trim() ?? string.Empty;
+        var nombre = _normalizer.LimpiarNombreVisible(item.NombreArticulo);
         if (nombre.Length == 0)
         {
             throw new ArgumentException("El nombre del artículo es obligatorio.");
@@ -462,7 +479,9 @@ public class ListaCompraService : IListaCompraService
             necesidad.NombreNormalizado = NormalizarNombre(necesidad.Nombre);
         }
 
-        return necesidades.Values.ToList();
+        return necesidades.Values
+            .Where(necesidad => !IngredientesBasicos.EsAgua(necesidad.Nombre))
+            .ToList();
     }
 
     private async Task<Dictionary<int, StockUsuario>> ObtenerStockPorIngredienteAsync(int usuarioId)

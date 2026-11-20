@@ -74,7 +74,16 @@ public class RecomendacionService : IRecomendacionService
             }
 
             var faltantes = receta.IngredientesReceta
-                .Where(ingrediente => !idsEnAlacena.Contains(ingrediente.IngredienteId))
+                .Where(ingrediente =>
+                {
+                    if (idsEnAlacena.Contains(ingrediente.IngredienteId))
+                    {
+                        return false;
+                    }
+
+                    return !nombrePorIngrediente.TryGetValue(ingrediente.IngredienteId, out var nombreIngrediente) ||
+                           !IngredientesBasicos.EsAgua(nombreIngrediente);
+                })
                 .Select(ingrediente => nombrePorIngrediente.TryGetValue(ingrediente.IngredienteId, out var nombre)
                     ? nombre
                     : $"Ingrediente #{ingrediente.IngredienteId}")
