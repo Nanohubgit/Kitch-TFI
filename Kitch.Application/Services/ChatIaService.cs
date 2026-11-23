@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Kitch.Application.Common;
 using Kitch.Application.DTOs.ChatIa;
 using Kitch.Application.DTOs.Planificador;
@@ -23,8 +24,10 @@ public class ChatIaService : IChatIaService
     private const string InstruccionAgente =
         "__RESTRICCION_DIETETICA__\n\n" +
         "Sos 'Kitch-AI', el asistente de cocina exclusivo de la plataforma Kitch. Estás hablando con __NOMBRE_USUARIO__. " +
-        "Únicamente respondés temas de cocina: recetas, ingredientes, técnicas culinarias y planificación de comidas. " +
-        "Si te preguntan algo ajeno a la cocina, rechazalo con amabilidad (accion 'conversar'). " +
+        "Únicamente respondés temas de cocina: recetas, ingredientes, técnicas culinarias, pastelería y planificación de comidas. " +
+        "Entendé errores de tipeo y formas coloquiales (ej. '¿cómo puedo hacer un milhojas gourmet desde 0?', 'como hjacer...', 'cómo se prepara...', 'quiero hacer...'): " +
+        "eso SIEMPRE es un pedido válido de cocina y NUNCA debés rechazarlo diciendo que no podés ayudar. " +
+        "Solo si te preguntan algo completamente ajeno a la cocina (programación, política, deportes, etc.), rechazalo con amabilidad (accion 'conversar'). " +
         "Conocés la alacena del usuario (te la pasamos como contexto) y la usás para recomendar y avisar qué le falta. " +
         "Toda receta, sustitución o recomendación DEBE respetar la restricción dietética del bloque anterior.\n\n" +
         "MEMORIA: tenés el historial de esta conversación y, en el contexto, la lista 'RECETAS RECIENTES' numerada " +
@@ -51,17 +54,18 @@ public class ChatIaService : IChatIaService
         "\"indiceReceta\": number | null, \"reemplazarSiConflicto\": boolean}\n\n" +
         "REGLAS DE LA 'accion':\n" +
         "- 'conversar': charla general, dudas, consejos. 'receta' va en null.\n" +
-        "- 'generar_receta': el usuario pide una receta, ideas de qué cocinar o qué puede hacer con lo que tiene " +
-        "(ej. '¿qué puedo cocinar con lo que tengo?', 'receta rápida para hoy', 'generame algo con lo de la alacena', " +
+        "- 'generar_receta': el usuario pide una receta, pregunta cómo hacer/preparar un plato, pide ideas de qué cocinar o qué puede hacer con lo que tiene " +
+        "(ej. '¿qué puedo cocinar con lo que tengo?', '¿cómo puedo hacer un milhojas gourmet desde 0?', 'cómo se hace un risotto', 'receta rápida para hoy', 'generame algo con lo de la alacena', " +
         "'tengo ganas de algo con huevo para la cena', 'dame una receta de carne al horno', 'dame otra'). Ante la duda entre 'conversar' y 'generar_receta' " +
-        "cuando el usuario quiere cocinar algo, usá 'generar_receta'. OBLIGATORIO: completá el objeto 'receta' (NUNCA lo dejes null; " +
+        "cuando el usuario quiere cocinar o saber cómo preparar un plato, usá SIEMPRE 'generar_receta'. OBLIGATORIO: completá el objeto 'receta' (NUNCA lo dejes null; " +
         "mín. 1 ingrediente y 1 paso, tiempo y porciones > 0, y poné 'ingredientes' y 'pasos' DENTRO de 'receta'). " +
-        "Si el usuario pide un plato o ingrediente puntual (ej. carne, pollo, polenta), generá la receta aunque no tenga ese ingrediente en la alacena " +
+        "Si el usuario pide un plato o ingrediente puntual (ej. carne, pollo, polenta, milhojas gourmet desde 0), generá la receta aunque no tenga esos ingredientes en la alacena " +
         "(el sistema le muestra qué le falta comprar), salvo que viole su restricción dietética. " +
         "Si no pidió un plato puntual, basala en los ingredientes de la alacena que combinen bien, siguiendo las reglas de " +
         "REALISMO CULINARIO. Una receta nueva NUNCA copia una de RECETAS RECIENTES ni la receta en pantalla: " +
         "pensala de cero aunque los ingredientes sean los mismos, salvo que el usuario pida explícitamente repetirla. " +
-        "En 'mensaje' presentás la receta. " +
+        "En 'mensaje' escribí SOLO una presentación breve de 1 o 2 oraciones (máximo 160 caracteres) presentando la receta. " +
+        "PROHIBIDO listar ingredientes, cantidades, pasos numerados ni instrucciones de preparación dentro de 'mensaje': todo eso va únicamente en el objeto 'receta' porque la app lo muestra en una tarjeta desplegable. " +
         "SIEMPRE poné en 'titulo' el nombre real y reconocible del plato (ej. 'Tortilla de papas'); NUNCA uses 'string', " +
         "'receta' ni dejes el título vacío. " +
         "En 'ingredientes[].nombre' poné solo el nombre limpio del ingrediente, NUNCA '(opcional)', 'opcional' ni paréntesis " +
@@ -92,7 +96,7 @@ public class ChatIaService : IChatIaService
         "(revisá MIS RECETAS GUARDADAS y RECETAS RECIENTES). Si el usuario nombró una receta específica, dejá 'indiceReceta' en null " +
         "para no confundirla con otra receta reciente; usá 'indiceReceta' SOLO si dijo 'esta', 'la última', 'la anterior' o un número. " +
         "Si el sistema avisó que ese turno ya estaba ocupado y el usuario confirma ('sí, reemplazala'), repetí receta, fecha y turno y poné 'reemplazarSiConflicto' en true. " +
-        "En 'fechaPlanificar' poné YYYY-MM-DD (conservando la fecha que el usuario dijo en turnos previos de esta planificación si ahora solo indicó el turno). " +
+        "En 'fechaPlanificar' poné YYYY-MM-DD (usando 'Fecha de hoy' del contexto para resolver expresiones como 'hoy', 'mañana', 'pasado mañana', 'el día 25', 'el 25', '25/11' o días de la semana, y conservando la fecha que el usuario dijo en turnos previos de esta planificación si ahora solo indicó el turno). " +
         "En 'turnoPlanificar' poné 'Desayuno', 'Almuerzo', 'Merienda' o 'Cena' SOLO si el usuario lo dijo en esta planificación (no inventes un turno). " +
         "Usá 'planificar_receta' incluso si falta solo el turno o solo la fecha: el sistema le pregunta exactamente lo que falta.\n" +
         "- 'eliminar_comida_planificada': el usuario quiere quitar/sacar/borrar una o todas las comidas de su planificador semanal " +
@@ -234,8 +238,8 @@ public class ChatIaService : IChatIaService
         {
             systemInstruction +=
                 "\n\n" + RecetaIaService.InstruccionPlanBasico +
-                " Si el plato pedido solo puede salir difícil, usá 'conversar', explicá que es del plan Profesional " +
-                "y ofrecé una alternativa realmente simple.";
+                " Si el plato pedido solo puede salir difícil, usá 'conversar', NUNCA respondas simplemente 'no puedo ayudarte': " +
+                "explicá con claridad que las recetas difíciles son del plan Profesional y ofrecé una alternativa realmente simple.";
         }
 
         var ultimoTexto = turnos[^1].Texto;
@@ -320,6 +324,8 @@ public class ChatIaService : IChatIaService
             };
         }
 
+        sobre = await RecuperarRechazoFalsoRecetaAsync(sobre, mensajes, systemInstruction, ultimoTexto);
+
         if (string.Equals(sobre.Accion?.Trim(), ChatAccion.GenerarReceta, StringComparison.OrdinalIgnoreCase))
         {
             sobre = await AsegurarRecetaCompletaAsync(sobre, mensajes, systemInstruction, ultimoTexto);
@@ -361,6 +367,170 @@ public class ChatIaService : IChatIaService
             .ToList();
 
         return respuesta;
+    }
+
+    private async Task<SobreAgente> RecuperarRechazoFalsoRecetaAsync(
+        SobreAgente sobre,
+        List<MensajeIa> mensajes,
+        string systemInstruction,
+        string pedidoUsuario)
+    {
+        if (!string.Equals(sobre.Accion?.Trim(), ChatAccion.Conversar, StringComparison.OrdinalIgnoreCase))
+        {
+            return sobre;
+        }
+
+        if (!ParecePedidoDeReceta(pedidoUsuario) || !PareceRechazoGenerico(sobre.Mensaje))
+        {
+            return sobre;
+        }
+
+        var conversacion = new List<MensajeIa>(mensajes)
+        {
+            new("user",
+                $"El pedido \"{pedidoUsuario}\" SÍ es sobre cocina y recetas. " +
+                "No lo rechaces. Generá la receta completa con accion 'generar_receta', " +
+                "completando 'receta' con todos sus ingredientes y pasos reales (aunque falten ingredientes en la alacena). " +
+                "En 'mensaje' escribí solo 1 o 2 oraciones breves presentando el plato, sin listar ingredientes ni pasos.")
+        };
+
+        try
+        {
+            var json = await _asistenteIa.GenerarRespuestaConversacionAsync(conversacion, systemInstruction, jsonMode: true);
+            var reintento = DeserializarSobre(json);
+            if (reintento is not null)
+            {
+                var recetaReintento = ComponerRecetaDesdeSobre(reintento);
+                if (EsRecetaValida(recetaReintento))
+                {
+                    reintento.Accion = ChatAccion.GenerarReceta;
+                    reintento.Receta = recetaReintento;
+                    return reintento;
+                }
+            }
+        }
+        catch (ServicioExternoException)
+        {
+        }
+
+        return sobre;
+    }
+
+    private static bool ParecePedidoDeReceta(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto))
+        {
+            return false;
+        }
+
+        var limpio = QuitarTildes(texto.Trim().ToLowerInvariant());
+        return Regex.IsMatch(
+            limpio,
+            @"\b(receta|cocinar|cocino|preparar|preparo|como\s+(?:puedo\s+|se\s+)?(?:h[a-z]{0,2}cer|hago|prepar|cocin|armar)|desde\s+(?:0|cero)|quiero\s+hacer|haceme|dame\s+un[ao]?\s+)\b",
+            RegexOptions.CultureInvariant);
+    }
+
+    private static bool PareceRechazoGenerico(string? mensaje)
+    {
+        if (string.IsNullOrWhiteSpace(mensaje))
+        {
+            return false;
+        }
+
+        var limpio = QuitarTildes(mensaje.Trim().ToLowerInvariant());
+        var esMotivoValido =
+            limpio.Contains("profesional", StringComparison.Ordinal) ||
+            limpio.Contains("basico", StringComparison.Ordinal) ||
+            limpio.Contains("premium", StringComparison.Ordinal) ||
+            limpio.Contains("celiac", StringComparison.Ordinal) ||
+            limpio.Contains("vegan", StringComparison.Ordinal) ||
+            limpio.Contains("vegetar", StringComparison.Ordinal) ||
+            limpio.Contains("diabet", StringComparison.Ordinal) ||
+            limpio.Contains("tacc", StringComparison.Ordinal) ||
+            limpio.Contains("gluten", StringComparison.Ordinal) ||
+            limpio.Contains("restriccion", StringComparison.Ordinal);
+
+        if (esMotivoValido)
+        {
+            return false;
+        }
+
+        return limpio.Contains("no puedo ayudar", StringComparison.Ordinal) ||
+               limpio.Contains("no puedo asistir", StringComparison.Ordinal) ||
+               limpio.Contains("no puedo responder", StringComparison.Ordinal) ||
+               limpio.Contains("no puedo generar", StringComparison.Ordinal) ||
+               limpio.Contains("ajeno a la cocina", StringComparison.Ordinal) ||
+               limpio.Contains("fuera de mi alcance", StringComparison.Ordinal) ||
+               limpio.Contains("solo puedo ayudar", StringComparison.Ordinal) ||
+               limpio.Contains("solo respondo temas de cocina", StringComparison.Ordinal);
+    }
+
+    private static string SanitizarMensajePresentacionReceta(string? mensajeIa, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(mensajeIa))
+        {
+            return fallback;
+        }
+
+        var sinMarkdown = mensajeIa
+            .Replace("**", string.Empty, StringComparison.Ordinal)
+            .Replace("__", string.Empty, StringComparison.Ordinal)
+            .Replace("###", string.Empty, StringComparison.Ordinal)
+            .Replace("##", string.Empty, StringComparison.Ordinal)
+            .Trim();
+
+        var limpio = QuitarTildes(sinMarkdown.ToLowerInvariant());
+        var tieneListaOPasos =
+            limpio.Contains("ingredientes:", StringComparison.Ordinal) ||
+            limpio.Contains("preparacion:", StringComparison.Ordinal) ||
+            limpio.Contains("pasos:", StringComparison.Ordinal) ||
+            limpio.Contains("instrucciones:", StringComparison.Ordinal) ||
+            Regex.IsMatch(sinMarkdown, @"(?:^|\n)\s*(?:\d+[\.\)]\s+|[-*•]\s+)", RegexOptions.Multiline) ||
+            Regex.IsMatch(sinMarkdown, @"\b1[\.\)]\s+.+\b2[\.\)]\s+", RegexOptions.Singleline) ||
+            sinMarkdown.Contains('\n', StringComparison.Ordinal) ||
+            sinMarkdown.Length > 220;
+
+        if (!tieneListaOPasos)
+        {
+            return sinMarkdown;
+        }
+
+        var corte = sinMarkdown.Length;
+        var indices = new[]
+        {
+            sinMarkdown.IndexOf('\n'),
+            limpio.IndexOf("ingredientes", StringComparison.Ordinal),
+            limpio.IndexOf("preparacion", StringComparison.Ordinal),
+            limpio.IndexOf("pasos", StringComparison.Ordinal),
+            limpio.IndexOf("instrucciones", StringComparison.Ordinal)
+        };
+
+        foreach (var indice in indices)
+        {
+            if (indice >= 0 && indice < corte)
+            {
+                corte = indice;
+            }
+        }
+
+        var matchNumero = Regex.Match(sinMarkdown, @"\b1[\.\)]\s+");
+        if (matchNumero.Success && matchNumero.Index < corte)
+        {
+            corte = matchNumero.Index;
+        }
+
+        var intro = sinMarkdown[..corte].Trim().TrimEnd(':', '-', '—', ';');
+        if (intro.Length is >= 18 and <= 200)
+        {
+            if (!intro.EndsWith('.') && !intro.EndsWith('!') && !intro.EndsWith('?'))
+            {
+                intro += ".";
+            }
+
+            return intro;
+        }
+
+        return fallback;
     }
 
     private async Task<SobreAgente> AsegurarRecetaCompletaAsync(
@@ -465,13 +635,13 @@ public class ChatIaService : IChatIaService
         }
 
         var avisoHistorial = guardada is null
-            ? $"Te propongo: {receta.Titulo}."
-            : $"Te propongo: {receta.Titulo}. Quedó en Recetas. Si la querés en favoritos, marcala con el corazón.";
+            ? $"Te propongo {receta.Titulo}. Abrí la tarjeta para ver los ingredientes y el paso a paso."
+            : $"Te propongo {receta.Titulo}. Quedó en Recetas y podés ver ingredientes y pasos abriendo la tarjeta.";
 
         return new ChatRespuestaDto
         {
             Accion = ChatAccion.GenerarReceta,
-            Mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje) ? avisoHistorial : sobre.Mensaje,
+            Mensaje = SanitizarMensajePresentacionReceta(sobre.Mensaje, avisoHistorial),
             Receta = receta,
             RecetaGuardada = guardada
         };
@@ -851,9 +1021,10 @@ public class ChatIaService : IChatIaService
             return null;
         }
 
-        respuesta.Mensaje = string.IsNullOrWhiteSpace(sobre.Mensaje)
+        var presentacion = SanitizarMensajePresentacionReceta(sobre.Mensaje, string.Empty);
+        respuesta.Mensaje = string.IsNullOrWhiteSpace(presentacion)
             ? mensajeSistema
-            : $"{mensajeSistema} {sobre.Mensaje}";
+            : $"{mensajeSistema} {presentacion}";
         return respuesta;
     }
 
@@ -1019,16 +1190,16 @@ public class ChatIaService : IChatIaService
         }
 
         var turno = ResolverTurnoEnFlujo(turnosFlujo);
-        var fecha = ResolverFechaEnFlujo(turnosFlujo, hoy);
+        var fecha = ResolverFechaEnFlujo(turnosFlujo, hoy) ?? ParsearFechaOpcional(sobre.FechaPlanificar);
         if (turno is null || fecha is null)
         {
             var faltaTurno = turno is null;
             var faltaFecha = fecha is null;
             var pregunta = faltaTurno && faltaFecha
-                ? $"¿Qué día y qué comida querés para \"{tituloReceta}\"? Por ejemplo: el domingo, al almuerzo."
+                ? $"¿Qué día y qué comida querés para \"{tituloReceta}\"? Por ejemplo: el día 25 o el domingo, al almuerzo."
                 : faltaTurno
                     ? $"¿Para qué comida querés planificar \"{tituloReceta}\" el {fecha:dd/MM}? Elegí Desayuno, Almuerzo, Merienda o Cena."
-                    : $"¿Qué día querés planificar \"{tituloReceta}\" ({turno})? Podés decir hoy, mañana o el domingo que viene.";
+                    : $"¿Qué día querés planificar \"{tituloReceta}\" ({turno})? Podés decir hoy, mañana, el día 25 o el domingo que viene.";
             return new ChatRespuestaDto
             {
                 Accion = ChatAccion.Conversar,
@@ -1825,7 +1996,7 @@ public class ChatIaService : IChatIaService
                 continue;
             }
 
-            var encontrada = FechaExplicita(turnosFlujo[i].Texto, hoy);
+            var encontrada = FechaExplicita(turnosFlujo[i].Texto, hoy, permitirNumeroSuelto: true);
             if (encontrada is not null)
             {
                 return encontrada;
@@ -1839,7 +2010,7 @@ public class ChatIaService : IChatIaService
                 continue;
             }
 
-            var enPregunta = FechaExplicita(turnosFlujo[i].Texto, hoy);
+            var enPregunta = FechaNumericaExplicita(turnosFlujo[i].Texto, hoy);
             if (enPregunta is not null)
             {
                 return enPregunta;
@@ -1897,7 +2068,7 @@ public class ChatIaService : IChatIaService
         ("septiembre", 9), ("setiembre", 9), ("octubre", 10), ("noviembre", 11), ("diciembre", 12)
     ];
 
-    private static DateTime? FechaExplicita(string? texto, DateTime hoy)
+    private static DateTime? FechaExplicita(string? texto, DateTime hoy, bool permitirNumeroSuelto = false)
     {
         var limpio = QuitarTildes((texto ?? string.Empty).ToLowerInvariant());
         if (limpio.Contains("pasado manana", StringComparison.Ordinal))
@@ -1915,31 +2086,21 @@ public class ChatIaService : IChatIaService
             return hoy;
         }
 
-        if (DateTime.TryParseExact(ExtraerFechaNumerica(limpio), ["d/M", "dd/MM", "d/M/yyyy", "dd/MM/yyyy"],
-                CultureInfo.InvariantCulture, DateTimeStyles.None, out var numerica))
+        var numerica = FechaNumericaExplicita(limpio, hoy);
+        if (numerica is not null)
         {
-            var anio = numerica.Year < 2000 ? hoy.Year : numerica.Year;
-            var fecha = new DateTime(anio, numerica.Month, numerica.Day);
-            if (fecha.Date < hoy.Date)
-            {
-                fecha = fecha.AddYears(1);
-            }
-
-            return fecha;
+            return numerica;
         }
 
         foreach (var (nombreMes, mes) in MesesAnio)
         {
-            var indiceMes = limpio.IndexOf($" de {nombreMes}", StringComparison.Ordinal);
-            if (indiceMes <= 0)
+            var matchMes = Regex.Match(limpio, $@"\b(\d{{1,2}})\s+de\s+{nombreMes}\b", RegexOptions.CultureInvariant);
+            if (!matchMes.Success)
             {
                 continue;
             }
 
-            var antes = limpio[..indiceMes].TrimEnd();
-            var ultimoEspacio = antes.LastIndexOf(' ');
-            var tokenDia = ultimoEspacio >= 0 ? antes[(ultimoEspacio + 1)..] : antes;
-            if (int.TryParse(tokenDia, out var diaMes) && diaMes is >= 1 and <= 31)
+            if (int.TryParse(matchMes.Groups[1].Value, out var diaMes) && diaMes is >= 1 and <= 31)
             {
                 var anio = hoy.Year;
                 if (diaMes <= DateTime.DaysInMonth(anio, mes))
@@ -1952,6 +2113,32 @@ public class ChatIaService : IChatIaService
 
                     return fecha;
                 }
+            }
+        }
+
+        var diaConPalabra = Regex.Match(
+            limpio,
+            @"\b(?:el\s+)?(?:proximo\s+|prox\.?\s+)?dia\s+(\d{1,2})\b",
+            RegexOptions.CultureInvariant);
+        if (diaConPalabra.Success && int.TryParse(diaConPalabra.Groups[1].Value, out var diaPalabra))
+        {
+            var resuelta = ResolverDiaDelMes(diaPalabra, hoy);
+            if (resuelta is not null)
+            {
+                return resuelta;
+            }
+        }
+
+        var diaConArticulo = Regex.Match(
+            limpio,
+            @"\b(?:para\s+el|el|al)\s+(?:proximo\s+|prox\.?\s+)?(\d{1,2})\b(?!\s*(?:de\s+[a-z]+|porcion|minuto|min\b|hora|hs\b|gr\b|g\b|kg\b|ml\b|l\b|taza|cucharad|unidad|receta))",
+            RegexOptions.CultureInvariant);
+        if (diaConArticulo.Success && int.TryParse(diaConArticulo.Groups[1].Value, out var diaArticulo))
+        {
+            var resuelta = ResolverDiaDelMes(diaArticulo, hoy);
+            if (resuelta is not null)
+            {
+                return resuelta;
             }
         }
 
@@ -1982,35 +2169,96 @@ public class ChatIaService : IChatIaService
             return hoy.AddDays(delta);
         }
 
+        if (permitirNumeroSuelto)
+        {
+            var matchSuelto = Regex.Match(
+                limpio,
+                @"(?<!\b(?:receta|opcion|numero|nro|paso)\s+)\b(\d{1,2})\b(?!\s*(?:porcion|minuto|min\b|hora|hs\b|gr\b|g\b|kg\b|ml\b|l\b|taza|cucharad|unidad))",
+                RegexOptions.CultureInvariant);
+            if (matchSuelto.Success && int.TryParse(matchSuelto.Groups[1].Value, out var diaSuelto))
+            {
+                var resuelta = ResolverDiaDelMes(diaSuelto, hoy);
+                if (resuelta is not null)
+                {
+                    return resuelta;
+                }
+            }
+        }
+
         return null;
     }
 
-    private static string ExtraerFechaNumerica(string texto)
+    private static DateTime? FechaNumericaExplicita(string? texto, DateTime hoy)
     {
-        var inicio = -1;
-        for (var i = 0; i < texto.Length; i++)
+        if (string.IsNullOrWhiteSpace(texto))
         {
-            if (!char.IsDigit(texto[i]))
+            return null;
+        }
+
+        var matchIso = Regex.Match(texto, @"\b(\d{4}-\d{2}-\d{2})\b", RegexOptions.CultureInvariant);
+        if (matchIso.Success &&
+            DateTime.TryParseExact(matchIso.Groups[1].Value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var iso))
+        {
+            return iso.Date;
+        }
+
+        var matchSlash = Regex.Match(texto, @"\b(\d{1,2}[/-]\d{1,2}(?:[/-]\d{4})?)\b", RegexOptions.CultureInvariant);
+        if (!matchSlash.Success)
+        {
+            return null;
+        }
+
+        var normalizada = matchSlash.Groups[1].Value.Replace('-', '/');
+        if (!DateTime.TryParseExact(
+                normalizada,
+                ["d/M", "dd/MM", "d/M/yyyy", "dd/MM/yyyy"],
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var numerica))
+        {
+            return null;
+        }
+
+        var tieneAnio = normalizada.Count(caracter => caracter == '/') == 2;
+        var anio = tieneAnio ? numerica.Year : hoy.Year;
+        if (numerica.Day > DateTime.DaysInMonth(anio, numerica.Month))
+        {
+            return null;
+        }
+
+        var fecha = new DateTime(anio, numerica.Month, numerica.Day);
+        if (!tieneAnio && fecha.Date < hoy.Date)
+        {
+            fecha = fecha.AddYears(1);
+        }
+
+        return fecha;
+    }
+
+    private static DateTime? ResolverDiaDelMes(int dia, DateTime hoy)
+    {
+        if (dia is < 1 or > 31)
+        {
+            return null;
+        }
+
+        var inicio = new DateTime(hoy.Year, hoy.Month, 1);
+        for (var offset = 0; offset <= 12; offset++)
+        {
+            var mes = inicio.AddMonths(offset);
+            if (dia > DateTime.DaysInMonth(mes.Year, mes.Month))
             {
                 continue;
             }
 
-            inicio = i;
-            break;
+            var candidata = new DateTime(mes.Year, mes.Month, dia);
+            if (candidata.Date >= hoy.Date)
+            {
+                return candidata;
+            }
         }
 
-        if (inicio < 0)
-        {
-            return string.Empty;
-        }
-
-        var fin = inicio;
-        while (fin < texto.Length && (char.IsDigit(texto[fin]) || texto[fin] == '/'))
-        {
-            fin++;
-        }
-
-        return texto[inicio..fin].Trim('/');
+        return null;
     }
 
     private static string QuitarTildes(string texto)
