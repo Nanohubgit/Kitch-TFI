@@ -29,3 +29,10 @@ public class EstadoPagoResponseDto
     public DateTime? ProfesionalHasta { get; set; }
     public string Mensaje { get; set; } = string.Empty;
 }
+
+public class CancelarSuscripcionResponseDto
+{
+    public string RolActual { get; set; } = string.Empty;
+    public bool RequiereRefrescarSesion { get; set; }
+    public string Mensaje { get; set; } = string.Empty;
+}

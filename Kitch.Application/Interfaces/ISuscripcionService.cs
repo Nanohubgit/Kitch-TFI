@@ -20,4 +20,6 @@ public interface ISuscripcionService
     Task<EstadoPagoResponseDto> ConfirmarPagoAsync(int usuarioId, string paymentId);
 
     Task<VerificacionPagosResponseDto> VerificarPagosAsync(int usuarioId);
+
+    Task<CancelarSuscripcionResponseDto> CancelarAsync(int usuarioId);
 }
