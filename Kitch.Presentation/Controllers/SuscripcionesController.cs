@@ -48,6 +48,14 @@ public class SuscripcionesController : ApiControllerBase
         return Ok(resultado);
     }
 
+    [HttpPost("cancelar")]
+    [Authorize(Roles = RolUsuario.Profesional)]
+    public async Task<ActionResult<CancelarSuscripcionResponseDto>> Cancelar()
+    {
+        var resultado = await _suscripcionService.CancelarAsync(GetUsuarioIdOrThrow());
+        return Ok(resultado);
+    }
+
     [AllowAnonymous]
     [HttpPost("webhook")]
     public async Task<IActionResult> Webhook(

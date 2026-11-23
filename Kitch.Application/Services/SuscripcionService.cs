@@ -274,6 +274,65 @@ public class SuscripcionService : ISuscripcionService
         await AplicarCobroAsync(cobro, paymentId);
     }
 
+    public async Task<CancelarSuscripcionResponseDto> CancelarAsync(int usuarioId)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId)
+            ?? throw new UnauthorizedAccessException();
+
+        if (usuario.Rol == RolUsuario.Admin)
+        {
+            throw new InvalidOperationException("Las cuentas administradoras no tienen una suscripción para cancelar.");
+        }
+
+        if (usuario.Rol != RolUsuario.Profesional)
+        {
+            throw new InvalidOperationException("No tenés una suscripción Premium activa para cancelar.");
+        }
+
+        await _unidadDeTrabajo.EjecutarAsync(async () =>
+        {
+            await _unidadDeTrabajo.BloquearRecursoAsync($"kitch:pagos:usuario:{usuarioId}");
+
+            var usuarioActual = await _usuarioRepository.GetByIdAsync(usuarioId)
+                ?? throw new UnauthorizedAccessException();
+
+            if (usuarioActual.Rol != RolUsuario.Profesional)
+            {
+                return;
+            }
+
+            var ahora = DateTime.UtcNow;
+
+            var suscripcionesActivas = await _repository.FindAsync(suscripcion =>
+                suscripcion.UsuarioId == usuarioId && suscripcion.Activa);
+            foreach (var suscripcion in suscripcionesActivas)
+            {
+                suscripcion.Activa = false;
+                suscripcion.FechaFin = ahora;
+                await _repository.UpdateAsync(suscripcion);
+            }
+
+            var contratosActivos = await _contratoRepository.FindAsync(contrato =>
+                contrato.UsuarioId == usuarioId && contrato.Estado == EstadoContratoSub.Activo);
+            foreach (var contrato in contratosActivos)
+            {
+                contrato.Estado = EstadoContratoSub.Cancelado;
+                contrato.FechaFin = ahora;
+                await _contratoRepository.UpdateAsync(contrato);
+            }
+
+            usuarioActual.Rol = RolUsuario.Basico;
+            await _usuarioRepository.UpdateAsync(usuarioActual);
+        });
+
+        return new CancelarSuscripcionResponseDto
+        {
+            RolActual = RolUsuario.Basico,
+            RequiereRefrescarSesion = true,
+            Mensaje = "Cancelaste tu suscripción Kitch Premium. Tu cuenta volvió al Plan básico."
+        };
+    }
+
     private async Task AplicarCobroAsync(PaymentNotificationResult cobro, string paymentId)
     {
         if (!int.TryParse(cobro.ExternalReference, out var usuarioId))
