@@ -19,7 +19,9 @@ internal static class RealismoRecetaPrompt
         "Si tiene una restricción dietética, usá la adaptación tradicional y conocida (ej. vegano: albóndigas de lentejas o garbanzos, " +
         "milanesas de berenjena o soja, tortilla de garbanzo), nunca una mezcla inventada con lo que haya en la alacena. " +
         "Usá la alacena solo para los ingredientes que ese plato lleva naturalmente y poné los faltantes en 'ingredientesAComprar'; " +
-        $"en este caso el límite de compras sube a {MaxIngredientesAComprarPlatoPedido}. " +
+        $"en este caso el límite habitual de compras es {MaxIngredientesAComprarPlatoPedido}, PERO si el usuario pide un plato específico, " +
+        "una receta gourmet, pastelería o prepararlo 'desde cero' / 'desde 0', incluí TODOS los ingredientes reales que necesita ese plato " +
+        "sin rechazarlo jamás por falta de ingredientes en la alacena. " +
         "Nunca devuelvas 'receta' vacía ni rechaces un pedido solo porque el ingrediente pedido no está en la alacena. " +
         "Si el pedido es dulce, torta o postre, el plato es un postre de recetario. " +
         "La alacena no puede cambiarlo por un invento salado (galletas de lentejas, torta de arroz, budín de polenta). " +
@@ -62,8 +64,9 @@ internal static class RealismoRecetaPrompt
         "'ingredientesDescartados' (los ingredientes de la alacena que ese plato NO lleva) e 'ingredientesAComprar' " +
         "(los ingredientes de la receta que NO están en la alacena, sin contar sal, pimienta, aceite ni agua). " +
         "Ningún ingrediente de 'ingredientesDescartados' puede aparecer en 'ingredientes' ni en 'pasos'.\n" +
-        "VERIFICACIÓN antes de responder: 1) '¿este plato, con este nombre y esta combinación, aparece en recetarios reales?'; " +
+        "VERIFICACIÓN antes de responder (solo para platos libres; si el usuario pidió un plato específico, cumplí su pedido): " +
+        "1) '¿este plato, con este nombre y esta combinación, aparece en recetarios reales?'; " +
         "2) '¿repite el ingrediente base, la combinación o el tipo de preparación de alguna de \"basesYaUsadas\"?'; " +
-        "3) '¿tiene proteína, carbohidrato y verdura?'; 4) '¿respeta el límite de \"ingredientesAComprar\"?'. " +
-        "Si alguna respuesta falla, cambiá de plato antes de responder.";
+        "3) '¿tiene proteína, carbohidrato y verdura?' (no aplica a postres, pastelería ni snacks); 4) '¿respeta el límite de \"ingredientesAComprar\"?'. " +
+        "Si alguna respuesta falla en un plato libre, cambiá de plato antes de responder.";
 }
