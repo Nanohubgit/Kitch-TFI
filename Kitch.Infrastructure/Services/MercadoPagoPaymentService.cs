@@ -63,9 +63,6 @@ public class MercadoPagoPaymentService : IPaymentGatewayService
                     UnitPrice = request.Monto > 0 ? request.Monto : PrecioSuscripcion.ProfesionalArs
                 }
             ],
-            Payer = string.IsNullOrWhiteSpace(request.EmailUsuario)
-                ? null
-                : new PreferencePayerRequest { Email = request.EmailUsuario },
             BackUrls = new PreferenceBackUrlsRequest
             {
                 Success = successUrl,
